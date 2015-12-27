@@ -1,0 +1,27 @@
+# framework
+tornado>4.0
+
+# common
+pytz
+
+# web
+jinja2
+webassets
+cssmin
+jsmin
+html2text
+lxml
+markdown2
+requests
+
+# db
+pymysql
+
+# test
+nose
+
+# task pysnmp
+pysnmp-mibs
+pysnmp
+PyYAML
+pymongo
