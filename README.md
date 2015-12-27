@@ -75,7 +75,7 @@ def task(*args, **kw):
 
 ### 定时任务
 
-```
+```py
 def bind_task(ioloop, thread_executor, process_executor):
     now = ioloop.time()
     run_at = now + 3600
@@ -89,4 +89,4 @@ def task(*args, **kw):
 
 ## Versions
 
-[更新日志](http://git01.dds.com/ops/ramjet/blob/master/docs/versions.md)
+[更新日志](https://github.com/Laisky/ramjet/blob/master/docs/versions.md)
