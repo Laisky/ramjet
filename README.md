@@ -16,6 +16,14 @@ Ramjet
 Need Python3.4.x.
 
 ```sh
+# Install from pypi
+
+$ pip install ramjet
+```
+
+```sh
+# Install from source
+
 $ python setup.py install
 $ python -m ramjet [--debug=true]
 ```
@@ -32,7 +40,7 @@ $ python -m ramjet [--debug=true]
   - 进程池 `from ramjet.engine import process_executor`
 
 可以在 `ramjet.tasks` 里新建 `*.py` 模块，在模块内实现 `bind_task()` 方法，
-可以参考范例 `ramjet.tasks.heart.py`。
+可以参考范例 `ramjet/tasks/heart.py`。
 
 
 ## Demo
