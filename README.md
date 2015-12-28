@@ -16,6 +16,14 @@ Ramjet
 Need Python3.4.x.
 
 ```sh
+# Install from pypi
+
+$ pip install ramjet
+```
+
+```sh
+# Install from source
+
 $ python setup.py install
 $ python -m ramjet [--debug=true]
 ```
