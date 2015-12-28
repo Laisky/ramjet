@@ -1,4 +1,5 @@
 import logging
+import traceback
 
 import tornado.httpserver
 import tornado.options as opt
@@ -6,9 +7,10 @@ from tornado.options import options
 
 from ramjet.app import Application
 from ramjet.settings import LOG_NAME
+from ramjet.tasks import detect_tasks, _TASKS
 
 
-log = logging.getLogger(LOG_NAME)
+logger = logging.getLogger(LOG_NAME)
 
 
 def main():
@@ -19,15 +21,20 @@ def main():
     # http_server.listen(options.port)
 
     if options.debug:
-        log.info('start application in debug mode')
-        log.setLevel(logging.DEBUG)
+        logger.info('start application in debug mode')
+        logger.setLevel(logging.DEBUG)
     else:
-        log.info('start application in normal mode')
-        log.setLevel(logging.INFO)
+        logger.info('start application in normal mode')
+        logger.setLevel(logging.INFO)
     ioloop = tornado.ioloop.IOLoop.instance()
 
-    from ramjet.tasks import setup_tasks
-    setup_tasks(ioloop)
+    detect_tasks()
+    for task in _TASKS:
+        try:
+            logger.info('start {}'.format(task.name))
+            task.func()
+        except Exception:
+            logger.warn('run {} got error: '.format(task.name, traceback.format_exc()))
 
     ioloop.start()
 
