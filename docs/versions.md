@@ -5,6 +5,7 @@ Versions Log
 
 |Version|Description|Date|
 |:--:|:--:|:--:|
+| 1.1 | Refactor the method to register task | Mon Dec 28 02:41:16 2015 UTC |
 
 - 1.0
 
