@@ -20,8 +20,3 @@ pymysql
 # test
 nose
 
-# task pysnmp
-pysnmp-mibs
-pysnmp
-PyYAML
-pymongo
