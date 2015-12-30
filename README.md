@@ -11,6 +11,11 @@ Ramjet
 | 后台脚本的引擎 |
 
 
+## Documents
+
+http://laisky.github.io/ramjet/
+
+
 ## Install & Run
 
 Need Python3.4.x.
@@ -120,7 +125,3 @@ def task(*args, **kw):
     # 可以在 task 内设置下一次执行的时间
     # ioloop.run_at(run_at, task, *args, **kw)
 ```
-
-## Versions
-
-[更新日志](https://github.com/Laisky/ramjet/blob/master/docs/versions.md)
