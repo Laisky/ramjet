@@ -1,0 +1,5 @@
+site_name: Ramjet Documents
+pages:
+  - Home: index.md
+  - Changelog: CHANGELOG.md
+theme: mkdocs
