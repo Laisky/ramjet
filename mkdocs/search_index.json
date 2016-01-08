@@ -12,23 +12,13 @@
         },
         {
             "location": "/CHANGELOG/",
-            "text": "Versions Log\n\n\nVersion 2.0\n\n\n\n\n\n\n\n\nVersion\n\n\nDescription\n\n\nDate\n\n\n\n\n\n\n\n\n\n\n1.1\n\n\nRefactor the method to register task\n\n\nMon Dec 28 02:41:16 2015 UTC\n\n\n\n\n\n\n\n\n\n\nVersion 1.0\n\n\n\n\n\n\n\n\nVersion\n\n\nDescription\n\n\nDate\n\n\n\n\n\n\n\n\n\n\n1.0\n\n\n\u5177\u5907\u57fa\u7840\u7684 task \u529f\u80fd\n\n\nSun Dec 27 09:34:18 2015 UTC",
+            "text": "1.1.1 (2016-01-08)",
             "title": "Changelog"
         },
         {
-            "location": "/CHANGELOG/#versions-log",
+            "location": "/CHANGELOG/#111-2016-01-08",
             "text": "",
-            "title": "Versions Log"
-        },
-        {
-            "location": "/CHANGELOG/#version-20",
-            "text": "Version  Description  Date      1.1  Refactor the method to register task  Mon Dec 28 02:41:16 2015 UTC",
-            "title": "Version 2.0"
-        },
-        {
-            "location": "/CHANGELOG/#version-10",
-            "text": "Version  Description  Date      1.0  \u5177\u5907\u57fa\u7840\u7684 task \u529f\u80fd  Sun Dec 27 09:34:18 2015 UTC",
-            "title": "Version 1.0"
+            "title": "1.1.1 (2016-01-08)"
         }
     ]
 }
