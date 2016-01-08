@@ -1,8 +1,10 @@
 Ramjet
 ===
 
-[![versions](https://img.shields.io/badge/version-v1.1-blue.svg)]()
 [![versions](https://img.shields.io/badge/license-MIT/Apache-blue.svg)]()
+[![PyPI version](https://badge.fury.io/py/ramjet.svg)](https://badge.fury.io/py/ramjet)
+[![versions](https://img.shields.io/badge/version-v1.1.1-blue.svg)]()
+[![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
 
 > わが征くは星の大海 —— Yang Wen-li
 
