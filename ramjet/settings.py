@@ -18,3 +18,8 @@ logger = logging.getLogger(LOG_NAME)
 # web
 OK = 0
 ERROR = 1
+
+# tasks
+INSTALL_TASKS = [
+    'heart',  # !!! 默认的心跳服务，不要注释
+]

@@ -1,9 +1,8 @@
 Ramjet
 ===
 
+[![versions](https://img.shields.io/badge/version-v2.1.1-blue.svg)]()
 [![versions](https://img.shields.io/badge/license-MIT/Apache-blue.svg)]()
-[![PyPI version](https://badge.fury.io/py/ramjet.svg)](https://badge.fury.io/py/ramjet)
-[![versions](https://img.shields.io/badge/version-v1.1.1-blue.svg)]()
 [![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
 
 > わが征くは星の大海 —— Yang Wen-li
@@ -13,41 +12,23 @@ Ramjet
 | 后台脚本的引擎 |
 
 
-## Documents
-
-http://laisky.github.io/ramjet/
-
-
 ## Install & Run
 
-Need Python3.4.x.
+Need Python3.5.x.
 
 ```sh
-# Install from pypi
-
-$ pip install ramjet
-```
-
-```sh
-# Install from source
-
 $ python setup.py install
-$ python -m ramjet [--debug=true]
+$ python -m ramjet
 ```
 
 
 ## Description
 
-基于 Tornado 和 consurrent.futures 运行脚本（`tasks`）。
+基于 asyncio 和 consurrent.futures 运行脚本（`tasks`）。
 
-提供了三种运行任务的引擎：
+每一个 task 都需要实现接口 `bind_task()`。
 
-  - 事件循环 `from ramjet.engine import ioloop`
-  - 线程池 `from ramjet.engine import thread_executor`
-  - 进程池 `from ramjet.engine import process_executor`
-
-可以在 `ramjet.tasks` 里新建 `*.py` 模块，在模块内实现 `bind_task()` 方法，
-可以参考范例 `ramjet/tasks/heart.py`。
+利用 `ioloop`、`thread_executor`、`process_executor` 自行实现运行逻辑。
 
 
 ## Demo
@@ -55,12 +36,7 @@ $ python -m ramjet [--debug=true]
 ### 异步
 
 ```py
-import tornado
-
-from ramjet.engine import ioloop
-
-
-TASK_NAME = 'asynchrous-demo'
+from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
@@ -90,10 +66,7 @@ def callback(future):
 需要注意子进程没法回收，所以请确保 task 可以很好的结束。
 
 ```py
-from ramjet.engine import thread_executor, process_executor
-
-
-TASK_NAME = 'thread-process-demo'
+from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
@@ -110,11 +83,8 @@ def task(*args, **kw):
 
 ### 定时任务
 
-```py
-from ramjet.engine import ioloop
-
-
-TASK_NAME = 'timing-demo'
+```
+from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
@@ -127,3 +97,7 @@ def task(*args, **kw):
     # 可以在 task 内设置下一次执行的时间
     # ioloop.run_at(run_at, task, *args, **kw)
 ```
+
+## Versions
+
+[更新日志](http://git01.dds.com/ops/ramjet/blob/master/CHANGELOG.md)

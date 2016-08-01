@@ -2,12 +2,9 @@
 """
 
 from ramjet.settings import logger
-from ramjet.engine import ioloop
-
+from ramjet.engines import ioloop
 
 logger = logger.getChild('tasks.heart')
-
-TASK_NAME = 'heartbeats'
 
 
 def bind_task():

@@ -3,6 +3,16 @@ from email.mime.text import MIMEText
 
 
 def send_mail(fr, to, subject, content):
+    """发送邮件的简单接口
+
+    Parameters
+    ----------
+
+    fr: string
+        发信人
+    to: string
+        收信人，可以写多个，用『,』分隔
+    """
     msg = MIMEText(content)
 
     msg['Subject'] = subject

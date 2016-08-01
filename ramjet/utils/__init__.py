@@ -9,14 +9,33 @@ import pytz
 
 from ramjet.settings import LOG_NAME, LOG_PATH
 from .jinja import debug_wrapper, TemplateRendering
+from .mail import send_mail
 
 
-log = logging.getLogger(LOG_NAME)
+logger = logging.getLogger(LOG_NAME)
+log = logger
 __all__ = [
     'utcnow', 'setup_log', 'validate_email', 'validate_mobile', 'generate_random_string',
-    'debug_wrapper', 'TemplateRendering',
+    'debug_wrapper', 'TemplateRendering', 'logger', 'log',
+    'send_mail', 'format_dt', 'format_utcdt', 'cstnow', 'now',
 ]
 UTC = pytz.timezone('utc')
+CST = pytz.timezone('Asia/Shanghai')
+
+
+def format_dt(dt):
+    return datetime.datetime.strftime(dt, '%Y年%m月%d日 %H时%M分')
+
+
+def format_utcdt(dt):
+    dt = dt + datetime.timedelta(hours=8)
+    return format_dt(dt)
+
+
+def cstnow():
+    return utcnow().astimezone(tz=CST)
+
+now = cstnow
 
 
 def utcnow():
@@ -40,7 +59,7 @@ def setup_log():
     log.setLevel(logging.DEBUG)
     log.addHandler(ch)
     # log.addHandler(sh)
-    log.addHandler(fh)
+    # log.addHandler(fh)
 
 
 def validate_email(email):
@@ -57,3 +76,10 @@ def validate_mobile(mobile):
 def generate_random_string(length):
     alphbet = string.ascii_letters + ''.join([str(i) for i in range(10)])
     return ''.join([random.choice(alphbet) for i in range(length)])
+
+
+def format_sec(s):
+    hr = round(s // 3600, 2)
+    minu = round(s % 3600 // 60, 2)
+    sec = round(s % 60, 2)
+    return '{}小时 {}分钟 {}秒'.format(hr, minu, sec)
