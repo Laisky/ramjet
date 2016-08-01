@@ -4,6 +4,7 @@ tornado>4.0
 # common
 pytz
 jinja2
+mkdocs
 
 # db
 pymysql

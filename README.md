@@ -100,4 +100,4 @@ def task(*args, **kw):
 
 ## Versions
 
-[更新日志](http://git01.dds.com/ops/ramjet/blob/master/CHANGELOG.md)
+[更新日志](https://github.com/Laisky/ramjet/blob/master/CHANGELOG.md)
