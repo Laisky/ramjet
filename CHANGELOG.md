@@ -2,6 +2,12 @@
 *CURRENT*
 ---
     
+- 2016-08-02 (Laisky) docs: pypi long description -> [view commit](https://github.com/Laisky/ramjet/commit/8da79573defb1c49f9da607854b1cf54be56ab6c)    
+       
+*1.2.1*
+---
+    
+- 2016-08-02 (Laisky) 1.2.1 -> [view commit](https://github.com/Laisky/ramjet/commit/ac318b3721cadc0abde1e1c1e7b4fcbeed1b63f3)
 - 2016-08-02 (Laisky) docs: 还原 README -> [view commit](https://github.com/Laisky/ramjet/commit/c1b5ba8f5f306194ae5518b88aab330dae630c8d)
 - 2016-08-01 (Laisky) docs: README 里的 CHANGELOG 指向错误 -> [view commit](https://github.com/Laisky/ramjet/commit/e3dc74aa46abf5f68527dd9a6c08b5d3b7b2808e)    
        
