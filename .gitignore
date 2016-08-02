@@ -60,7 +60,7 @@ target/
 site
 
 # commitizen
-package.json
+# package.json
 node_modules
 
 # venv

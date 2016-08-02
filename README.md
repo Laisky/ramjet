@@ -52,28 +52,26 @@ $ python -m ramjet [--debug=true]
 ### 异步
 
 ```py
+import random
+import asyncio
+
 from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
     # 将任务添加进事件循环中
-    ioloop.add_future(async_task(), callback)
+    asyncio.ensure_future(async_task())
 
 
-@tornado.gen.coroutine
-def async_task():
-    yield tornado.gen.sleep(3)
-    yield async_child_task()
+async def async_task():
+    await asyncio.sleep(3)
+    for i in range(10):
+        asyncio.ensure_future(async_child_task(i))
 
 
-@tornado.gen.coroutine
-def async_child_task():
-    yield tornado.gen.sleep(1)
-    print('child task ok!')
-
-
-def callback(future):
-    print('ok')
+async def async_child_task(n):
+    await asyncio.sleep(random.random())
+    print('child task {} ok!'.format(n))
 
 ```
 
@@ -104,14 +102,13 @@ from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
-    now = ioloop.time()
-    run_at = now + 3600
-    ioloop.call_at(run_at, task, your_auguments)
+    delay = 3600
+    ioloop.call_later(delay, task, your_auguments)
 
 
 def task(*args, **kw):
     # 可以在 task 内设置下一次执行的时间
-    # ioloop.run_at(run_at, task, *args, **kw)
+    # ioloop.call_later(delay, task, *args, **kw)
 ```
 
 ## Versions
