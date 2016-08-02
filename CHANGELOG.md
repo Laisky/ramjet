@@ -2,6 +2,13 @@
 *CURRENT*
 ---
     
+- 2016-08-02 (Laisky) docs: 还原 README -> [view commit](https://github.com/Laisky/ramjet/commit/c1b5ba8f5f306194ae5518b88aab330dae630c8d)
+- 2016-08-01 (Laisky) docs: README 里的 CHANGELOG 指向错误 -> [view commit](https://github.com/Laisky/ramjet/commit/e3dc74aa46abf5f68527dd9a6c08b5d3b7b2808e)    
+       
+*1.2*
+---
+    
+- 2016-08-01 (Laisky) 1.2 -> [view commit](https://github.com/Laisky/ramjet/commit/563f65ea65aac9fd0ca2fdf8394ce428fda922e0)
 - 2016-08-01 (Laisky) refactor: 用 asyncio 重构 -> [view commit](https://github.com/Laisky/ramjet/commit/8ada8c313470fdb65647394e0caf42e822ee8633)
 - 2016-01-08 (Laisky) docs: use commitizen -> [view commit](https://github.com/Laisky/ramjet/commit/800a8ffab6e9b3a19ead1dc4892c1fcfa042d316)
 - 2016-01-08 (Laisky) docs: add commitizen -> [view commit](https://github.com/Laisky/ramjet/commit/d5ef023fa594a9abfaf5c366d8e6a80f25814f8e)
