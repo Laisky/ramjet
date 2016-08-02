@@ -2,6 +2,7 @@ Ramjet
 ===
 
 [![versions](https://img.shields.io/badge/version-v1.2-blue.svg)]()
+[![PyPI version](https://badge.fury.io/py/ramjet.svg)](https://badge.fury.io/py/ramjet)
 [![versions](https://img.shields.io/badge/license-MIT/Apache-blue.svg)]()
 [![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
 
@@ -12,13 +13,28 @@ Ramjet
 | 后台脚本的引擎 |
 
 
+## Links
+
+  - [Documents](http://laisky.github.io/ramjet/)
+  - [Github](https://github.com/Laisky/ramjet)
+  - [PyPI](https://pypi.python.org/pypi/ramjet)
+
+
 ## Install & Run
 
 Need Python3.5.x.
 
 ```sh
+# Install from pypi
+
+$ pip install ramjet
+```
+
+```sh
+# Install from source
+
 $ python setup.py install
-$ python -m ramjet
+$ python -m ramjet [--debug=true]
 ```
 
 
