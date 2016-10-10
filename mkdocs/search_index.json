@@ -12,13 +12,18 @@
         },
         {
             "location": "/CHANGELOG/",
-            "text": "CURRENT\n\n\n\n\n2016-08-02 (Laisky) docs: pypi long description -> \nview commit\n    \n\n\n\n\n1.2.1\n\n\n\n\n2016-08-02 (Laisky) 1.2.1 -> \nview commit\n\n\n2016-08-02 (Laisky) docs: \u8fd8\u539f README -> \nview commit\n\n\n2016-08-01 (Laisky) docs: README \u91cc\u7684 CHANGELOG \u6307\u5411\u9519\u8bef -> \nview commit\n    \n\n\n\n\n1.2\n\n\n\n\n2016-08-01 (Laisky) 1.2 -> \nview commit\n\n\n2016-08-01 (Laisky) refactor: \u7528 asyncio \u91cd\u6784 -> \nview commit\n\n\n2016-01-08 (Laisky) docs: use commitizen -> \nview commit\n\n\n2016-01-08 (Laisky) docs: add commitizen -> \nview commit\n\n\n2015-12-30 (Laisky) + git pages -> \nview commit\n\n\n2015-12-30 (Laisky) * #2 add document url to README -> \nview commit\n\n\n2015-12-30 (Laisky) * #2 mkdocs -> \nview commit\n\n\n2015-12-30 (Laisky) * #2 rename CHANGELOG -> \nview commit\n\n\n2015-12-29 (Laisky) * #2 try -> \nview commit\n\n\n2015-12-29 (Laisky) * #2 init -> \nview commit\n\n\n2015-12-28 (Laisky) 1.1.1 -> \nview commit\n\n\n2015-12-28 (Laisky) * add url to setup.py -> \nview commit\n\n\n2015-12-28 (Laisky) * clean req -> \nview commit\n\n\n2015-12-28 (Laisky) * fix setup.py to distituls to pypi -> \nview commit\n\n\n2015-12-28 (Laisky) 1.1 refactor register method   - put task file in ramjet/tasks/   - expose bind_task interface -> \nview commit\n\n\n2015-12-28 (Laisky) * fix gitignore -> \nview commit\n    \n\n\n\n\n1.1\n\n\n\n\n2015-12-28 (Laisky) 1.1 -> \nview commit\n\n\n2015-12-27 (Laisky) * fix typo -> \nview commit",
+            "text": "CURRENT\n\n\n\n\n2016-10-10 (Laisky) feat: \u589e\u52a0 http handler -> \nview commit\n\n\n2016-08-02 (Laisky) docs: README \u4e2d\u7684\u9519\u8bef\u793a\u4f8b -> \nview commit\n    \n\n\n\n\n1.2.2\n\n\n\n\n2016-08-02 (Laisky) 1.2.2 -> \nview commit\n\n\n2016-08-02 (Laisky) docs: pypi long description -> \nview commit\n    \n\n\n\n\n1.2.1\n\n\n\n\n2016-08-02 (Laisky) 1.2.1 -> \nview commit\n\n\n2016-08-02 (Laisky) docs: \u8fd8\u539f README -> \nview commit\n\n\n2016-08-01 (Laisky) docs: README \u91cc\u7684 CHANGELOG \u6307\u5411\u9519\u8bef -> \nview commit\n    \n\n\n\n\n1.2\n\n\n\n\n2016-08-01 (Laisky) 1.2 -> \nview commit\n\n\n2016-08-01 (Laisky) refactor: \u7528 asyncio \u91cd\u6784 -> \nview commit\n\n\n2016-01-08 (Laisky) docs: use commitizen -> \nview commit\n\n\n2016-01-08 (Laisky) docs: add commitizen -> \nview commit\n\n\n2015-12-30 (Laisky) + git pages -> \nview commit\n\n\n2015-12-30 (Laisky) * #2 add document url to README -> \nview commit\n\n\n2015-12-30 (Laisky) * #2 mkdocs -> \nview commit\n\n\n2015-12-30 (Laisky) * #2 rename CHANGELOG -> \nview commit\n\n\n2015-12-29 (Laisky) * #2 try -> \nview commit\n\n\n2015-12-29 (Laisky) * #2 init -> \nview commit\n\n\n2015-12-28 (Laisky) 1.1.1 -> \nview commit\n\n\n2015-12-28 (Laisky) * add url to setup.py -> \nview commit\n\n\n2015-12-28 (Laisky) * clean req -> \nview commit\n\n\n2015-12-28 (Laisky) * fix setup.py to distituls to pypi -> \nview commit\n\n\n2015-12-28 (Laisky) 1.1 refactor register method   - put task file in ramjet/tasks/   - expose bind_task interface -> \nview commit\n\n\n2015-12-28 (Laisky) * fix gitignore -> \nview commit\n    \n\n\n\n\n1.1\n\n\n\n\n2015-12-28 (Laisky) 1.1 -> \nview commit\n\n\n2015-12-27 (Laisky) * fix typo -> \nview commit",
             "title": "Changelog"
         },
         {
             "location": "/CHANGELOG/#current",
-            "text": "2016-08-02 (Laisky) docs: pypi long description ->  view commit",
+            "text": "2016-10-10 (Laisky) feat: \u589e\u52a0 http handler ->  view commit  2016-08-02 (Laisky) docs: README \u4e2d\u7684\u9519\u8bef\u793a\u4f8b ->  view commit",
             "title": "CURRENT"
+        },
+        {
+            "location": "/CHANGELOG/#122",
+            "text": "2016-08-02 (Laisky) 1.2.2 ->  view commit  2016-08-02 (Laisky) docs: pypi long description ->  view commit",
+            "title": "1.2.2"
         },
         {
             "location": "/CHANGELOG/#121",
