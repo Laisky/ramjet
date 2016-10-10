@@ -2,6 +2,13 @@
 *CURRENT*
 ---
     
+- 2016-10-10 (Laisky) feat: 增加 http handler -> [view commit](https://github.com/Laisky/ramjet/commit/0417a079a5740284494c9acc91fd023e600c30ba)
+- 2016-08-02 (Laisky) docs: README 中的错误示例 -> [view commit](https://github.com/Laisky/ramjet/commit/33fffccd333b2ba7a31fc88b555b7b94bd97a13e)    
+       
+*1.2.2*
+---
+    
+- 2016-08-02 (Laisky) 1.2.2 -> [view commit](https://github.com/Laisky/ramjet/commit/77858d56e675d766d7daebc4f475dbb3030107d4)
 - 2016-08-02 (Laisky) docs: pypi long description -> [view commit](https://github.com/Laisky/ramjet/commit/8da79573defb1c49f9da607854b1cf54be56ab6c)    
        
 *1.2.1*
