@@ -1,6 +1,10 @@
 # framework
 tornado>4.0
 
+# web
+aiohttp
+tornado>4.0
+
 # common
 pytz
 jinja2
@@ -12,3 +16,6 @@ pymongo
 
 # test
 nose
+
+# tasks
+jieba
