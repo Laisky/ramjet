@@ -66,3 +66,6 @@ node_modules
 # venv
 venv
 active
+
+# prod
+/ramjet/settings/prd.py

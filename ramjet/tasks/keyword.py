@@ -16,24 +16,25 @@ logger = logger.getChild('tasks.heart')
 N_CHINESE_KEYWORDS = 30
 N_ENGLISH_KEYWORDS = 20
 DB_HOST = 'localhost'
-DB_PORT = 27017
+DB_PORT = 27016
 DB = 'statistics'
 
 
 def bind_task():
     def callback(*args, **kw):
-        when = ioloop.time() + 60 * 60 * 12
-        logger.debug('add new task load_keywords at {}'.format(when))
+        later = 60 * 60 * 12  # 12 hr
+        logger.debug('add new task load_keywords after {}'.format(later))
         logger.info('Run task load_keywords')
         process_executor.submit(load_keywords, *args, **kw)
-        ioloop.call_at(when, callback, *args, **kw)
+        ioloop.call_later(later, callback, *args, **kw)
 
-    when = ioloop.time() + 1
-    ioloop.call_at(when, callback, DB_HOST, DB_PORT)
+    ioloop.call_later(1, callback, DB_HOST, DB_PORT)
 
 
 def load_keywords(dbhost='localhost', dbport=27017):
-    logger.debug('load_keywords for dbhost {}, dbport {}'.format(dbhost, dbport))
+    logger.debug(
+        'load_keywords for dbhost {}, dbport {}'.format(dbhost, dbport)
+    )
 
     try:
         conn = pymongo.MongoClient(dbhost, dbport)

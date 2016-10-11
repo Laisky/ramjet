@@ -16,3 +16,6 @@ nose
 
 # tasks
 jieba
+
+# twitter
+tweepy
