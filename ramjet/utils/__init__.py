@@ -10,7 +10,7 @@ import pytz
 from ramjet.settings import LOG_NAME, LOG_PATH
 from .jinja import debug_wrapper, TemplateRendering
 from .mail import send_mail
-from .db import db_conn
+from .db import get_conn
 
 
 logger = logging.getLogger(LOG_NAME)
@@ -19,7 +19,7 @@ __all__ = [
     'utcnow', 'setup_log', 'validate_email', 'validate_mobile', 'generate_random_string',
     'debug_wrapper', 'TemplateRendering', 'logger', 'log',
     'send_mail', 'format_dt', 'format_utcdt', 'cstnow', 'now',
-    'db_conn',
+    'get_conn',
 ]
 UTC = pytz.timezone('utc')
 CST = pytz.timezone('Asia/Shanghai')

@@ -5,7 +5,7 @@ from tweepy import API, OAuthHandler
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import CONSUMER_KEY, CONSUMER_SECRET, \
     ACCESS_TOKEN, ACCESS_TOKEN_SECRET
-from ramjet.utils import db_conn
+from ramjet.utils import get_conn
 from .base import twitter_api_parser, logger
 
 
@@ -43,7 +43,7 @@ class TwitterAPI:
 
     @property
     def col(self):
-        return db_conn['twitter']['tweets']
+        return get_conn()['twitter']['tweets']
 
     def parse_tweet(self, tweet):
         logger.debug('parse_tweet')

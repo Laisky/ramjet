@@ -3,12 +3,11 @@ import heapq
 from operator import itemgetter
 from collections import defaultdict
 
-import pymongo
 import jieba.analyse
 
 from ramjet.settings import logger
 from ramjet.engines import ioloop, process_executor
-from ramjet.utils import utcnow
+from ramjet.utils import utcnow, get_conn
 
 
 logger = logger.getChild('tasks.heart')
@@ -21,23 +20,21 @@ DB = 'statistics'
 
 
 def bind_task():
-    def callback(*args, **kw):
+    def callback():
         later = 60 * 60 * 12  # 12 hr
         logger.debug('add new task load_keywords after {}'.format(later))
         logger.info('Run task load_keywords')
-        process_executor.submit(load_keywords, *args, **kw)
-        ioloop.call_later(later, callback, *args, **kw)
+        process_executor.submit(load_keywords)
+        ioloop.call_later(later, callback)
 
-    ioloop.call_later(1, callback, DB_HOST, DB_PORT)
+    ioloop.call_later(1, callback)
 
 
-def load_keywords(dbhost='localhost', dbport=27017):
-    logger.debug(
-        'load_keywords for dbhost {}, dbport {}'.format(dbhost, dbport)
-    )
+def load_keywords():
+    logger.debug('load_keywords')
 
     try:
-        conn = pymongo.MongoClient(dbhost, dbport)
+        conn = get_conn()
         db = conn.blog
         coll = db[DB]
 

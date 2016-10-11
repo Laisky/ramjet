@@ -1,3 +1,5 @@
 import pymongo
 
-db_conn = pymongo.MongoClient('localhost', 27016)
+
+def get_conn():
+    return pymongo.MongoClient('localhost', 27016)
