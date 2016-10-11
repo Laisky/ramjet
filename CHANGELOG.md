@@ -2,6 +2,15 @@
 *CURRENT*
 ---
     
+- 2016-10-11 (Laisky) fix: 数据库连接方式 -> [view commit](https://github.com/Laisky/ramjet/commit/7f1634d760a9c2e1b8bb1e0737defe77c8a8913e)
+- 2016-10-11 (Laisky) fix: typo -> [view commit](https://github.com/Laisky/ramjet/commit/a2de59f3933b0e4c9383535ae6009fa4886b9017)
+- 2016-10-11 (Laisky) feat: 定时爬取推文 -> [view commit](https://github.com/Laisky/ramjet/commit/06d5f88a1bb5e5d6537ce52ac3db234b72d1e8f3)
+- 2016-08-29 (Laisky) feat: 增加 keyword 统计 -> [view commit](https://github.com/Laisky/ramjet/commit/011af289eaf69f0606317807d579b0597c3bfccf)    
+       
+*1.3*
+---
+    
+- 2016-10-10 (Laisky) 1.3 -> [view commit](https://github.com/Laisky/ramjet/commit/6a7d7952209c51ab429cb79825d05aea9ca6d51a)
 - 2016-10-10 (Laisky) feat: 增加 http handler -> [view commit](https://github.com/Laisky/ramjet/commit/0417a079a5740284494c9acc91fd023e600c30ba)
 - 2016-08-02 (Laisky) docs: README 中的错误示例 -> [view commit](https://github.com/Laisky/ramjet/commit/33fffccd333b2ba7a31fc88b555b7b94bd97a13e)    
        
