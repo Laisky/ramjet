@@ -52,7 +52,7 @@ class TwitterAPI:
     def get_last_tweet_id(self):
         logger.debug('get_last_tweet_id')
         docu = self.col.find_one(sort=[('id', pymongo.DESCENDING)])
-        return docu['id']
+        return docu and docu['id']
 
     def save_tweet(self, docu):
         logger.debug('save_tweet')
@@ -65,7 +65,7 @@ class TwitterAPI:
     def run(self):
         logger.debug('run TwitterAPI')
         try:
-            last_id = self.get_last_tweet_id()
+            last_id = self.get_last_tweet_id() or 1
             for count, status in enumerate(self.g_load_tweets(last_id)):
                 tweet = self.parse_tweet(status)
                 self.save_tweet(tweet)

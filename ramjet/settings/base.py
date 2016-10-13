@@ -2,17 +2,20 @@ import os
 import logging
 
 # server
-LISTEN_PORT = 27851
+LISTEN_PORT = 37851
 
 # worker
 N_THREAD_WORKER = 8
-N_PROCESS_WORKER = 8
+N_PROCESS_WORKER = 4
 
 # common
 CWD = os.path.dirname(__file__)
 LOG_NAME = 'ramjet-driver'
 LOG_DIR = '/tmp'
 LOG_PATH = '{}.log'.format(os.path.join(LOG_DIR, LOG_NAME))
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("ldap3").setLevel(logging.WARNING)
+logging.getLogger("tweepy").setLevel(logging.WARNING)
 logger = logging.getLogger(LOG_NAME)
 
 # web
@@ -29,10 +32,10 @@ INSTALL_TASKS = [
     # @parameter task: 任务名；
     # @parameter entry: 入口函数；
     # @parameter http_handle: HTTP 入口
-    {'task': 'web_demo', 'entry': 'bind_task', 'http_handle': 'setup_handle'},
+    {'task': 'web_demo', 'entry': 'bind_task', 'http_handle': 'bind_handle'},
     # -------------------------------------------------
     # 从下面开始是自定制的任务
     # -------------------------------------------------
-    'keyword',
-    'twitter'
+    # 'keyword',
+    'twitter',
 ]

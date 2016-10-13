@@ -1,3 +1,8 @@
+"""
+Web HTTP Hanle 的示例
+
+访问：/webdemo/
+"""
 from aiohttp import web
 
 from ramjet.settings import logger
@@ -10,7 +15,8 @@ def bind_task():
     logger.info("run web_demo")
 
 
-def setup_handle(app):
+def bind_handle(app):
+    logger.info('bind_handle')
     app.router.add_route('*', '/webdemo/', DemoHandle)
 
 
