@@ -18,16 +18,17 @@ import urllib
 
 from aiohttp import web
 import tweepy
+from aiohttp_session import get_session
 
 from .base import logger
-from ramjet.utils import get_conn, utcnow
+from ramjet.utils import get_conn, utcnow, obj2str, str2obj
 from ramjet.settings import CONSUMER_KEY, CONSUMER_SECRET
 
 
-def bind_handle(app):
+def bind_handle(add_route):
     logger.info('bind_handle')
-    app.router.add_route('*', '/twitter/login/', LoginHandle)
-    app.router.add_route('*', '/twitter/oauth/', OAuthHandle)
+    add_route('login/', LoginHandle)
+    add_route('oauth/', OAuthHandle)
 
 
 def get_auth():
@@ -37,9 +38,18 @@ def get_auth():
 class LoginHandle(web.View):
 
     async def get(self):
+        logger.info('GET LoginHandle')
+
+        s = await get_session(self.request)
+        if s.get('username'):
+            return web.Response(text="already login")
+
         auth = get_auth()
         url = auth.get_authorization_url()
-        return web.HTTPFound(url)
+        resp = web.HTTPFound(url)
+        s_token = obj2str(auth.request_token)
+        s['request_token'] = s_token
+        return resp
 
 
 class OAuthHandle(web.View):
@@ -49,9 +59,17 @@ class OAuthHandle(web.View):
         OAuth 登陆的回调地址
             https://laisky.com/ramjet/twitter/oauth/
         """
+        logger.info('GET OAuthHandle')
+
+        session = await get_session(self.request)
+        if not session or not session.get('request_token'):
+            return web.Response(text="Please enable cookies!")
+
+        req_token = str2obj(session.get('request_token'))
         auth = get_auth()
         ql = urllib.parse.parse_qs(self.request.query_string)
         verify = ql['oauth_verifier'][0]
+        auth.request_token = req_token
         access_token, access_token_secret = auth.get_access_token(verify)
         auth.set_access_token(access_token, access_token_secret)
         self.api = tweepy.API(auth)
@@ -61,9 +79,13 @@ class OAuthHandle(web.View):
                      'access_token': access_token,
                      'last_update': utcnow()})
         self.save_userinfo(docu)
-        return web.Response(text="login ok")
+        session['username'] = docu['username']
+        resp = web.Response(text="login ok")
+        return resp
 
     def save_userinfo(self, docu):
+        logger.info('save_userinfo for {}'.format(docu['username']))
+
         conn = get_conn()
         col = conn['twitter']['account']
         col.update(
@@ -73,8 +95,10 @@ class OAuthHandle(web.View):
         )
 
     def get_userinfo(self):
-        docu = api.verify_credentials()
+        logger.debug('get_userinfo')
+
+        docu = self.api.verify_credentials()  # return object
         return {
-            'id': docu['id'],
-            'username': docu['name'],
+            'id': docu.id,
+            'username': docu.name,
         }

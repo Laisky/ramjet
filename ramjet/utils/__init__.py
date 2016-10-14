@@ -4,6 +4,8 @@ import datetime
 import sys
 import string
 import logging
+import pickle
+import binascii
 
 import pytz
 
@@ -20,9 +22,18 @@ __all__ = [
     'debug_wrapper', 'TemplateRendering', 'logger', 'log',
     'send_mail', 'format_dt', 'format_utcdt', 'cstnow', 'now',
     'get_conn',
+    'obj2str', 'str2obj',
 ]
 UTC = pytz.timezone('utc')
 CST = pytz.timezone('Asia/Shanghai')
+
+
+def obj2str(obj):
+    return binascii.b2a_base64(pickle.dumps(obj)).decode('utf8')
+
+
+def str2obj(string):
+    return pickle.loads(binascii.a2b_base64(string.encode('utf8')))
 
 
 def format_dt(dt):

@@ -16,11 +16,14 @@ LOG_PATH = '{}.log'.format(os.path.join(LOG_DIR, LOG_NAME))
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("ldap3").setLevel(logging.WARNING)
 logging.getLogger("tweepy").setLevel(logging.WARNING)
+logging.getLogger("aiohttp").setLevel(logging.WARNING)
 logger = logging.getLogger(LOG_NAME)
 
 # web
 OK = 0
 ERROR = 1
+URL_PREFIX = '/ramjet'
+SECRET_KEY = b'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
 
 # tasks
 INSTALL_TASKS = [
@@ -32,7 +35,7 @@ INSTALL_TASKS = [
     # @parameter task: 任务名；
     # @parameter entry: 入口函数；
     # @parameter http_handle: HTTP 入口
-    {'task': 'web_demo', 'entry': 'bind_task', 'http_handle': 'bind_handle'},
+    {'task': 'webdemo', 'entry': 'bind_task', 'http_handle': 'bind_handle'},
     # -------------------------------------------------
     # 从下面开始是自定制的任务
     # -------------------------------------------------

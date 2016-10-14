@@ -1,12 +1,16 @@
-"""Ramjet
+"""
+Ramjet
 """
 
 import logging
+import base64
 
 from tornado.options import define
 from aiohttp import web
+from aiohttp_session.cookie_storage import EncryptedCookieStorage
+from aiohttp_session import setup
 
-from ramjet.settings import LOG_NAME, LISTEN_PORT
+from ramjet.settings import LOG_NAME, LISTEN_PORT, SECRET_KEY
 from ramjet.utils import setup_log
 
 
@@ -23,4 +27,6 @@ class PageNotFound(web.View):
 
 
 def setup_web_handlers(app):
+    secret_key = base64.urlsafe_b64decode(SECRET_KEY)
+    setup(app, EncryptedCookieStorage(secret_key))
     app.router.add_route('*', '/404.html', PageNotFound)
