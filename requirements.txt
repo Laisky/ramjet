@@ -1,12 +1,12 @@
 # web
 aiohttp
-tornado>4.0
 aiohttp_session
 
 # common
 pytz
 jinja2
 mkdocs
+click
 
 # db
 pymysql

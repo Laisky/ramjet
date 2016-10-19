@@ -1,4 +1,5 @@
 import re
+import os
 import random
 import datetime
 import sys
@@ -55,6 +56,16 @@ def utcnow():
     return datetime.datetime.utcnow().replace(tzinfo=UTC)
 
 
+def singleton(cls, *args, **kw):
+    instances = {}
+
+    def _singleton():
+        if cls not in instances:
+            instances[cls] = cls(*args, **kw)
+        return instances[cls]
+    return _singleton
+
+
 def setup_log():
     _format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     formatter = logging.Formatter(_format)
@@ -96,3 +107,46 @@ def format_sec(s):
     minu = round(s % 3600 // 60, 2)
     sec = round(s % 60, 2)
     return '{}小时 {}分钟 {}秒'.format(hr, minu, sec)
+
+
+@singleton
+class Options:
+
+    """
+    配置管理
+
+    优先级：命令行 > 环境变量 > settings
+    """
+
+    _settings = {}
+    _options = {}
+
+    def set_settings(self, **kw):
+        """传入配置文件"""
+        for k, v in kw.items():
+            if k.startswith('_'):
+                continue
+
+            self._settings.update({k.lower(): v})
+            logger.debug('set settings {}: {}'.format(k, v))
+
+    def set_options(self, **kw):
+        """设置命令行传入的参数"""
+        for k, v in kw.items():
+            if k.startswith('_'):
+                continue
+
+            self._options.update({k.lower(): v})
+            logger.debug('set option {}: {}'.format(k, v))
+
+    def get_option(self, name):
+        if name in self._options:
+            return self._options[name]
+
+        if name.upper() in os.environ:
+            return os.environ[name.upper()]
+
+        if name in self._settings:
+            return self._settings[name]
+
+        raise AttributeError

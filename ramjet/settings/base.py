@@ -2,7 +2,7 @@ import os
 import logging
 
 # server
-LISTEN_PORT = 37851
+PORT = 37851
 
 # worker
 N_THREAD_WORKER = 8
@@ -22,7 +22,6 @@ logger = logging.getLogger(LOG_NAME)
 # web
 OK = 0
 ERROR = 1
-URL_PREFIX = '/ramjet'
 SECRET_KEY = b'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
 
 # tasks

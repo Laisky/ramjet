@@ -10,7 +10,7 @@ def setup_tasks(app):
         def add_route(url, handle, method='*'):
             url = url.lstrip('/')
             app.router.add_route(method,
-                                 '{}/{}/{}'.format(settings.URL_PREFIX, task, url),
+                                 '/{}/{}'.format(task, url),
                                  handle)
 
         return add_route

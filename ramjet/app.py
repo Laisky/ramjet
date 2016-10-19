@@ -5,19 +5,16 @@ Ramjet
 import logging
 import base64
 
-from tornado.options import define
 from aiohttp import web
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from aiohttp_session import setup
 
-from ramjet.settings import LOG_NAME, LISTEN_PORT, SECRET_KEY
+from ramjet.settings import LOG_NAME, SECRET_KEY
 from ramjet.utils import setup_log
 
 
 log = logging.getLogger(LOG_NAME)
 setup_log()
-define('port', default=LISTEN_PORT, type=int)
-define('debug', default=False, type=bool)
 
 
 class PageNotFound(web.View):
