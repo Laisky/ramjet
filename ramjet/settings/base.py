@@ -17,6 +17,7 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("ldap3").setLevel(logging.WARNING)
 logging.getLogger("tweepy").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 logger = logging.getLogger(LOG_NAME)
 
 # web

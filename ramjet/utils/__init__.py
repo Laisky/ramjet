@@ -139,7 +139,7 @@ class Options:
             self._options.update({k.lower(): v})
             logger.debug('set option {}: {}'.format(k, v))
 
-    def get_option(self, name):
+    def get_option(self, name, default=None):
         if name in self._options:
             return self._options[name]
 
@@ -149,4 +149,4 @@ class Options:
         if name in self._settings:
             return self._settings[name]
 
-        raise AttributeError
+        return default

@@ -12,9 +12,9 @@ from ramjet import settings
 @click.option('-t', '--tasks', default='', help='Tasks you want to run')
 @click.option('-e', '--exclude-tasks', default='', help='Tasks you do not want to run')
 @click.option('--debug', default=False, type=bool)
-def main(tasks, exclude_tasks, debug):
+def main(**kw):
     options = Options()
-    options.set_options(tasks=tasks, exclude_tasks=exclude_tasks, debug=debug)
+    options.set_options(**kw)
     options.set_settings(**settings.__dict__)
     if options.get_option('debug'):
         logger.info('start application in debug mode')
