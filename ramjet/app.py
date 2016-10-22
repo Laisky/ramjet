@@ -3,7 +3,7 @@ Ramjet
 """
 
 import logging
-import base64
+import hashlib
 
 from aiohttp import web
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
@@ -24,6 +24,6 @@ class PageNotFound(web.View):
 
 
 def setup_web_handlers(app):
-    secret_key = base64.urlsafe_b64decode(SECRET_KEY)
-    setup(app, EncryptedCookieStorage(secret_key))
+    key = hashlib.md5(SECRET_KEY.encode('utf8')).hexdigest().encode('utf8')
+    setup(app, EncryptedCookieStorage(key))
     app.router.add_route('*', '/404.html', PageNotFound)

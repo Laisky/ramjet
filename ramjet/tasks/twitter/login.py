@@ -19,9 +19,10 @@ import urllib
 from aiohttp import web
 import tweepy
 from aiohttp_session import get_session
+import aiohttp_jinja2
 
 from .base import logger
-from ramjet.utils import get_conn, utcnow, obj2str, str2obj
+from ramjet.utils import get_conn, utcnow, obj2str, str2obj, generate_token
 from ramjet.settings import CONSUMER_KEY, CONSUMER_SECRET
 
 
@@ -41,9 +42,6 @@ class LoginHandle(web.View):
         logger.info('GET LoginHandle')
 
         s = await get_session(self.request)
-        if s.get('username'):
-            return web.Response(text="already login")
-
         auth = get_auth()
         url = auth.get_authorization_url()
         resp = web.HTTPFound(url)
@@ -54,6 +52,7 @@ class LoginHandle(web.View):
 
 class OAuthHandle(web.View):
 
+    @aiohttp_jinja2.template('twitter/login.html')
     async def get(self):
         """
         OAuth 登陆的回调地址
@@ -68,7 +67,11 @@ class OAuthHandle(web.View):
         req_token = str2obj(session.get('request_token'))
         auth = get_auth()
         ql = urllib.parse.parse_qs(self.request.query_string)
-        verify = ql['oauth_verifier'][0]
+        try:
+            verify = ql['oauth_verifier'][0]
+        except Exception:
+            return web.Response(text="OAuth Error")
+
         auth.request_token = req_token
         access_token, access_token_secret = auth.get_access_token(verify)
         auth.set_access_token(access_token, access_token_secret)
@@ -80,8 +83,18 @@ class OAuthHandle(web.View):
                      'last_update': utcnow()})
         self.save_userinfo(docu)
         session['username'] = docu['username']
-        resp = web.Response(text="login ok")
-        return resp
+
+        docu = {'id': 123, 'username': 'laisky'}
+        token = {
+            'source': 'twitter',
+            'id': docu['id'],
+            'username': docu['username'],
+        }
+
+        return {
+            'info': 'welcome {}'.format(docu['username']),
+            'token': generate_token(token),
+        }
 
     def save_userinfo(self, docu):
         logger.info('save_userinfo for {}'.format(docu['username']))

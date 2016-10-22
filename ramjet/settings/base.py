@@ -1,4 +1,4 @@
-import os
+import pathlib
 import logging
 
 # server
@@ -9,10 +9,10 @@ N_THREAD_WORKER = 8
 N_PROCESS_WORKER = 4
 
 # common
-CWD = os.path.dirname(__file__)
+CWD = pathlib.PurePath(__file__).parents[1]
 LOG_NAME = 'ramjet-driver'
 LOG_DIR = '/tmp'
-LOG_PATH = '{}.log'.format(os.path.join(LOG_DIR, LOG_NAME))
+LOG_PATH = '{}.log'.format(pathlib.Path(LOG_DIR, LOG_NAME))
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("ldap3").setLevel(logging.WARNING)
 logging.getLogger("tweepy").setLevel(logging.WARNING)
@@ -39,6 +39,6 @@ INSTALL_TASKS = [
     # -------------------------------------------------
     # 从下面开始是自定制的任务
     # -------------------------------------------------
-    'keyword',
+    # 'keyword',
     'twitter',
 ]

@@ -1,6 +1,11 @@
 # web
 aiohttp
 aiohttp_session
+aiohttp_jinja2
+
+# encrypt
+bcrypt
+PyJWT
 
 # common
 pytz

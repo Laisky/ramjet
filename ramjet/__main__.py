@@ -1,11 +1,20 @@
 import logging
+from pathlib import Path
 
 import click
+import aiohttp_jinja2
+import jinja2
 from aiohttp import web
 
 from ramjet.utils import Options, logger
 from ramjet.app import setup_web_handlers
 from ramjet import settings
+
+
+def setup_template(app):
+    aiohttp_jinja2.setup(
+        app, loader=jinja2.FileSystemLoader(str(Path(settings.CWD, 'tasks')))
+    )
 
 
 @click.command()
@@ -27,6 +36,7 @@ def main(**kw):
 
     app = web.Application()
     setup_tasks(app)
+    setup_template(app)
     setup_web_handlers(app)
     web.run_app(app, host='localhost', port=options.get_option('port'))
 
