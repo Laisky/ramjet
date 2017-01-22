@@ -23,7 +23,8 @@ logger = logging.getLogger(LOG_NAME)
 # web
 OK = 0
 ERROR = 1
-SECRET_KEY = b'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
+URL_PREFIX = ''
+SECRET_KEY = 'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
 
 # tasks
 INSTALL_TASKS = [
