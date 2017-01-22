@@ -1,23 +1,30 @@
-import os
+import pathlib
 import logging
 
 # server
-LISTEN_PORT = 27851
+PORT = 37851
 
 # worker
 N_THREAD_WORKER = 8
-N_PROCESS_WORKER = 8
+N_PROCESS_WORKER = 4
 
 # common
-CWD = os.path.dirname(__file__)
+CWD = pathlib.PurePath(__file__).parents[1]
 LOG_NAME = 'ramjet-driver'
 LOG_DIR = '/tmp'
-LOG_PATH = '{}.log'.format(os.path.join(LOG_DIR, LOG_NAME))
+LOG_PATH = '{}.log'.format(pathlib.Path(LOG_DIR, LOG_NAME))
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("ldap3").setLevel(logging.WARNING)
+logging.getLogger("tweepy").setLevel(logging.WARNING)
+logging.getLogger("aiohttp").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 logger = logging.getLogger(LOG_NAME)
 
 # web
 OK = 0
 ERROR = 1
+URL_PREFIX = ''
+SECRET_KEY = 'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
 
 # tasks
 INSTALL_TASKS = [
@@ -29,10 +36,10 @@ INSTALL_TASKS = [
     # @parameter task: 任务名；
     # @parameter entry: 入口函数；
     # @parameter http_handle: HTTP 入口
-    {'task': 'web_demo', 'entry': 'bind_task', 'http_handle': 'setup_handle'},
+    {'task': 'webdemo', 'entry': 'bind_task', 'http_handle': 'bind_handle'},
     # -------------------------------------------------
     # 从下面开始是自定制的任务
     # -------------------------------------------------
-    'keyword',
-    'twitter'
+    # 'keyword',
+    'twitter',
 ]

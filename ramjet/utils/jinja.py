@@ -5,9 +5,6 @@ import json
 from ramjet.settings import logger
 
 
-__all__ = ['debug_wrapper', 'TemplateRendering']
-
-
 def debug_wrapper(func):
     def wrapper(*args, **kw):
         logger.debug('debug_wrapper for args {}, kw {}'.format(args, kw))

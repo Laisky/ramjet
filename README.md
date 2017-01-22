@@ -97,7 +97,7 @@ def task(*args, **kw):
 
 ### 定时任务
 
-```
+```py
 from ramjet.engines import process_executor, thread_executor, ioloop
 
 
@@ -109,6 +109,31 @@ def bind_task():
 def task(*args, **kw):
     # 可以在 task 内设置下一次执行的时间
     # ioloop.call_later(delay, task, *args, **kw)
+```
+
+### HTTP
+
+```py
+from aiohttp import web
+
+from ramjet.settings import logger
+
+
+logger = logger.getChild('tasks.web_demo')
+
+
+def bind_task():
+    logger.info("run web_demo")
+
+
+def bind_handle(add_route):
+    add_route('/', DemoHandle)
+
+
+class DemoHandle(web.View):
+
+    async def get(self):
+        return web.Response(text="New hope")
 ```
 
 ## Versions

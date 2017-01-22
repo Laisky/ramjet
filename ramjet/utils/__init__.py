@@ -1,9 +1,12 @@
 import re
+import os
 import random
 import datetime
 import sys
 import string
 import logging
+import pickle
+import binascii
 
 import pytz
 
@@ -11,18 +14,20 @@ from ramjet.settings import LOG_NAME, LOG_PATH
 from .jinja import debug_wrapper, TemplateRendering
 from .mail import send_mail
 from .db import get_conn
+from .encrypt import generate_token, validate_token, generate_passwd, validate_passwd
 
 
 logger = logging.getLogger(LOG_NAME)
-log = logger
-__all__ = [
-    'utcnow', 'setup_log', 'validate_email', 'validate_mobile', 'generate_random_string',
-    'debug_wrapper', 'TemplateRendering', 'logger', 'log',
-    'send_mail', 'format_dt', 'format_utcdt', 'cstnow', 'now',
-    'get_conn',
-]
 UTC = pytz.timezone('utc')
 CST = pytz.timezone('Asia/Shanghai')
+
+
+def obj2str(obj):
+    return binascii.b2a_base64(pickle.dumps(obj)).decode('utf8')
+
+
+def str2obj(string):
+    return pickle.loads(binascii.a2b_base64(string.encode('utf8')))
 
 
 def format_dt(dt):
@@ -42,6 +47,16 @@ now = cstnow
 
 def utcnow():
     return datetime.datetime.utcnow().replace(tzinfo=UTC)
+
+
+def singleton(cls, *args, **kw):
+    instances = {}
+
+    def _singleton():
+        if cls not in instances:
+            instances[cls] = cls(*args, **kw)
+        return instances[cls]
+    return _singleton
 
 
 def setup_log():
@@ -85,3 +100,46 @@ def format_sec(s):
     minu = round(s % 3600 // 60, 2)
     sec = round(s % 60, 2)
     return '{}小时 {}分钟 {}秒'.format(hr, minu, sec)
+
+
+@singleton
+class Options:
+
+    """
+    配置管理
+
+    优先级：命令行 > 环境变量 > settings
+    """
+
+    _settings = {}
+    _options = {}
+
+    def set_settings(self, **kw):
+        """传入配置文件"""
+        for k, v in kw.items():
+            if k.startswith('_'):
+                continue
+
+            self._settings.update({k.lower(): v})
+            logger.debug('set settings {}: {}'.format(k, v))
+
+    def set_options(self, **kw):
+        """设置命令行传入的参数"""
+        for k, v in kw.items():
+            if k.startswith('_'):
+                continue
+
+            self._options.update({k.lower(): v})
+            logger.debug('set option {}: {}'.format(k, v))
+
+    def get_option(self, name, default=None):
+        if name in self._options:
+            return self._options[name]
+
+        if name.upper() in os.environ:
+            return os.environ[name.upper()]
+
+        if name in self._settings:
+            return self._settings[name]
+
+        return default

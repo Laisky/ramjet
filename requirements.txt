@@ -1,11 +1,17 @@
 # web
 aiohttp
-tornado>4.0
+aiohttp_session
+aiohttp_jinja2
+
+# encrypt
+bcrypt
+PyJWT
 
 # common
 pytz
 jinja2
 mkdocs
+click
 
 # db
 pymysql
