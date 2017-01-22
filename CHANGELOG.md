@@ -2,6 +2,20 @@
 *CURRENT*
 ---
     
+- 2017-01-22 (Laisky) fix: url prefix -> [view commit](https://github.com/Laisky/ramjet/commit/4e94d7c08d3646dae7ca88320e960e0f11c67569)
+- 2016-10-22 (Laisky) feat: 增加登陆到 blog 的功能 -> [view commit](https://github.com/Laisky/ramjet/commit/48eeb1e26ae6564f93d26189e8bc809d228d4c09)
+- 2016-10-20 (Laisky) feat: 增加 -t 和 -e 命令行接口 -> [view commit](https://github.com/Laisky/ramjet/commit/1b3e3607f07f90962005b6e9cf514532d9081dbf)
+- 2016-10-19 (Laisky) refactor: 重写命令行命令解析 -> [view commit](https://github.com/Laisky/ramjet/commit/4a0fcf3fbd7eb478e452d1857dd718501e524c3e)
+- 2016-10-18 (Laisky) docs: update readme -> [view commit](https://github.com/Laisky/ramjet/commit/29db3dcf566d6485b9e00cfa61267c1e2959a5e0)
+- 2016-10-15 (Laisky) fix: 打开 keyword -> [view commit](https://github.com/Laisky/ramjet/commit/98f3134d7367b0d6d1eebc35e8805134c563966b)
+- 2016-10-14 (Laisky) feat: 抓去所有人的推文 -> [view commit](https://github.com/Laisky/ramjet/commit/76b0a7f0bf46b627c5de5358d6a1aa3858f06f48)
+- 2016-10-14 (Laisky) feat: 增加 Twitter Oauth 登陆 -> [view commit](https://github.com/Laisky/ramjet/commit/fd340aca5ff77aab013ca6aa2b9f9df1a3ca97f7)
+- 2016-10-13 (Laisky) chore: 增加 Nginx 和 supervisor 配置 -> [view commit](https://github.com/Laisky/ramjet/commit/4669895490613bc4c8ec5e28f4c2804262373102)    
+       
+*1.4*
+---
+    
+- 2016-10-11 (Laisky) 1.4 -> [view commit](https://github.com/Laisky/ramjet/commit/db36d85f548260177ea9df06ddbf71f1c83b4184)
 - 2016-10-11 (Laisky) fix: 数据库连接方式 -> [view commit](https://github.com/Laisky/ramjet/commit/7f1634d760a9c2e1b8bb1e0737defe77c8a8913e)
 - 2016-10-11 (Laisky) fix: typo -> [view commit](https://github.com/Laisky/ramjet/commit/a2de59f3933b0e4c9383535ae6009fa4886b9017)
 - 2016-10-11 (Laisky) feat: 定时爬取推文 -> [view commit](https://github.com/Laisky/ramjet/commit/06d5f88a1bb5e5d6537ce52ac3db234b72d1e8f3)
