@@ -6,7 +6,7 @@ PORT = 37851
 
 # worker
 N_THREAD_WORKER = 8
-N_PROCESS_WORKER = 4
+N_PROCESS_WORKER = 2
 
 # common
 CWD = pathlib.PurePath(__file__).parents[1]
@@ -18,6 +18,7 @@ logging.getLogger("ldap3").setLevel(logging.WARNING)
 logging.getLogger("tweepy").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 logger = logging.getLogger(LOG_NAME)
 
 # web
@@ -25,6 +26,10 @@ OK = 0
 ERROR = 1
 URL_PREFIX = ''
 SECRET_KEY = 'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
+
+# aws
+AWS_ACCESS_KEY = None
+AWS_SECRET_KEY = None
 
 # tasks
 INSTALL_TASKS = [
@@ -40,6 +45,7 @@ INSTALL_TASKS = [
     # -------------------------------------------------
     # 从下面开始是自定制的任务
     # -------------------------------------------------
-    # 'keyword',
+    'keyword',
     'twitter',
+    'aws',
 ]

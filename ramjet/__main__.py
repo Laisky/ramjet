@@ -40,5 +40,6 @@ def main(**kw):
     setup_web_handlers(app)
     web.run_app(app, host='localhost', port=options.get_option('port'))
 
+
 if __name__ == '__main__':
     main()

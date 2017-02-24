@@ -20,7 +20,7 @@ setup_log()
 class PageNotFound(web.View):
 
     async def get(self):
-        return web.Response(status=404, text="404: not found!")
+        return web.Response(status=404, text="404: not found!😢")
 
 
 def setup_web_handlers(app):

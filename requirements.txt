@@ -25,3 +25,6 @@ jieba
 
 # twitter
 tweepy
+
+# aws
+boto3

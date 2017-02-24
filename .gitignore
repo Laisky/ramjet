@@ -10,7 +10,6 @@ __pycache__/
 env/
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -65,7 +64,13 @@ node_modules
 
 # venv
 venv
-active
+activate
 
 # prod
 /ramjet/settings/prd.py
+
+# project
+tags
+.vscode
+dist
+notebook
