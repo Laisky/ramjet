@@ -2,6 +2,12 @@
 *CURRENT*
 ---
     
+- 2017-02-24 (Laisky) feat: aws rekognition -> [view commit](https://github.com/Laisky/ramjet/commit/fefe17c6217fd358c09e9bf38ab276b1e21c5121)    
+       
+*1.5*
+---
+    
+- 2017-01-22 (Laisky) 1.5 -> [view commit](https://github.com/Laisky/ramjet/commit/b7603d03121d625589bc79e4b96747eddb76f919)
 - 2017-01-22 (Laisky) fix: url prefix -> [view commit](https://github.com/Laisky/ramjet/commit/4e94d7c08d3646dae7ca88320e960e0f11c67569)
 - 2016-10-22 (Laisky) feat: 增加登陆到 blog 的功能 -> [view commit](https://github.com/Laisky/ramjet/commit/48eeb1e26ae6564f93d26189e8bc809d228d4c09)
 - 2016-10-20 (Laisky) feat: 增加 -t 和 -e 命令行接口 -> [view commit](https://github.com/Laisky/ramjet/commit/1b3e3607f07f90962005b6e9cf514532d9081dbf)
