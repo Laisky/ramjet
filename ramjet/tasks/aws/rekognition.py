@@ -4,6 +4,7 @@ from io import BytesIO
 import aiohttp
 import boto3
 
+from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import AWS_ACCESS_KEY, AWS_SECRET_KEY, logger
 
 logger = logger.getChild('tasks.aws.rekognition')
@@ -21,14 +22,16 @@ async def download_img(url):
             return BytesIO(await resp.read())
 
 
-def detect_img(aws_conn, im):
+def _load_img_labels(aws_conn, im):
+    logger.info('request to deteck image...')
+    return aws_conn.detect_labels(Image={'Bytes': im.read()},
+                                  MaxLabels=10)
+
+
+async def load_img_labels(aws_conn, im):
     logger.info('detect image...')
-    return aws_conn.detect_labels(
-        Image={
-            'Bytes': im.read()
-        },
-        MaxLabels=10,
-    )
+    return await ioloop.run_in_executor(thread_executor,
+                                        _load_img_labels, aws_conn, im)
 
 
 description = """
@@ -85,7 +88,7 @@ class DemoHandle(aiohttp.web.View):
         for url in urls:
             im = await download_img(url)
             results['results'].update({
-                url: detect_img(aws_conn, im)['Labels']
+                url: (await load_img_labels(aws_conn, im))['Labels']
             })
 
         results['cost'] = '{:.2f}s'.format(time.time() - start)
