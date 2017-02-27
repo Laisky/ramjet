@@ -3,7 +3,7 @@ from abc import abstractmethod
 from ramjet.settings import logger as base_logger
 
 
-class BaseWorker:
+class BaseWorker(object):
 
     def __init__(self, logger=None):
         self.logger = logger or base_logger
@@ -36,6 +36,5 @@ class BaseWorker:
         self.logger.info('BaseChecker done')
         self.done()
 
-    def __exit__(self):
+    def __del__(self):
         self.close()
-        super().__exit__()

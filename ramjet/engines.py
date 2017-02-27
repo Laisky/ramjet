@@ -1,7 +1,7 @@
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import asyncio
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
-from ramjet.settings import N_THREAD_WORKER, N_PROCESS_WORKER
+from ramjet.settings import N_PROCESS_WORKER, N_THREAD_WORKER
 
 
 thread_executor = ThreadPoolExecutor(max_workers=N_THREAD_WORKER)

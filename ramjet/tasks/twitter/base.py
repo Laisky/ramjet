@@ -41,19 +41,20 @@ def twitter_api_parser(tweet):
 def twitter_history_parser(tweet):
     """ UNCOMPELTED!!!
     Tweets that from twitter history propose:
-    {
-        "id" : NumberLong("541582834209918976"),
-        "text" : "digitalocean 延迟略高啊…等招行全币卡办下来我还是去买 linode 好了…",
-        "in_reply_to_status_id" : null,
-        "retweeted_status_timestamp" : null,
-        "in_reply_to_user_id" : null,
-        "source" : "<a href=\"http://twitter.com\" rel=\"nofollow\">Twitter Web Client</a>",
-        "created_at" : ISODate("2014-12-07T13:19:44Z"),
-        "retweeted_status_user_id" : null,
-        "topics" : [ ],
-        "expanded_urls" : null,
-        "retweeted_status_id" : null
-    }
+    ::
+        {
+            "id" : NumberLong("541582834209918976"),
+            "text" : "digitalocean 延迟略高啊…等招行全币卡办下来我还是去买 linode 好了…",
+            "in_reply_to_status_id" : null,
+            "retweeted_status_timestamp" : null,
+            "in_reply_to_user_id" : null,
+            "source" : "<a href=\"http://twitter.com\" rel=\"nofollow\">Twitter Web Client</a>",
+            "created_at" : ISODate("2014-12-07T13:19:44Z"),
+            "retweeted_status_user_id" : null,
+            "topics" : [ ],
+            "expanded_urls" : null,
+            "retweeted_status_id" : null
+        }
     """
     raise NotImplementedError
 

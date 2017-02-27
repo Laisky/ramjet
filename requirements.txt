@@ -5,6 +5,7 @@ aiohttp_jinja2
 
 # encrypt
 bcrypt
+cryptography
 PyJWT
 
 # common

@@ -11,17 +11,18 @@ _exclude_tasks = options.get_option('exclude_tasks')
 exclude_tasks = _exclude_tasks and _exclude_tasks.split(',')
 
 
+def generate_add_route(app, task):
+    def add_route(url, handle, method='*'):
+        url = url.lstrip('/')
+        app.router.add_route(method,
+                             '{}/{}/{}'.format(settings.URL_PREFIX,
+                                               task, url),
+                             handle)
+
+    return add_route
+
+
 def setup_tasks(app):
-
-    def generate_add_route(task):
-        def add_route(url, handle, method='*'):
-            url = url.lstrip('/')
-            app.router.add_route(method,
-                                 '{}/{}/{}'.format(settings.URL_PREFIX, task, url),
-                                 handle)
-
-        return add_route
-
     for task in settings.INSTALL_TASKS:
         try:
             if isinstance(task, str):
@@ -43,12 +44,12 @@ def setup_tasks(app):
                 handle = getattr(m, task.get(
                     'http_handle', 'bind_handle'), None)
                 if handle:
-                    logger.info('bind http handle: {}'.format(task['task']))
-                    handle(generate_add_route(task['task']))
+                    logger.info('bind http handle: %s', task['task'])
+                    handle(generate_add_route(app, task['task']))
 
                 entry = getattr(m, task.get('entry', 'bind_task'), None)
                 if entry:
-                    logger.info('bind handle: {}'.format(task['task']))
+                    logger.info('bind handle: %s', task['task'])
                     entry()
 
             else:

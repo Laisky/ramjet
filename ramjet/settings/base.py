@@ -27,10 +27,6 @@ ERROR = 1
 URL_PREFIX = ''
 SECRET_KEY = 'ilori2y8KdbWVgsII7Wb39K29vy9zkHxelHihazxF2E='
 
-# aws
-AWS_ACCESS_KEY = None
-AWS_SECRET_KEY = None
-
 # tasks
 INSTALL_TASKS = [
     # 可以用简单的字符串定义任务，指向 tasks 里的文件夹名

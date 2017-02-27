@@ -3,6 +3,7 @@ from io import BytesIO
 
 import aiohttp
 import boto3
+import aiohttp_jinja2
 
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import AWS_ACCESS_KEY, AWS_SECRET_KEY, logger
@@ -34,29 +35,6 @@ async def load_img_labels(aws_conn, im):
                                         _load_img_labels, aws_conn, im)
 
 
-description = """
-    Run in command lines:
-    ::
-        $ pip install httpie
-        $ http post app.laisky.com/image/detect/ urls:='["https://s3-us-west-1.amazonaws.com/movoto-data/demo_100x150.jpeg"]'
-
-    Or:
-    ::
-        import requests
-
-        url = 'app.laisky.com/image/detect/'
-        data = {
-            'urls': [
-                # maximum to 5 picture urls
-                xxx,
-                xxx,
-            ]
-        }
-        resp = requests.post(url, json=data)
-        print(resp.json())
-"""
-
-
 class DemoHandle(aiohttp.web.View):
 
     def connect2aws(self):
@@ -67,8 +45,9 @@ class DemoHandle(aiohttp.web.View):
             region_name='us-west-2'
         )
 
+    @aiohttp_jinja2.template('aws/index.tpl')
     async def get(self):
-        return aiohttp.web.Response(text=description)
+        return
 
     async def post(self):
         try:
