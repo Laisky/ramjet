@@ -36,8 +36,11 @@ def load_and_save_post_cnt_and_keywords():
     coll = db[DB]
 
     all_cnt = ''
-    for docu in db.posts.find({'post_password': ''}):
-        cnt = docu['post_content']
+    for docu in db.posts.find():
+        if docu.get('post_password'):
+            continue
+
+        cnt = docu.get('post_markdown') or docu.get('post_content')
         k_cn_each = load_chinese_keyword(cnt)
         k_en_each = load_english_keyword(cnt)
         if k_en_each and k_cn_each:
