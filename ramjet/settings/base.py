@@ -38,6 +38,7 @@ INSTALL_TASKS = [
     # @parameter entry: 入口函数；
     # @parameter http_handle: HTTP 入口
     {'task': 'webdemo', 'entry': 'bind_task', 'http_handle': 'bind_handle'},
+    {'task': 'webapps', 'entry': 'bind_task', 'http_handle': 'bind_handle'},
     # -------------------------------------------------
     # 从下面开始是自定制的任务
     # -------------------------------------------------
