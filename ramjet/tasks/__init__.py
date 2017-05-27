@@ -19,7 +19,7 @@ def setup_webapp(app):
 def setup_tasks(app):
     setup_webapp(app)
 
-    def generate_add_route(task):
+    def generate_add_route(app, task):
         def add_route(url, handle, method='*'):
             url = url.lstrip('/')
             app.router.add_route(method,
@@ -27,7 +27,6 @@ def setup_tasks(app):
                                  handle)
         return add_route
 
-def setup_tasks(app):
     for task in settings.INSTALL_TASKS:
         try:
             if isinstance(task, str):
