@@ -2,6 +2,11 @@
 *CURRENT*
 ---
     
+- 2017-09-19 (Laisky) fix: twitter logger error -> [view commit](https://github.com/Laisky/ramjet/commit/c1f389e0f167583f1ad37ff254d29de4e1bbfe98)
+- 2017-09-19 (Laisky) fix: not subtract a tz aware dt -> [view commit](https://github.com/Laisky/ramjet/commit/8dd9b8aec55522b9d3cce58c83efb74c2af91b44)
+- 2017-09-19 (Laisky) fix: monitors.ssl_cert error -> [view commit](https://github.com/Laisky/ramjet/commit/b9b109be2dc365ad44bebd37b54bf569c7e57a46)
+- 2017-09-19 (Laisky) chore: fix supervisor conf -> [view commit](https://github.com/Laisky/ramjet/commit/f61f454d4bc173c3d15bddde0a0df04983c6ca84)
+- 2017-09-19 (Laisky) 1.7 -> [view commit](https://github.com/Laisky/ramjet/commit/390354d5a67c59e5fea6ca25df8a66377dfbd27c)
 - 2017-09-19 (Laisky) feat: add ssl_cert monitors -> [view commit](https://github.com/Laisky/ramjet/commit/709350e5b37fad9eb67fa7d2d60accb28f2b4017)
 - 2017-05-27 (Laisky) fix: 前端架子搭起来 -> [view commit](https://github.com/Laisky/ramjet/commit/7581fbd747fb787c2df67fb51aeca7c8128a3a0d)
 - 2017-05-27 (Laisky) fix: some typos and static versions -> [view commit](https://github.com/Laisky/ramjet/commit/ac1c8d36f67f8e6430ddf6b76bd023d5eca40571)
