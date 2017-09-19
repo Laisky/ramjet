@@ -65,7 +65,7 @@ def load_ssl_expiry_datetime(hostname):
 
 
 def is_need_to_alert(valid_to):
-    return valid_to - utcnow() < datetime.timedelta(days=7)
+    return (valid_to - utcnow()) < datetime.timedelta(days=7)
 
 
 if __name__ == '__main__':
