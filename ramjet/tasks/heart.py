@@ -10,6 +10,6 @@ logger = logger.getChild('tasks.heart')
 def bind_task():
     def callback(*args, **kw):
         logger.info('tasks heart!')
-        ioloop.call_later(10, callback, *args, **kw)
+        ioloop.call_later(60, callback, *args, **kw)
 
     ioloop.call_later(0, callback)

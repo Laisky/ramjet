@@ -45,4 +45,5 @@ INSTALL_TASKS = [
     'keyword',
     'twitter',
     'aws',
+    'monitors',
 ]
