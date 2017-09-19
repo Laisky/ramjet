@@ -1,7 +1,7 @@
 import datetime
 import re
 
-from ramjet.settings import ramjet_logger
+from ramjet.settings import logger as ramjet_logger
 
 logger = ramjet_logger.getChild('tasks.twitter')
 twitter_surl_regex = re.compile('https?://t\.co/[A-z0-9]*')
