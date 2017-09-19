@@ -4,7 +4,7 @@ import ssl
 from textwrap import dedent
 
 from ramjet.engines import ioloop, thread_executor
-from ramjet.utils import utcnow, send_mail
+from ramjet.utils import send_mail
 from .base import logger as monitor_logger
 
 
@@ -65,7 +65,7 @@ def load_ssl_expiry_datetime(hostname):
 
 
 def is_need_to_alert(valid_to):
-    return (valid_to - utcnow()) < datetime.timedelta(days=7)
+    return (valid_to - datetime.datetime.utcnow()) < datetime.timedelta(days=7)
 
 
 if __name__ == '__main__':
