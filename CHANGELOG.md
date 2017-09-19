@@ -2,6 +2,16 @@
 *CURRENT*
 ---
     
+- 2017-09-19 (Laisky) feat: add ssl_cert monitors -> [view commit](https://github.com/Laisky/ramjet/commit/709350e5b37fad9eb67fa7d2d60accb28f2b4017)
+- 2017-05-27 (Laisky) fix: 前端架子搭起来 -> [view commit](https://github.com/Laisky/ramjet/commit/7581fbd747fb787c2df67fb51aeca7c8128a3a0d)
+- 2017-05-27 (Laisky) fix: some typos and static versions -> [view commit](https://github.com/Laisky/ramjet/commit/ac1c8d36f67f8e6430ddf6b76bd023d5eca40571)
+- 2017-05-26 (Laisky) feat: add support to FE (react & redux & router) -> [view commit](https://github.com/Laisky/ramjet/commit/07f979fca9798a96cbde849662e007f912ea0eef)
+- 2017-05-11 (Laisky) fix: add more stopwords to keyword -> [view commit](https://github.com/Laisky/ramjet/commit/a5c5c19007cf0b33b78a4c4cd9e7a785ea46e55a)
+- 2017-04-03 (Laisky) fix: keyword miss some posts -> [view commit](https://github.com/Laisky/ramjet/commit/d13db555ad69e3dc1f01378e9f77e21ae3bea697)
+- 2017-04-03 (Laisky) feat: loads keywords for each post -> [view commit](https://github.com/Laisky/ramjet/commit/aff9e9797e468e878f53af771b4277a727fb0411)
+- 2017-02-27 (Laisky) feat: add jinja2 templates -> [view commit](https://github.com/Laisky/ramjet/commit/39b5424a40fc79525fb003a86edafbfc349c24cf)
+- 2017-02-26 (Laisky) perf: nonblock to request aws api -> [view commit](https://github.com/Laisky/ramjet/commit/a0fc05c00b3c618a18967d46cd04b87554fcb9f5)
+- 2017-02-24 (Laisky) 1.6 -> [view commit](https://github.com/Laisky/ramjet/commit/ccd9af693c33e2838c55b5ed459a565abf56eab6)
 - 2017-02-24 (Laisky) feat: aws rekognition -> [view commit](https://github.com/Laisky/ramjet/commit/fefe17c6217fd358c09e9bf38ab276b1e21c5121)    
        
 *1.5*
