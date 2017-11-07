@@ -18,6 +18,7 @@ from ramjet.engines import thread_executor
 from .jinja import debug_wrapper, TemplateRendering
 from .mail import send_mail
 from .encrypt import generate_token, validate_token, generate_passwd, validate_passwd
+from .db import get_conn
 
 
 UTC = pytz.timezone('utc')

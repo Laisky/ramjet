@@ -36,10 +36,10 @@ def setup_args():
 
 def setup_options():
     opt.set_option('email_sender',
-        EmailSender(host=settings.MAIL_HOST,
-                    port=settings.MAIL_PORT,
-                    username=settings.MAIL_USERNAME,
-                    passwd=settings.MAIL_PASSWD))
+                   EmailSender(host=settings.MAIL_HOST,
+                               port=settings.MAIL_PORT,
+                               username=settings.MAIL_USERNAME,
+                               passwd=settings.MAIL_PASSWD))
 
 
 def main():
@@ -68,7 +68,7 @@ def main():
         web.run_app(app, host='localhost', port=opt.PORT)
     except Exception:
         logger.exception('ramjet got error:')
-        email_sender.send_email(
+        opt.email_sender.send_email(
             mail_to=settings.MAIL_TO_ADDRS,
             mail_from=settings.MAIL_FROM_ADDR,
             subject='ramjet error',

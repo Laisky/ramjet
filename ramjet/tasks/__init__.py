@@ -1,4 +1,5 @@
 import os
+import pathlib
 import importlib
 
 from kipp.options import opt
@@ -15,7 +16,7 @@ exclude_tasks = _exclude_tasks and _exclude_tasks.split(',')
 
 
 def setup_webapp(app):
-    app.router.add_static('/static', os.path.join(settings.CWD, 'tasks', 'static'), show_index=True)
+    app.router.add_static('/static', pathlib.Path(settings.CWD, 'tasks', 'static').absolute(), show_index=True)
 
 
 def setup_tasks(app):
