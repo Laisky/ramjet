@@ -1,0 +1,2 @@
+class RamjetException(Exception):
+    pass

@@ -5,16 +5,14 @@ Ramjet
 import logging
 import hashlib
 
+import jinja2
 from aiohttp import web
+import aiohttp_jinja2
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from aiohttp_session import setup
 
 from ramjet.settings import LOG_NAME, SECRET_KEY
-from ramjet.utils import setup_log
-
-
-log = logging.getLogger(LOG_NAME)
-setup_log()
+from ramjet.utils import logger
 
 
 class PageNotFound(web.View):
