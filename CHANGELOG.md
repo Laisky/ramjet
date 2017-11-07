@@ -2,6 +2,9 @@
 *CURRENT*
 ---
     
+- 2017-11-07 (Laisky) fix: some bugs -> [view commit](https://github.com/Laisky/ramjet/commit/e8787a80674feffae1ec0b5dd00758dd1344e099)
+- 2017-11-07 (Laisky) fix: a log of changings -> [view commit](https://github.com/Laisky/ramjet/commit/c08ced7b9cf82cd8ea28216ec6297459651bf4ad)
+- 2017-09-19 (Laisky) 1.7.1 -> [view commit](https://github.com/Laisky/ramjet/commit/979517cd078d620cabe9945b0869f9d524c7bee7)
 - 2017-09-19 (Laisky) fix: twitter logger error -> [view commit](https://github.com/Laisky/ramjet/commit/c1f389e0f167583f1ad37ff254d29de4e1bbfe98)
 - 2017-09-19 (Laisky) fix: not subtract a tz aware dt -> [view commit](https://github.com/Laisky/ramjet/commit/8dd9b8aec55522b9d3cce58c83efb74c2af91b44)
 - 2017-09-19 (Laisky) fix: monitors.ssl_cert error -> [view commit](https://github.com/Laisky/ramjet/commit/b9b109be2dc365ad44bebd37b54bf569c7e57a46)

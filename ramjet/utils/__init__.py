@@ -5,19 +5,22 @@ import datetime
 import sys
 import string
 import logging
+from logging.handlers import RotatingFileHandler as RFHandler
 import pickle
 import binascii
+import multiprocessing
 
 import pytz
+from kipp.options import opt
 
-from ramjet.settings import LOG_NAME, LOG_PATH
+from ramjet.settings import LOG_NAME, LOG_PATH, MAIL_FROM_ADDR, MAIL_TO_ADDRS
+from ramjet.engines import thread_executor
 from .jinja import debug_wrapper, TemplateRendering
 from .mail import send_mail
-from .db import get_conn
 from .encrypt import generate_token, validate_token, generate_passwd, validate_passwd
+from .db import get_conn
 
 
-logger = logging.getLogger(LOG_NAME)
 UTC = pytz.timezone('utc')
 CST = pytz.timezone('Asia/Shanghai')
 
@@ -59,24 +62,73 @@ def singleton(cls, *args, **kw):
     return _singleton
 
 
+class MultiProcessLogHandler(logging.Handler):
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+
+        self.setup_queue()
+        thread_executor.submit(self.run_dispatcher)
+
+    def get_email_sender():
+        return opt.email_sender
+
+    def emit(self, record):
+        try:
+            ei = record.exc_info
+            if ei:
+                _ = self.format(record)  # just to get traceback text into record.exc_text
+                record.exc_info = None  # not needed any more
+            self.queue.put_nowait(record)
+        except Exception:
+            self.handleError(record)
+
+    def run_dispatcher(self):
+        while 1:
+            record = self.queue.get()
+            if not record:
+                return
+
+            logging.getLogger().handle(record)
+            if record.levelno > logging.WARNING:
+                thread_executor.submit(self.get_email_sender().send_email,
+                    mail_to=MAIL_TO_ADDRS,
+                    mail_from=MAIL_FROM_ADDR,
+                    subject='Ramjet error alert',
+                    content='{}\n{}'.format(record.message, record.exc_text))
+
+    def setup_queue(self):
+        self.queue = multiprocessing.Queue(-1)
+
+    def __exit__(self):
+        super().__exit__()
+        self.queue.put_nowait(None)
+
+
 def setup_log():
-    _format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    logger = logging.getLogger(LOG_NAME)
+    _format = '[%(asctime)s - %(levelname)s - %(name)s] %(message)s'
     formatter = logging.Formatter(_format)
     # set stdout
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.DEBUG)
     ch.setFormatter(formatter)
-    # set log file
-    fh = logging.FileHandler(LOG_PATH)
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
+    # set roll file
+    rf = RFHandler(LOG_PATH, maxBytes=1024*1024*100, backupCount=3, delay=0.05)
+    rf.setLevel(logging.DEBUG)
+    rf.setFormatter(formatter)
     # log
-    logging.getLogger(LOG_NAME).setLevel(logging.DEBUG)
+    logger.setLevel(logging.ERROR)
+    logger.addHandler(MultiProcessLogHandler())
     log = logging.getLogger()
     log.setLevel(logging.DEBUG)
     log.addHandler(ch)
-    # log.addHandler(sh)
-    # log.addHandler(fh)
+    # log.addHandler(rf)
+
+    return logger
+
+
+logger = setup_log()
+# logger.propagate = False
 
 
 def validate_email(email):
@@ -100,46 +152,3 @@ def format_sec(s):
     minu = round(s % 3600 // 60, 2)
     sec = round(s % 60, 2)
     return '{}小时 {}分钟 {}秒'.format(hr, minu, sec)
-
-
-@singleton
-class Options:
-
-    """
-    配置管理
-
-    优先级：命令行 > 环境变量 > settings
-    """
-
-    _settings = {}
-    _options = {}
-
-    def set_settings(self, **kw):
-        """传入配置文件"""
-        for k, v in kw.items():
-            if k.startswith('_'):
-                continue
-
-            self._settings.update({k.lower(): v})
-            logger.debug('set settings {}: {}'.format(k, v))
-
-    def set_options(self, **kw):
-        """设置命令行传入的参数"""
-        for k, v in kw.items():
-            if k.startswith('_'):
-                continue
-
-            self._options.update({k.lower(): v})
-            logger.debug('set option {}: {}'.format(k, v))
-
-    def get_option(self, name, default=None):
-        if name in self._options:
-            return self._options[name]
-
-        if name.upper() in os.environ:
-            return os.environ[name.upper()]
-
-        if name in self._settings:
-            return self._settings[name]
-
-        return default

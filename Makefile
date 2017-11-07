@@ -1,10 +1,8 @@
-all:
-	@echo 'Install'
-	python setup.py develop
-
-nose:
-	@# nosetests -vs --logging-level=DEBUG --with-coverage --cover-package=gargantua tests
-	nosetests -vs --logging-level=DEBUG tests
+test:
+	@tox --recreate
+	@tox
 
 changelog: CHANGELOG.md
+	python setup.py develop
 	sh ./.scripts/generate_changelog.sh
+

@@ -1,19 +1,22 @@
+import os
+import pathlib
 import importlib
 
+from kipp.options import opt
+
 from ramjet import settings
-from ramjet.utils import logger, Options
+from ramjet.utils import logger
 
 
-options = Options()
-_tasks = options.get_option('tasks')
+_tasks = getattr(opt, 'tasks', None)
 tasks = _tasks and _tasks.split(',')
-_exclude_tasks = options.get_option('exclude_tasks')
+_exclude_tasks = getattr(opt, 'exclude_tasks', None)
 exclude_tasks = _exclude_tasks and _exclude_tasks.split(',')
 
 
 
 def setup_webapp(app):
-    app.router.add_static('/static', './ramjet/tasks/static/dist/', show_index=True)
+    app.router.add_static('/static', pathlib.Path(settings.CWD, 'tasks', 'static').absolute(), show_index=True)
 
 
 def setup_tasks(app):
