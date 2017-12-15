@@ -3,6 +3,8 @@ Web HTTP Hanle 的示例
 
 访问：/webdemo/
 """
+
+import aiohttp_jinja2
 from aiohttp import web
 from aiohttp_session import get_session
 
@@ -23,6 +25,7 @@ def bind_handle(add_route):
 
 class DemoHandle(web.View):
 
+    @aiohttp_jinja2.template('index.html')
     async def get(self):
         logger.info('get DemoHandle')
 
@@ -32,4 +35,5 @@ class DemoHandle(web.View):
         else:
             s['skey'] = '123'
 
-        return web.Response(text="New hope")
+        # return web.Response(text="New hope")
+        return

@@ -19,7 +19,7 @@ from ramjet.engines import shutdown_all_engines
 
 def setup_template(app):
     aiohttp_jinja2.setup(
-        app, loader=jinja2.FileSystemLoader(str(Path(settings.CWD, 'tasks')))
+        app, loader=jinja2.FileSystemLoader(str(Path(settings.CWD, 'tasks/static/dist')))
     )
 
 
