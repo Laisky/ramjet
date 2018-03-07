@@ -2,6 +2,9 @@
 *CURRENT*
 ---
     
+- 2018-03-07 (Laisky) feat: add `/email-proxy/` -> [view commit](https://github.com/Laisky/ramjet/commit/71d7f6c1c4be92185eb02721262136d67cdc328e)
+- 2017-11-07 (Laisky) fix: remove some movoto settins -> [view commit](https://github.com/Laisky/ramjet/commit/27262df48e271bdcd1dc5f7c50b38a65ba3bc6aa)
+- 2017-11-07 (Laisky) ci: changelog -> [view commit](https://github.com/Laisky/ramjet/commit/af4536129bae8c28e61354a3d5d8bb69c4fd5789)
 - 2017-11-07 (Laisky) fix: some bugs -> [view commit](https://github.com/Laisky/ramjet/commit/e8787a80674feffae1ec0b5dd00758dd1344e099)
 - 2017-11-07 (Laisky) fix: a log of changings -> [view commit](https://github.com/Laisky/ramjet/commit/c08ced7b9cf82cd8ea28216ec6297459651bf4ad)
 - 2017-09-19 (Laisky) 1.7.1 -> [view commit](https://github.com/Laisky/ramjet/commit/979517cd078d620cabe9945b0869f9d524c7bee7)

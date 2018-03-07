@@ -23,19 +23,11 @@ logging.getLogger("asyncio").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logger = logging.getLogger(LOG_NAME)
 
-
 # web
 OK = 0
 ERROR = 1
 URL_PREFIX = ''
 SECRET_KEY = 'ilori2y8KdbWVgsIf9eb39K29vy9zkHxelHihazxF2E='
-
-
-# email
-ALERT_EMAIL_RECEIVERS = ','.join([
-    'lcai@movoto.com'
-])
-
 
 # tasks
 INSTALL_TASKS = [
@@ -54,4 +46,5 @@ INSTALL_TASKS = [
     'keyword',
     'twitter',
     'aws',
+    'email_proxy',
 ]

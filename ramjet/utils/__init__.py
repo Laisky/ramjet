@@ -88,7 +88,7 @@ class MultiProcessLogHandler(logging.Handler):
             if not record:
                 return
 
-            logging.getLogger().handle(record)
+            # logging.getLogger().handle(record)
             if record.levelno > logging.WARNING:
                 thread_executor.submit(self.get_email_sender().send_email,
                     mail_to=MAIL_TO_ADDRS,
