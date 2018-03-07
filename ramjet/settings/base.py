@@ -46,4 +46,5 @@ INSTALL_TASKS = [
     'keyword',
     'twitter',
     'aws',
+    'email_proxy',
 ]
