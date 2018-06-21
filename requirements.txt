@@ -14,6 +14,7 @@ PyJWT
 pytz~=2016.10
 jinja2~=2.9
 kipp
+maya==0.3.3
 dateparser==0.5.1
 
 # db
