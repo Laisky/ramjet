@@ -2,6 +2,13 @@
 *CURRENT*
 ---
     
+- 2018-06-28 (Laisky) fix: compatible to pip v10 -> [view commit](https://github.com/Laisky/ramjet/commit/def187cb76c183ffba71fac94aeb7a3ec54fc717)
+- 2018-06-21 (Laisky) fix: bind 127.0.0.1 -> [view commit](https://github.com/Laisky/ramjet/commit/c651116f2a2e21a5a191bb0a99e47ea8f39e2a3d)
+- 2018-06-21 (Laisky) fix -> [view commit](https://github.com/Laisky/ramjet/commit/5cc2650cd873e2531907f5cdcfc0da8e347e9fa6)
+- 2018-06-21 (Laisky) fix: dateparser==0.5.1 -> [view commit](https://github.com/Laisky/ramjet/commit/eccfceb518ed462ff7b3dc10a50ec2705c9326ce)
+- 2018-05-17 (Laisky) 1.8.2 -> [view commit](https://github.com/Laisky/ramjet/commit/e2dc3b14d7adcaeb48bbb7a1abd71558230ead2f)
+- 2018-05-17 (Laisky) fix: cyclicity gc -> [view commit](https://github.com/Laisky/ramjet/commit/7367d9eecc85fe59612bff2f17c2bc694f5bff5f)
+- 2018-03-07 (Laisky) ci: changelog -> [view commit](https://github.com/Laisky/ramjet/commit/d5f85f903ae2c12e38a6722f278de871150aceae)
 - 2018-03-07 (Laisky) feat: add `/email-proxy/` -> [view commit](https://github.com/Laisky/ramjet/commit/71d7f6c1c4be92185eb02721262136d67cdc328e)
 - 2017-11-07 (Laisky) fix: remove some movoto settins -> [view commit](https://github.com/Laisky/ramjet/commit/27262df48e271bdcd1dc5f7c50b38a65ba3bc6aa)
 - 2017-11-07 (Laisky) ci: changelog -> [view commit](https://github.com/Laisky/ramjet/commit/af4536129bae8c28e61354a3d5d8bb69c4fd5789)
