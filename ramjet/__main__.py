@@ -65,7 +65,7 @@ def main():
         setup_tasks(app)
         setup_template(app)
         setup_web_handlers(app)
-        web.run_app(app, host='localhost', port=opt.PORT)
+        web.run_app(app, host='127.0.0.1', port=opt.PORT)
     except Exception:
         logger.exception('ramjet got error:')
         opt.email_sender.send_email(
