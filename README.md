@@ -6,7 +6,7 @@ Ramjet
 [![versions](https://img.shields.io/badge/license-MIT/Apache-blue.svg)]()
 [![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
 
-> わが征くは星の大海 —— Yang Wen-li
+> わが征くは星の大海
 
 | ![](http://7xjvpy.dl1.z0.glb.clouddn.com/ramjet.jpg) |
 |:--:|
