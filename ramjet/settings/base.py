@@ -3,6 +3,7 @@ import logging
 import tempfile
 
 # server
+HOST = "127.0.0.1"
 PORT = 37851
 
 # worker
