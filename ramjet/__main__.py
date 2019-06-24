@@ -6,7 +6,7 @@ from pathlib import Path
 
 import aiohttp_jinja2
 import jinja2
-from aiohttp import web
+from aiohttp import web, request
 
 from kipp.options import opt
 from kipp.utils import check_is_allow_to_running, EmailSender
@@ -42,6 +42,10 @@ def setup_options():
                                passwd=settings.MAIL_PASSWD))
 
 
+class Health(web.View):
+    async def get(self):
+        return web.Response(text="hello, world")
+
 def main():
     try:
         setup_args()
@@ -62,6 +66,7 @@ def main():
         from ramjet.tasks import setup_tasks
 
         app = web.Application()
+        app.router.add_view("/health/", Health)
         setup_tasks(app)
         setup_template(app)
         setup_web_handlers(app)

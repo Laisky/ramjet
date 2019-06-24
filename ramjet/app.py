@@ -16,7 +16,6 @@ from ramjet.utils import logger
 
 
 class PageNotFound(web.View):
-
     async def get(self):
         return web.Response(status=404, text="404: not found!😢")
 
@@ -24,7 +23,7 @@ class PageNotFound(web.View):
 def setup_web_handlers(app):
     key = hashlib.md5(SECRET_KEY.encode('utf8')).hexdigest().encode('utf8')
     setup(app, EncryptedCookieStorage(key))
-    app.router.add_route('*', '/404.html', PageNotFound)
+    web.view('/404.html', PageNotFound)
 
 
 def setup_templates(app):
