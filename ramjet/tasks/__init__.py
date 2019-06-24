@@ -1,9 +1,9 @@
-import os
 import pathlib
 import importlib
 
-from kipp.options import opt
+from aiohttp import web
 
+from kipp.options import opt
 from ramjet import settings
 from ramjet.utils import logger
 
@@ -24,42 +24,43 @@ def setup_tasks(app):
 
     def generate_add_route(app, task):
         task = task.replace('_', '-')
-        def add_route(url, handle, method='*'):
-            url = url.lstrip('/')
-            app.router.add_route(method,
-                                 '{}/{}/{}'.format(settings.URL_PREFIX, task, url),
-                                 handle)
+        def add_route(url, handler, method='*'):
+            path = f"{settings.URL_PREFIX}/{task}/{url.lstrip('/')}"
+            if issubclass(handler, web.View):
+                logger.info(f'register class based view for path: {path}')
+                app.router.add_route("*", path, handler)
+            else:
+                logger.info(f"register handlerr view for method {method}, path: {path}")
+                app.router.add_route(method, path, handler)
         return add_route
 
-    for task in settings.INSTALL_TASKS:
+    for taskcfg in settings.INSTALL_TASKS:
         try:
-            if isinstance(task, str):
-                task = {'task': task}
+            if isinstance(taskcfg, str):
+                taskcfg = {'task': taskcfg}
 
             # check -t
             if tasks:
-                if task['task'] not in tasks:
+                if taskcfg['task'] not in tasks:
                     continue
 
             # check -e
             if exclude_tasks:
-                if task['task'] in exclude_tasks:
+                if taskcfg['task'] in exclude_tasks:
                     continue
 
-            if not isinstance(task, dict):
+            if not isinstance(taskcfg, dict):
                 raise "settings.INSTALL_TASKS syntax error"
 
-            m = importlib.import_module(
-                '.{}'.format(task['task']), 'ramjet.tasks')
-            handle = getattr(m, task.get(
-                'http_handle', 'bind_handle'), None)
+            m = importlib.import_module(f".{taskcfg['task']}", 'ramjet.tasks')
+            handle = getattr(m, taskcfg.get('http_handle', 'bind_handle'), None)
             if handle:
-                logger.info('bind http handle: %s', task['task'])
-                handle(generate_add_route(app, task['task']))
+                logger.info('bind http handle: %s', taskcfg['task'])
+                handle(generate_add_route(app, taskcfg['task']))
 
-            entry = getattr(m, task.get('entry', 'bind_task'), None)
+            entry = getattr(m, taskcfg.get('entry', 'bind_task'), None)
             if entry:
-                logger.info('bind handle: %s', task['task'])
+                logger.info('bind handle: %s', taskcfg['task'])
                 entry()
 
         except Exception as err:

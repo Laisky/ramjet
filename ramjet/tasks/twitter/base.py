@@ -23,7 +23,7 @@ def twitter_api_parser(tweet):
         if 'media' in tweet['entities']:
             for media in tweet['entities']['media']:
                 surl = media['url']
-                eurl = media['media_url']
+                eurl = media.get('media_url_https') or media['media_url']
                 t = t.replace(surl, eurl)
 
         # parse entities urls
