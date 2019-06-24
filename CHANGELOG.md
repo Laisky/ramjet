@@ -2,6 +2,13 @@
 *CURRENT*
 ---
     
+- 2019-06-24 (Laisky) fix: requirements -> [view commit](https://github.com/Laisky/ramjet/commit/9174c7b03d4bc6bd9506f07f4d24fe3e171e9fb7)
+- 2019-06-24 (Laisky) build: upgrade aiohttp -> [view commit](https://github.com/Laisky/ramjet/commit/15524040f47c1e9ab28778766168068433bb815c)    
+       
+*1.8.4*
+---
+    
+- 2019-06-24 (Laisky) ci: release 1.8.4 -> [view commit](https://github.com/Laisky/ramjet/commit/82d52a33c3944483f59e57aa7163395783e1ccf2)
 - 2019-06-24 (Laisky) fix: do not redirect after login -> [view commit](https://github.com/Laisky/ramjet/commit/10a2d560c6d111669830ed93f55082590af1f32f)
 - 2019-06-24 (Laisky) fix: requirements -> [view commit](https://github.com/Laisky/ramjet/commit/91c5884c79becb95d75d66aa1abcd65f6d0f64fe)
 - 2019-06-24 (Laisky) fix: class based handler -> [view commit](https://github.com/Laisky/ramjet/commit/d246e85ebb88bc75d5c614a596de970f43ed0c56)
