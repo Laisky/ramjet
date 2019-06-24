@@ -1,9 +1,9 @@
-asyncio-extras~=1.3
+asyncio-extras==1.3.2
 
 # web
-aiohttp<2.4.0
-aiohttp-session<2.3
-aiohttp-jinja2==0.15.0
+aiohttp~=3.5.4
+aiohttp-session~=2.7.0
+aiohttp-jinja2~=1.1.1
 
 # encrypt
 bcrypt

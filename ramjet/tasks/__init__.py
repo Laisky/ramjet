@@ -27,11 +27,13 @@ def setup_tasks(app):
         def add_route(url, handler, method='*'):
             path = f"{settings.URL_PREFIX}/{task}/{url.lstrip('/')}"
             if issubclass(handler, web.View):
-                logger.info(f'register class based view for path: {path}')
-                app.router.add_route("*", path, handler)
+                logger.info(f'bind http class based view for path: {path}')
+                # app.router.add_route("*", path, handler)  # aiohttp < 3
+                app.router.add_view(path, handler)  # aiohttp >= 3
             else:
-                logger.info(f"register handlerr view for method {method}, path: {path}")
-                app.router.add_route(method, path, handler)
+                assert method in ['get', 'post', 'delete', 'head', 'option', 'put']
+                logger.info(f"bind http handler view for method {method}, path: {path}")
+                getattr(app.router, f"add_{method}")(path, handler)
         return add_route
 
     for taskcfg in settings.INSTALL_TASKS:
@@ -53,14 +55,14 @@ def setup_tasks(app):
                 raise "settings.INSTALL_TASKS syntax error"
 
             m = importlib.import_module(f".{taskcfg['task']}", 'ramjet.tasks')
-            handle = getattr(m, taskcfg.get('http_handle', 'bind_handle'), None)
-            if handle:
-                logger.info('bind http handle: %s', taskcfg['task'])
-                handle(generate_add_route(app, taskcfg['task']))
+            handler = getattr(m, taskcfg.get('http_handle', 'bind_handle'), None)
+            if handler:
+                logger.info('bind http handler: %s', taskcfg['task'])
+                handler(generate_add_route(app, taskcfg['task']))
 
             entry = getattr(m, taskcfg.get('entry', 'bind_task'), None)
             if entry:
-                logger.info('bind handle: %s', taskcfg['task'])
+                logger.info('bind handler: %s', taskcfg['task'])
                 entry()
 
         except Exception as err:
