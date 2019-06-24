@@ -106,6 +106,7 @@ class TwitterAPI:
         related_ids = []
         status.get("in_reply_to_status_id") and related_ids.append(status['in_reply_to_status_id'])
         status.get("retweeted") and related_ids.append(status['retweeted_status']['id'])
+        status.get("quoted_status") and related_ids.append(status['quoted_status']['id'])
         related_ids = filter(lambda id_: not self.db['tweets'].find_one({"id": id_}), related_ids)
 
         for id_ in related_ids:
