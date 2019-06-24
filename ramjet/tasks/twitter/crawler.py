@@ -110,7 +110,7 @@ class TwitterAPI:
 
         for id_ in related_ids:
             try:
-                docu = api.get_status(id_)
+                docu = self.api.get_status(id_)
             except Exception:
                 logger.exception(f"load tweet {id_} got error")
             else:

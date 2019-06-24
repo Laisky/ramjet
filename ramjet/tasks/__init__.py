@@ -2,8 +2,9 @@ import os
 import pathlib
 import importlib
 
-from kipp.options import opt
+from aiohttp import web
 
+from kipp.options import opt
 from ramjet import settings
 from ramjet.utils import logger
 
@@ -26,9 +27,13 @@ def setup_tasks(app):
         task = task.replace('_', '-')
         def add_route(url, handle, method='*'):
             url = url.lstrip('/')
-            app.router.add_route(method,
-                                 '{}/{}/{}'.format(settings.URL_PREFIX, task, url),
-                                 handle)
+            if isinstance(handle, web.View):
+                web.view(f"{settings.URL_PREFIX}/{task}/{url}")
+            else:
+                app.router.add_route(
+                    method,
+                    f"{settings.URL_PREFIX}/{task}/{url}",
+                    handle)
         return add_route
 
     for task in settings.INSTALL_TASKS:
