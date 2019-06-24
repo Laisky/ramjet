@@ -2,6 +2,21 @@
 *CURRENT*
 ---
     
+- 2019-06-24 (Laisky) fix: do not redirect after login -> [view commit](https://github.com/Laisky/ramjet/commit/10a2d560c6d111669830ed93f55082590af1f32f)
+- 2019-06-24 (Laisky) fix: requirements -> [view commit](https://github.com/Laisky/ramjet/commit/91c5884c79becb95d75d66aa1abcd65f6d0f64fe)
+- 2019-06-24 (Laisky) fix: class based handler -> [view commit](https://github.com/Laisky/ramjet/commit/d246e85ebb88bc75d5c614a596de970f43ed0c56)
+- 2019-06-24 (Laisky) fix: web hook -> [view commit](https://github.com/Laisky/ramjet/commit/dff49fa13f2113ddf776076338f1b69adbc7f7ae)
+- 2019-06-24 (Laisky) fix: typo -> [view commit](https://github.com/Laisky/ramjet/commit/8cabe3bc5472edaf47f391b2cef93b51af0d4b37)
+- 2019-06-24 (Laisky) fix: use https media url -> [view commit](https://github.com/Laisky/ramjet/commit/0a49ae61d0aa5b541467ce262b9971e740dc953a)
+- 2019-06-23 (Laisky) build: update requirements -> [view commit](https://github.com/Laisky/ramjet/commit/bc324c85d92d105e0608eaf4518351385e8acc01)
+- 2019-06-23 (Laisky) feat: crawl related tweets -> [view commit](https://github.com/Laisky/ramjet/commit/f529d78f1a10ac80d4b905fa11b1f5b4919ce3ca)
+- 2019-06-06 (Laisky) fix: custom host -> [view commit](https://github.com/Laisky/ramjet/commit/9e700269bb02bd34756a55a3b7e8636ad86fe26b)
+- 2019-03-27 (Laisky) docs: fix readme -> [view commit](https://github.com/Laisky/ramjet/commit/a814b98b476c461d78da4df1a89113fa2dde9272)    
+       
+*1.8.3*
+---
+    
+- 2018-06-28 (Laisky) ci: changelog -> [view commit](https://github.com/Laisky/ramjet/commit/51e263b8bc9615cf3a3e262fbb75a64994db3ced)
 - 2018-06-28 (Laisky) fix: compatible to pip v10 -> [view commit](https://github.com/Laisky/ramjet/commit/def187cb76c183ffba71fac94aeb7a3ec54fc717)
 - 2018-06-21 (Laisky) fix: bind 127.0.0.1 -> [view commit](https://github.com/Laisky/ramjet/commit/c651116f2a2e21a5a191bb0a99e47ea8f39e2a3d)
 - 2018-06-21 (Laisky) fix -> [view commit](https://github.com/Laisky/ramjet/commit/5cc2650cd873e2531907f5cdcfc0da8e347e9fa6)
