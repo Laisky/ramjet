@@ -57,12 +57,12 @@ class TwitterAPI:
                 return
 
             for s in tweets:
-                if s.id <= last_id:  # 已存储
+                if s['id'] <= last_id:  # 已存储
                     return
 
                 yield s
-                if s.id < current_id:
-                    current_id = s.id
+                if s['id'] < current_id:
+                    current_id = s['id']
 
     @property
     def col(self):
