@@ -1,7 +1,11 @@
 import pymongo
 
-from ramjet.settings import MONGO_HOST, MONGO_PORT
+from ramjet.settings import (
+    MONGO_HOST, MONGO_PORT, MONGO_DB,
+    MONGO_USER, MONGO_PASSWD
+)
 
 
+# only support twitter
 def get_conn():
-    return pymongo.MongoClient(MONGO_HOST, MONGO_PORT)
+    return pymongo.MongoClient(f'mongodb://{MONGO_USER}:{MONGO_PASSWD}@{MONGO_HOST}:{MONGO_PORT}/{MONGO_DB}')
