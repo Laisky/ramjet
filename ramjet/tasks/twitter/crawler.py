@@ -112,9 +112,6 @@ class TwitterAPI:
         status.get("retweeted_status", {}).get("id") and related_ids.append(
             status["retweeted_status"]["id"]
         )
-        status.get("retweeted", {}).get("id") and related_ids.append(
-            status["retweeted"]["id"]
-        )
         status.get("quoted_status", {}).get("id") and related_ids.append(
             status["quoted_status"]["id"]
         )
