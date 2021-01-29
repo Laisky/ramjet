@@ -1,7 +1,7 @@
 Ramjet
 ===
 
-[![versions](https://img.shields.io/badge/version-v1.8.3-blue.svg)]()
+[![versions](https://img.shields.io/badge/version-v1.8.5-blue.svg)]()
 [![PyPI version](https://badge.fury.io/py/ramjet.svg)](https://badge.fury.io/py/ramjet)
 [![versions](https://img.shields.io/badge/license-MIT/Apache-blue.svg)]()
 [![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)

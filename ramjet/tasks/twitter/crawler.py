@@ -1,4 +1,5 @@
 import pymongo
+import tweepy
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
                              CONSUMER_SECRET)
@@ -37,7 +38,9 @@ class TwitterAPI:
         self, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
     ):
         self.__auth.set_access_token(access_token, access_token_secret)
-        self.__api = API(self.__auth)
+        self.__api = API(
+            self.__auth, wait_on_rate_limit=True, parser=tweepy.parsers.JSONParser()
+        )
         return self.__api
 
     def g_load_tweets(self, last_id):
@@ -50,7 +53,7 @@ class TwitterAPI:
             return
 
         yield last_tweets[0]
-        current_id = last_tweets[0].id
+        current_id = last_tweets[0]["id"]
         while True:
             tweets = self.api.user_timeline(
                 max_id=current_id, count=100, tweet_mode="extended"
@@ -59,12 +62,12 @@ class TwitterAPI:
                 return
 
             for s in tweets:
-                if s.id <= last_id:  # 已存储
+                if s["id"] <= last_id:  # 已存储
                     return
 
                 yield s
-                if s.id < current_id:
-                    current_id = s.id
+                if s["id"] < current_id:
+                    current_id = s["id"]
 
     @property
     def col(self):
@@ -76,7 +79,7 @@ class TwitterAPI:
 
     def parse_tweet(self, tweet):
         logger.debug("parse_tweet")
-        return twitter_api_parser(tweet._json)
+        return twitter_api_parser(tweet)
 
     def get_last_tweet_id(self):
         """
@@ -88,9 +91,10 @@ class TwitterAPI:
         )
         return docu and docu["id"]
 
-    def save_tweet(self, docu):
+    def save_tweet(self, tweet):
         logger.debug("save_tweet")
-        self.db["tweets"].update({"id": docu["id"]}, {"$set": docu}, upsert=True)
+        docu = self.parse_tweet(tweet)
+        self.db["tweets"].update_one({"id": docu["id"]}, {"$set": docu}, upsert=True)
 
     def g_load_user(self):
         logger.debug("g_load_user_auth")
@@ -98,16 +102,42 @@ class TwitterAPI:
         for u in self.db["account"].find():
             yield u
 
+    def _save_relate_tweets(self, status):
+        related_ids = []
+        status.get("in_reply_to_status_id") and related_ids.append(
+            status["in_reply_to_status_id"]
+        )
+        status.get("retweeted_status", {}).get("id") and related_ids.append(
+            status["retweeted_status"]["id"]
+        )
+        status.get("quoted_status", {}).get("id") and related_ids.append(
+            status["quoted_status"]["id"]
+        )
+        related_ids = filter(
+            lambda id_: not self.db["tweets"].find_one({"id": id_}), related_ids
+        )
+
+        for id_ in related_ids:
+            try:
+                docu = self.api.get_status(id_)
+            except Exception:
+                logger.exception(f"load tweet {id_} got error")
+            else:
+                logger.info(f"save tweet [{docu['user']['screen_name']}]{docu['id']}")
+                self.save_tweet(docu)
+                self._save_relate_tweets(docu)
+
     def run(self):
         logger.debug("run TwitterAPI")
+        count = 0
         try:
             for u in self.g_load_user():
                 self.current_user_id = u["id"]
                 self.set_api(u["access_token"], u["access_token_secret"])
                 last_id = self.get_last_tweet_id() or 1
                 for count, status in enumerate(self.g_load_tweets(last_id)):
-                    tweet = self.parse_tweet(status)
-                    self.save_tweet(tweet)
+                    self._save_relate_tweets(status)
+                    self.save_tweet(status)
         except Exception as err:
             logger.exception(err)
         else:

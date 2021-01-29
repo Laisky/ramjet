@@ -4,9 +4,7 @@ auth = tweepy.OAuthHandler("consumer_key", "consumer_secret")
 # Redirect user to Twitter to authorize
 redirect_user(auth.get_authorization_url())
 
-    http://hime.laisky.us/api/authorize?source=twitter
-        &oauth_token=xxxx
-        &oauth_verifier=yyyy
+   https://app.laisky.com/twitter/oauth/?oauth_token=xxxx&oauth_verifier=yyyy
 
 # Get access token
 access_token, access_token_secret = auth.get_access_token("verifier_value")
@@ -56,7 +54,7 @@ class OAuthHandle(web.View):
     async def get(self):
         """
         OAuth 登陆的回调地址
-            https://laisky.com/ramjet/twitter/oauth/
+            https://app.laisky.com/twitter/oauth/
         """
         logger.info('GET OAuthHandle')
 
