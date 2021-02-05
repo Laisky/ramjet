@@ -1,4 +1,4 @@
-FROM ppcelery/gargantua-base
+FROM ppcelery/gargantua-base:20200102
 
 WORKDIR /app
 ADD ./requirements.txt .
