@@ -1,25 +1,25 @@
-import re
-import os
-import random
-import datetime
-import sys
-import string
-import logging
-from logging.handlers import RotatingFileHandler as RFHandler
-import pickle
 import binascii
+import datetime
+import logging
 import multiprocessing
+import os
+import pickle
+import random
+import re
+import string
+import sys
+from logging.handlers import RotatingFileHandler as RFHandler
 
 import pytz
 from kipp.options import opt
-
-from ramjet.settings import LOG_NAME, LOG_PATH, MAIL_FROM_ADDR, MAIL_TO_ADDRS
 from ramjet.engines import thread_executor
-from .jinja import debug_wrapper, TemplateRendering
-from .mail import send_mail
-from .encrypt import generate_token, validate_token, generate_passwd, validate_passwd
-from .db import get_conn
+from ramjet.settings import LOG_NAME, LOG_PATH, MAIL_FROM_ADDR, MAIL_TO_ADDRS
 
+from .db import get_conn
+from .encrypt import (generate_passwd, generate_token, validate_passwd,
+                      validate_token)
+from .jinja import TemplateRendering, debug_wrapper
+from .mail import send_mail
 
 UTC = pytz.timezone('utc')
 CST = pytz.timezone('Asia/Shanghai')
