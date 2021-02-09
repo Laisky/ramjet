@@ -1,3 +1,6 @@
+from threading import RLock
+from typing import Dict
+
 import pymongo
 import tweepy
 from ramjet.engines import ioloop, thread_executor
@@ -8,15 +11,17 @@ from tweepy import API, OAuthHandler
 
 from .base import gen_related_tweets, logger, twitter_api_parser
 
+lock = RLock()
+
 
 def bind_task():
     def run():
+        later = 60
+        ioloop.call_later(later, run)
+
         logger.info("run")
         twitter = TwitterAPI()
-        thread_executor.submit(twitter.run)
-
-        later = 3600
-        ioloop.call_later(later, run)
+        thread_executor.submit(twitter.run())
 
     run()
 
@@ -44,11 +49,11 @@ class TwitterAPI:
         )
         return self.__api
 
-    def g_load_tweets(self, last_id):
+    def g_load_tweets(self, last_id: int):
         """
         Twitter 只能反向回溯，从最近的推文开始向前查找
         """
-        logger.debug("g_load_tweets for last_id {}".format(last_id))
+        logger.info("g_load_tweets for last_id {}".format(last_id))
         last_tweets = self.api.user_timeline(count=1, tweet_mode="extended")
         if not last_tweets:
             return
@@ -60,6 +65,7 @@ class TwitterAPI:
                 max_id=current_id, count=100, tweet_mode="extended"
             )
             if len(tweets) == 1:  # 到头了
+                logger.info("loaded all tweets")
                 return
 
             for s in tweets:
@@ -72,7 +78,7 @@ class TwitterAPI:
 
                 for sid in gen_related_tweets(self.db["tweets"], s):
                     try:
-                        s = self.api.get_status(sid, tweet_mode='extended')
+                        s = self.api.get_status(sid, tweet_mode="extended")
                     except tweepy.error.TweepError as err:
                         logger.warn(f"get status got error: {err}")
                         continue
@@ -100,18 +106,19 @@ class TwitterAPI:
         """
         logger.debug("get_last_tweet_id")
         docu = self.db["tweets"].find_one(
-            {"user.id_str": self._current_user_id}, sort=[("id", pymongo.DESCENDING)]
+            {"user.id": self._current_user_id}, sort=[("id", pymongo.DESCENDING)]
         )
         return docu and docu["id"]
 
-    def save_tweet(self, tweet, viewer_id: int = None):
+    def save_tweet(self, tweet: Dict[str, any]):
         logger.debug("save_tweet")
         docu = self.parse_tweet(tweet)
+        logger.info(f"save tweet {docu['id']}")
         self.db["tweets"].update_one({"id": docu["id"]}, {"$set": docu}, upsert=True)
-        if viewer_id is not None:
-            self.db["tweets"].update_one(
-                {"id": docu["id"]}, {"$addToSet": {"viewer": viewer_id}}
-            )
+
+        self.db["tweets"].update_one(
+            {"id": docu["id"]}, {"$addToSet": {"viewer": self._current_user_id}}
+        )
 
     def g_load_user(self):
         logger.debug("g_load_user_auth")
@@ -119,7 +126,7 @@ class TwitterAPI:
         for u in self.db["account"].find():
             yield u
 
-    def _save_relate_tweets(self, status):
+    def _save_relate_tweets(self, status: Dict[str, any]):
         related_ids = []
         status.get("in_reply_to_status_id") and related_ids.append(
             status["in_reply_to_status_id"]
@@ -145,6 +152,9 @@ class TwitterAPI:
                 self._save_relate_tweets(docu)
 
     def run(self):
+        if not lock.acquire(blocking=False):
+            return
+
         logger.debug("run TwitterAPI")
         count = 0
         try:
@@ -154,8 +164,10 @@ class TwitterAPI:
                 last_id = self.get_last_tweet_id() or 1
                 for count, status in enumerate(self.g_load_tweets(last_id)):
                     self._save_relate_tweets(status)
-                    self.save_tweet(status, self._current_user_id)
+                    self.save_tweet(status)
         except Exception as err:
             logger.exception(err)
         else:
             logger.info("save {} tweets".format(count))
+        finally:
+            lock.release()
