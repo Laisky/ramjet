@@ -29,6 +29,7 @@ jieba==0.39
 
 # twitter
 tweepy~=3.8.0
+requests
 
 # aws
 boto3~=1.4.8

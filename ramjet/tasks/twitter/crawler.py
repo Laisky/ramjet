@@ -1,11 +1,13 @@
+from pathlib import Path
 from threading import RLock
 from typing import Dict
 
 import pymongo
+import requests
 import tweepy
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
-                             CONSUMER_SECRET)
+                             CONSUMER_SECRET, TWITTER_IMAGE_DIR)
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
@@ -114,11 +116,35 @@ class TwitterAPI:
         logger.debug("save_tweet")
         docu = self.parse_tweet(tweet)
         logger.info(f"save tweet {docu['id']}")
+        user = docu.get("user")
         self.db["tweets"].update_one({"id": docu["id"]}, {"$set": docu}, upsert=True)
+        if user:
+            self.db["users"].update_one({"id": user["id"]}, {"$set": user}, upsert=True)
+
+        self.download_images_for_tweet(tweet)
 
         self.db["tweets"].update_one(
             {"id": docu["id"]}, {"$addToSet": {"viewer": self._current_user_id}}
         )
+
+    def download_images_for_tweet(self, tweet: Dict[str, any]):
+        if not tweet.get("entities", {}).get("media"):
+            return
+
+        for img in tweet["entities"]["media"]:
+            with requests.get(img["media_url_https"] + ":orig") as r:
+                if r.status_code != 200:
+                    logger.error(f"download error: [{r.status_code}]{r.content}")
+                    continue
+
+                fpath = Path(TWITTER_IMAGE_DIR, img["media_url_https"].split("/")[-1])
+                if fpath.is_file():
+                    continue
+
+                with open(fpath, "wb") as f:
+                    f.write(r.content)
+
+                logger.info("tweet img ok", tweet["id"], fpath)
 
     def g_load_user(self):
         logger.debug("g_load_user_auth")
