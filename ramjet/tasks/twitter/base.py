@@ -37,7 +37,7 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
             for d in tweet["entities"]["urls"]:
                 for surl in ["url", "display_url"]:
                     eurl = d["expanded_url"]
-                    t = t.replace(surl, eurl)
+                    t = t.replace(d[surl], eurl)
 
         tweet["text"] = t
 
