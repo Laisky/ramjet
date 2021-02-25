@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from threading import RLock
 from typing import Dict
@@ -114,31 +115,54 @@ class TwitterAPI:
 
     def save_tweet(self, tweet: Dict[str, any]):
         logger.debug("save_tweet")
-        docu = self.parse_tweet(tweet)
-        logger.info(f"save tweet {docu['id']}")
-        user = docu.get("user")
-        self.db["tweets"].update_one({"id": docu["id"]}, {"$set": docu}, upsert=True)
-        if user:
-            self.db["users"].update_one({"id": user["id"]}, {"$set": user}, upsert=True)
 
+        # parse tweet
+        docu = self.parse_tweet(tweet)
         self.download_images_for_tweet(tweet)
 
+        # save tweet
+        logger.info(f"save tweet {docu['id']}")
         self.db["tweets"].update_one(
-            {"id": docu["id"]}, {"$addToSet": {"viewer": self._current_user_id}}
+            {"id_str": str(docu["id"])}, {"$set": docu}, upsert=True
+        )
+        user = docu.get("user")
+        if user:
+            user["id_str"] = str(user["id"])
+            self.db["users"].update_one(
+                {"id_str": str(user["id"])}, {"$set": user}, upsert=True
+            )
+
+        self.db["tweets"].update_one(
+            {"id_str": str(docu["id"])},
+            {"$addToSet": {"viewer": self._current_user_id}},
         )
 
-    def download_images_for_tweet(self, tweet: Dict[str, any]):
-        if not tweet.get("entities", {}).get("media"):
-            return
+    def _convert_media_url(self, src: str) -> str:
+        src = src.replace(
+            "http://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+        )
+        src = src.replace(
+            "https://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+        )
+        return src
 
-        for img in tweet["entities"]["media"]:
+    def download_images_for_tweet(self, tweet: Dict[str, any]):
+        media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(
+            "entities", {}
+        ).get("media", [])
+
+        for img in media:
+            tweet["text"].replace(
+                img["url"], self._convert_media_url(img["media_url_https"])
+            )
+
+            fpath = Path(TWITTER_IMAGE_DIR, img["media_url_https"].split("/")[-1])
+            if fpath.is_file():
+                continue
+
             with requests.get(img["media_url_https"] + ":orig") as r:
                 if r.status_code != 200:
                     logger.error(f"download error: [{r.status_code}]{r.content}")
-                    continue
-
-                fpath = Path(TWITTER_IMAGE_DIR, img["media_url_https"].split("/")[-1])
-                if fpath.is_file():
                     continue
 
                 with open(fpath, "wb") as f:
@@ -185,15 +209,30 @@ class TwitterAPI:
         count = 0
         try:
             for u in self.g_load_user():
-                self._current_user_id = u["id"]
-                self.set_api(u["access_token"], u["access_token_secret"])
-                last_id = self.get_last_tweet_id() or 1
-                for count, status in enumerate(self.g_load_tweets(last_id)):
-                    self._save_relate_tweets(status)
-                    self.save_tweet(status)
+                try:
+                    self._current_user_id = u["id"]
+                    self.set_api(u["access_token"], u["access_token_secret"])
+                    last_id = self.get_last_tweet_id() or 1
+                    for count, status in enumerate(self.g_load_tweets(last_id)):
+                        self._save_relate_tweets(status)
+                        self.save_tweet(status)
+                except Exception:
+                    logger.exception(f"try load user {u['username']} tweets")
         except Exception as err:
             logger.exception(err)
         else:
             logger.info("save {} tweets".format(count))
         finally:
             lock.release()
+
+    def run_for_archive_data(self, user_id: int, tweet_fpath: str):
+        self._current_user_id = user_id
+        user = self.db['users'].find_one({"id_str": str(user_id)})
+        del user['_id']
+
+        with open(tweet_fpath) as fp:
+            for tweet in json.loads(fp.read()):
+                tweet = tweet['tweet']
+                tweet['user'] = user
+                self._save_relate_tweets(tweet)
+                self.save_tweet(tweet)
