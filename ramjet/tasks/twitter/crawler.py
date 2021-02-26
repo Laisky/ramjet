@@ -56,6 +56,7 @@ class TwitterAPI:
         """
         Twitter 只能反向回溯，从最近的推文开始向前查找
         """
+        last_id -= 100
         logger.info("g_load_tweets for last_id {}".format(last_id))
         last_tweets = self.api.user_timeline(count=1, tweet_mode="extended")
         if not last_tweets:
@@ -146,29 +147,67 @@ class TwitterAPI:
         )
         return src
 
+    def _download_image(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
+        tweet["text"] = tweet["text"].replace(
+            media_entity["url"], self._convert_media_url(media_entity["media_url_https"])
+        )
+
+        fpath = Path(TWITTER_IMAGE_DIR, media_entity["media_url_https"].split("/")[-1])
+        if fpath.is_file():
+            return
+
+        with requests.get(media_entity["media_url_https"] + ":orig") as r:
+            if r.status_code != 200:
+                logger.error(
+                    f"download {media_entity['media_url_https']}: [{r.status_code}]{r.content}"
+                )
+                return
+
+            with open(fpath, "wb") as f:
+                f.write(r.content)
+
+            logger.info("succeed download image", tweet["id"], fpath)
+
+    def _download_video(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
+        max_bitrate = 0
+        max_url = ""
+        for v in media_entity["video_info"]["variants"]:
+            if v.get("bitrate", 0) > max_bitrate:
+                max_bitrate = v.get("bitrate", 0)
+                max_url = v.get("url", "")
+
+        if not max_url:
+            return
+
+        max_url = max_url[: max_url.rfind("?")]
+        tweet["text"] = tweet["text"].replace(
+            media_entity["url"], self._convert_media_url(max_url)
+        )
+
+        fpath = Path(TWITTER_IMAGE_DIR, max_url.split("/")[-1])
+        if fpath.is_file():
+            return
+
+        with requests.get(max_url) as r:
+            if r.status_code != 200:
+                logger.error(f"download {max_url}: [{r.status_code}]{r.content}")
+                return
+
+            with open(fpath, "wb") as f:
+                f.write(r.content)
+
+            logger.info("succeed download video", tweet["id"], fpath)
+
     def download_images_for_tweet(self, tweet: Dict[str, any]):
         media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(
             "entities", {}
         ).get("media", [])
 
         for img in media:
-            tweet["text"].replace(
-                img["url"], self._convert_media_url(img["media_url_https"])
-            )
-
-            fpath = Path(TWITTER_IMAGE_DIR, img["media_url_https"].split("/")[-1])
-            if fpath.is_file():
-                continue
-
-            with requests.get(img["media_url_https"] + ":orig") as r:
-                if r.status_code != 200:
-                    logger.error(f"download error: [{r.status_code}]{r.content}")
-                    continue
-
-                with open(fpath, "wb") as f:
-                    f.write(r.content)
-
-                logger.info("tweet img ok", tweet["id"], fpath)
+            if img["type"] == "photo":
+                self._download_image(tweet, img)
+            elif img["type"] == "video":
+                self._download_video(tweet, img)
 
     def g_load_user(self):
         logger.debug("g_load_user_auth")
@@ -210,6 +249,7 @@ class TwitterAPI:
         try:
             for u in self.g_load_user():
                 try:
+                    logger.info(f"fetch tweets for user {u['username']}")
                     self._current_user_id = u["id"]
                     self.set_api(u["access_token"], u["access_token_secret"])
                     last_id = self.get_last_tweet_id() or 1
@@ -227,12 +267,12 @@ class TwitterAPI:
 
     def run_for_archive_data(self, user_id: int, tweet_fpath: str):
         self._current_user_id = user_id
-        user = self.db['users'].find_one({"id_str": str(user_id)})
-        del user['_id']
+        user = self.db["users"].find_one({"id_str": str(user_id)})
+        del user["_id"]
 
         with open(tweet_fpath) as fp:
             for tweet in json.loads(fp.read()):
-                tweet = tweet['tweet']
-                tweet['user'] = user
+                tweet = tweet["tweet"]
+                tweet["user"] = user
                 self._save_relate_tweets(tweet)
                 self.save_tweet(tweet)
