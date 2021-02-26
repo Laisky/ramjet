@@ -1,4 +1,5 @@
 import datetime
+import random
 import re
 from typing import Dict, Generator
 
@@ -14,11 +15,19 @@ def get_tweet_text(tweet: Dict[str, any]) -> str:
 
 
 def replace_to_laisky_url(url: str) -> str:
+    srv_addr = random.choice(
+        [
+            "s1.laisky.com",
+            "s2.laisky.com",
+            "s3.laisky.com",
+        ]
+    )
+
     url = url.replace(
-        "http://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+        "http://pbs.twimg.com/media/", f"https://{srv_addr}/uploads/twitter/"
     )
     url = url.replace(
-        "https://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+        "https://pbs.twimg.com/media/", f"https://{srv_addr}/uploads/twitter/"
     )
 
     return url
@@ -49,6 +58,8 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
     tweet["created_at"] = datetime.datetime.strptime(
         tweet["created_at"], "%a %b %d %H:%M:%S +0000 %Y"
     )
+
+    tweet["id"] = int(tweet["id"])
     tweet["id_str"] = str(tweet["id"])
 
     # replace url
