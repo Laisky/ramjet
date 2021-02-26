@@ -13,6 +13,35 @@ def get_tweet_text(tweet: Dict[str, any]) -> str:
     return tweet.get("full_text") or tweet.get("text")
 
 
+def replace_to_laisky_url(url: str) -> str:
+    url = url.replace(
+        "http://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+    )
+    url = url.replace(
+        "https://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+    )
+
+    return url
+
+
+def replace_media_urls(tweet: Dict[str, any]) -> None:
+    for ee in ["entities", "extended_entities"]:
+        for media in tweet.get(ee, {}).get("media", []):
+            surl = media.get("url", "")
+            durl = media.get("media_url_https") or media.get("media_url")
+            durl = replace_to_laisky_url(durl)
+            if durl:
+                tweet["text"] = tweet["text"].replace(surl, durl)
+
+
+def replace_short_urls(tweet: Dict[str, any]) -> None:
+    for media in tweet.get("entities", {}).get("urls", []):
+        surl = media.get("url", "")
+        durl = media.get("expanded_url")
+        if durl:
+            tweet["text"] = tweet["text"].replace(surl, durl)
+
+
 def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
     """Parse tweet document got from twitter api"""
     reg_topic = re.compile(r"[\b|\s]#(\S+)")
@@ -20,27 +49,12 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
     tweet["created_at"] = datetime.datetime.strptime(
         tweet["created_at"], "%a %b %d %H:%M:%S +0000 %Y"
     )
-    tweet['id_str'] = str(tweet['id'])
+    tweet["id_str"] = str(tweet["id"])
 
     # replace url
-    t = get_tweet_text(tweet)
-    if tweet.get("entities"):
-        # parse entities media
-        entities = tweet.get("extended_entities") or tweet.get("entities")
-        if "media" in entities:
-            for media in tweet["entities"]["media"]:
-                for surl in ["url", "display_url"]:
-                    durl = media.get("media_url_https") or media["media_url"]
-                    t = t.replace(surl, durl)
-
-        # parse entities urls
-        if "urls" in tweet["entities"]:
-            for d in tweet["entities"]["urls"]:
-                for surl in ["url", "display_url"]:
-                    eurl = d["expanded_url"]
-                    t = t.replace(d[surl], eurl)
-
-        tweet["text"] = t
+    tweet["text"] = get_tweet_text(tweet)
+    replace_media_urls(tweet)
+    replace_short_urls(tweet)
 
     return tweet
 
