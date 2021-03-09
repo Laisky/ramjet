@@ -52,11 +52,29 @@ class TwitterAPI:
         )
         return self.__api
 
+    def _save_replies(self, tweet: Dict[str, any]):
+        try:
+            for new_tweet in self.__api.search(
+                q=f"to:{tweet['user']['screen_name']}",
+                since_id=tweet["id"],
+                tweet_mode="extended",
+            )["statuses"]:
+                try:
+                    self.save_tweet(new_tweet)
+                    self._save_replies(new_tweet)
+                    self._save_relate_tweets(new_tweet)
+                except Exception:
+                    logger.exception("save tweet")
+        except tweepy.error.RateLimitError:
+            time.sleep(10)
+        except Exception:
+            logger.exception("_save_replies")
+
     def g_load_tweets(self, last_id: int):
         """
         Twitter 只能反向回溯，从最近的推文开始向前查找
         """
-        last_id = max(int(last_id) -  100, 0)
+        last_id = max(int(last_id) - 100, 0)
         logger.info(f"g_load_tweets for {last_id=}")
         last_tweets = self.api.user_timeline(count=1, tweet_mode="extended")
         if not last_tweets:
@@ -217,29 +235,36 @@ class TwitterAPI:
             yield u
 
     def _save_relate_tweets(self, status: Dict[str, any]):
-        related_ids = []
-        status.get("in_reply_to_status_id") and related_ids.append(
-            status["in_reply_to_status_id"]
-        )
-        status.get("retweeted_status", {}).get("id") and related_ids.append(
-            status["retweeted_status"]["id"]
-        )
-        status.get("quoted_status", {}).get("id") and related_ids.append(
-            status["quoted_status"]["id"]
-        )
-        related_ids = filter(
-            lambda id_: not self.db["tweets"].find_one({"id": id_}), related_ids
-        )
+        try:
+            related_ids = []
+            status.get("in_reply_to_status_id") and related_ids.append(
+                status["in_reply_to_status_id"]
+            )
+            status.get("retweeted_status", {}).get("id") and related_ids.append(
+                status["retweeted_status"]["id"]
+            )
+            status.get("quoted_status", {}).get("id") and related_ids.append(
+                status["quoted_status"]["id"]
+            )
+            related_ids = filter(
+                lambda id_: not self.db["tweets"].find_one({"id": id_}), related_ids
+            )
 
-        for id_ in related_ids:
-            try:
-                docu = self.api.get_status(id_)
-            except Exception:
-                logger.exception(f"load tweet {id_} got error")
-            else:
-                logger.info(f"save tweet [{docu['user']['screen_name']}]{docu['id']}")
-                self.save_tweet(docu)
-                self._save_relate_tweets(docu)
+            for id_ in related_ids:
+                try:
+                    docu = self.api.get_status(id_)
+                except tweepy.error.RateLimitError:
+                    time.sleep(10)
+                except Exception:
+                    logger.exception(f"load tweet {id_} got error")
+                    raise
+                else:
+                    logger.info(f"save tweet [{docu['user']['screen_name']}]{docu['id']}")
+                    self.save_tweet(docu)
+                    self._save_relate_tweets(docu)
+        except Exception:
+            logger.exception(f"_save_relate_tweets")
+
 
     def run(self):
         if not lock.acquire(blocking=False):
@@ -276,4 +301,5 @@ class TwitterAPI:
                 tweet = tweet["tweet"]
                 tweet["user"] = user
                 self._save_relate_tweets(tweet)
+                self._save_replies(tweet)
                 self.save_tweet(tweet)
