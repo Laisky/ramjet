@@ -56,8 +56,8 @@ class TwitterAPI:
         """
         Twitter 只能反向回溯，从最近的推文开始向前查找
         """
-        last_id -= 100
-        logger.info("g_load_tweets for last_id {}".format(last_id))
+        last_id = max(int(last_id) -  100, 0)
+        logger.info(f"g_load_tweets for {last_id=}")
         last_tweets = self.api.user_timeline(count=1, tweet_mode="extended")
         if not last_tweets:
             return
@@ -149,7 +149,8 @@ class TwitterAPI:
 
     def _download_image(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
         tweet["text"] = tweet["text"].replace(
-            media_entity["url"], self._convert_media_url(media_entity["media_url_https"])
+            media_entity["url"],
+            self._convert_media_url(media_entity["media_url_https"]),
         )
 
         fpath = Path(TWITTER_IMAGE_DIR, media_entity["media_url_https"].split("/")[-1])
@@ -166,7 +167,7 @@ class TwitterAPI:
             with open(fpath, "wb") as f:
                 f.write(r.content)
 
-            logger.info("succeed download image", tweet["id"], fpath)
+            logger.info(f"succeed download image {tweet['id']} -> {fpath}")
 
     def _download_video(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
         max_bitrate = 0
@@ -196,7 +197,7 @@ class TwitterAPI:
             with open(fpath, "wb") as f:
                 f.write(r.content)
 
-            logger.info("succeed download video", tweet["id"], fpath)
+            logger.info(f"succeed download image {tweet['id']} -> {fpath}")
 
     def download_images_for_tweet(self, tweet: Dict[str, any]):
         media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(

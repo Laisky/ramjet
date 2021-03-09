@@ -49,6 +49,8 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
     tweet["created_at"] = datetime.datetime.strptime(
         tweet["created_at"], "%a %b %d %H:%M:%S +0000 %Y"
     )
+
+    tweet["id"] = int(tweet["id"])
     tweet["id_str"] = str(tweet["id"])
 
     # replace url
