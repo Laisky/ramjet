@@ -6,6 +6,7 @@ from typing import Dict
 import pymongo
 import requests
 import tweepy
+from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
                              CONSUMER_SECRET, TWITTER_IMAGE_DIR)
@@ -27,6 +28,20 @@ def bind_task():
         thread_executor.submit(twitter.run())
 
     run()
+
+
+class CrawlerView(web.View):
+    async def get(self):
+        tweet_id = self.request.match_info["tweet_id"]
+        return web.Response(
+            text=f"fetch specific tweet id {tweet_id}",
+        )
+
+    async def post(self):
+        tweet_id = self.request.match_info["tweet_id"]
+        logger.info(f"fetch tweet {tweet_id}")
+        thread_executor.submit(TwitterAPI().run_for_tweet_id, tweet_id)
+        return web.Response(text=f"starting to fetch {tweet_id}")
 
 
 class TwitterAPI:
@@ -62,7 +77,7 @@ class TwitterAPI:
                 try:
                     self.save_tweet(new_tweet)
                     self._save_replies(new_tweet)
-                    self._save_relate_tweets(new_tweet)
+                    # self._save_relate_tweets(new_tweet)
                 except Exception:
                     logger.exception("save tweet")
         except tweepy.error.RateLimitError:
@@ -259,12 +274,32 @@ class TwitterAPI:
                     logger.exception(f"load tweet {id_} got error")
                     raise
                 else:
-                    logger.info(f"save tweet [{docu['user']['screen_name']}]{docu['id']}")
+                    logger.info(
+                        f"save tweet [{docu['user']['screen_name']}]{docu['id']}"
+                    )
                     self.save_tweet(docu)
                     self._save_relate_tweets(docu)
         except Exception:
             logger.exception(f"_save_relate_tweets")
 
+    def run_for_tweet_id(self, tweet_id: str):
+        for u in self.g_load_user():
+            self._current_user_id = u["id"]
+            self.set_api(u["access_token"], u["access_token_secret"])
+
+            try:
+                tweet = self.api.get_status(tweet_id)
+            except Exception:
+                logger.exception(f"load tweet {tweet_id} got error")
+                continue
+            else:
+                logger.info(
+                    f"save tweet [{tweet['user']['screen_name']}]{tweet['id']}"
+                )
+                self.save_tweet(tweet)
+                self._save_relate_tweets(tweet)
+                self._save_replies(tweet)
+                return
 
     def run(self):
         if not lock.acquire(blocking=False):
@@ -278,9 +313,11 @@ class TwitterAPI:
                     logger.info(f"fetch tweets for user {u['username']}")
                     self._current_user_id = u["id"]
                     self.set_api(u["access_token"], u["access_token_secret"])
+
                     last_id = self.get_last_tweet_id() or 1
                     for count, status in enumerate(self.g_load_tweets(last_id)):
                         self._save_relate_tweets(status)
+                        self._save_replies(status)
                         self.save_tweet(status)
                 except Exception:
                     logger.exception(f"try load user {u['username']} tweets")

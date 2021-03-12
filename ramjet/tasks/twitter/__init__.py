@@ -1,2 +1,2 @@
-from .crawler import bind_task
-from .login import bind_handle
+# from .crawler import bind_task
+from .router import bind_handle
