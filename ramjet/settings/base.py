@@ -49,4 +49,5 @@ INSTALL_TASKS = [
     'twitter',
     'aws',
     'email_proxy',
+    "dlp",
 ]
