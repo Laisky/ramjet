@@ -17,12 +17,14 @@
         <h1>DLP 图片盲水印</h1>
 
         <h2>动态注入水印</h2>
-        <p>比如原始访问的图片地址是: <code>https://s3.laisky.com/uploads/twitter/A8ih9RsCYAASQ4C.jpg</code></p>
-        <p>用如下地址访问：<a href="https://app.laisky.com/dlp/image/watermark/fetch?url=https://s3.laisky.com/uploads/twitter/A8ih9RsCYAASQ4C.jpg&text=Laisky">https://app.laisky.com/dlp/image/watermark/fetch?url=https://s3.laisky.com/uploads/twitter/A8ih9RsCYAASQ4C.jpg&text=Laisky</a></p>
-        <p>（URL 中的参数 <mark>text</mark> 就是要注入的水印）</p>
+        <p>比如原始访问的图片地址是: <code>https://s3.laisky.com/uploads/twitter/CKkPgu8UsAA_VTh.png</code></p>
+        <p>用如下地址访问：<a href="https://app.laisky.com/dlp/image/watermark/fetch?url=https://s3.laisky.com/uploads/twitter/CKkPgu8UsAA_VTh.png&text=Laisky">https://app.laisky.com/dlp/image/watermark/fetch?url=https://s3.laisky.com/uploads/twitter/CKkPgu8UsAA_VTh.png&text=Laisky</a></p>
+        <p>（URL 中的参数 <mark>text</mark> 就是要注入的水印，<mark>url</mark> 就是要访问的图片原地址）</p>
+
+        <p>另存为上述图片后，在下述验签页面上传提取盲水印</p>
 
         <h2>验签</h2>
-        <a href="https://app.laisky.com/dlp/image/watermark/verify">https://app.laisky.com/dlp/image/watermark/fetch</a>
+        <a href="https://app.laisky.com/dlp/image/watermark/verify/">https://app.laisky.com/dlp/image/watermark/verify/</a>
     </article>
 
     <script src="https://s1.laisky.com/static/jquery/2.2.2/jquery.min.js" type="6bd07f0ae05bc03c75fd42b9-text/javascript"></script>
