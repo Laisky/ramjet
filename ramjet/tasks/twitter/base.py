@@ -41,6 +41,7 @@ def replace_media_urls(tweet: Dict[str, any]) -> None:
             durl = replace_to_laisky_url(durl)
             if durl:
                 tweet["text"] = tweet["text"].replace(surl, durl)
+                media['media_url_https'] = durl
 
 
 def replace_short_urls(tweet: Dict[str, any]) -> None:
