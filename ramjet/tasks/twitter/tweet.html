@@ -1,0 +1,54 @@
+<!DOCTYPE HTML>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{user}}">
+    <meta name="twitter:description" content="{{text}}">
+    <meta name="twitter:image" content="{{image}}">
+    <meta name="twitter:site" content="https://app.laisky.com/twitter/status/{{id}}/">
+
+
+    <title>Tweet: {{id}}</title>
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="stylesheet" type="text/css" href="https://s3.laisky.com/static/gargantua/css/libs-edee677d7d.min.css">
+    <link rel="stylesheet" type="text/css" href="https://s1.laisky.com/static/highlight/9.15.8/default.min.css">
+    <style>
+        article {
+            padding: 10px;
+        }
+
+        img {
+            max-height: 400px;
+            max-width: 90%;
+        }
+    </style>
+</head>
+
+<body style="margin: 10px;">
+    <article>
+        {{text}}
+        <div class="images">
+            {% for url in images %}
+            <img src="{{url}}" alt="">
+            {% endfor %}
+        </div>
+    </article>
+
+    <script src="https://s1.laisky.com/static/jquery/2.2.2/jquery.min.js"
+        type="6bd07f0ae05bc03c75fd42b9-text/javascript"></script>
+    <script src="https://s1.laisky.com/static/twitter-bootstrap/3.3.6/js/bootstrap.min.js"
+        type="6bd07f0ae05bc03c75fd42b9-text/javascript"></script>
+    <script src="https://s1.laisky.com/static/babel-polyfill/6.23.0/polyfill.min.js"
+        type="6bd07f0ae05bc03c75fd42b9-text/javascript"></script>
+</body>
+
+<script type="text/javascript">
+</script>
+
+</html>
