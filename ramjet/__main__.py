@@ -18,7 +18,7 @@ from ramjet.utils import logger
 
 def setup_template(app):
     aiohttp_jinja2.setup(
-        app, loader=jinja2.FileSystemLoader(str(Path(settings.CWD, "tasks")))
+        app, loader=jinja2.FileSystemLoader(str(Path(settings.CWD, "tasks","templates")))
     )
 
 

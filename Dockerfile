@@ -9,9 +9,9 @@ WORKDIR /app
 ADD ./requirements.txt .
 RUN pip install -r requirements.txt
 
-RUN rm -rf /app/ramjet/settings/prd.*
 
 ADD . .
-RUN python setup.py install
+RUN rm -rf /app/ramjet/settings/prd.*
 
+RUN python setup.py install
 ENTRYPOINT python -m ramjet

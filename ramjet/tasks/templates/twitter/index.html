@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Twitter Utils{% endblock %}
+{% block body %}
+    <article>
+        <p>一个爬取推特备份，提供查询和分享的小工具</p>
+
+        <h2>一、登录</h2>
+        <p>首先，你需要授权我能够读取（只读）你的推文信息</p>
+        <p><a href="/twitter/login">http://app.laisky.com/twitter/login</a></p>
+
+        <h2>二、搜索</h2>
+        <p><a href="/twitter/status/search/">https://app.laisky.com/twitter/status/search/</a></p>
+
+        <h2>三、分享</h2>
+        <p>可以在推特上分享如下地址</p>
+        <p><a
+                href="/twitter/status/1202602352034795520/">https://app.laisky.com/twitter/status/1202602352034795520/</a>
+        </p>
+        <p>推特上能够自动显示摘要和图片</p>
+
+    </article>
+{% endblock %}
