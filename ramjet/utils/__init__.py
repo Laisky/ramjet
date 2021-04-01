@@ -15,7 +15,7 @@ from kipp.options import opt
 from ramjet.engines import thread_executor
 from ramjet.settings import LOG_NAME, LOG_PATH, MAIL_FROM_ADDR, MAIL_TO_ADDRS
 
-from .db import get_conn
+from .db import get_conn, get_gq_cli
 from .encrypt import (generate_passwd, generate_token, validate_passwd,
                       validate_token)
 from .jinja import TemplateRendering, debug_wrapper

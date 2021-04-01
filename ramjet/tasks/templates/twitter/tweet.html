@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block head %}
+    {{ super() }}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{user}}">
+    <meta name="twitter:description" content="{{text}}">
+    <meta name="twitter:image" content="{{image}}">
+    <meta name="twitter:site" content="https://app.laisky.com/twitter/status/{{id}}/">
+{% endblock %}
+{% block title %}Tweet: {{id}}{% endblock %}
+{% block body %}
+    <article>
+        {{text}}
+        <div class="images">
+            {% for url in images %}
+            <img src="{{url}}" alt="">
+            {% endfor %}
+        </div>
+    </article>
+{% endblock %}
+{% block css %}
+<style>
+    img {
+        max-width: 450px;
+        max-height: 450px;
+    }
+</style>
+{% endblock %}

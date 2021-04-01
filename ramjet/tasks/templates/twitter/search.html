@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Twitter Searcg{% endblock %}
+{% block body %}
+    <form action="/twitter/status/search/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="text">Twitter Status Text:</label>
+            <input type="text" name="text" value="{{search_text}}" />
+
+            <input type="submit" value="搜索" />
+        </div>
+    </form>
+
+    <article>
+        {% for tweet in tweets %}
+            <div class="list-group">
+                <a href="https://app.laisky.com/twitter/status/{{tweet['id_str']}}/" class="list-group-item">
+                    <h4 class="list-group-item-heading">{{tweet.get('user', {}).get('name', '佚名')}}:</h4>
+                    <p class="list-group-item-text">{{tweet['text']}}</p>
+                </a>
+            </div>
+        {% endfor %}
+    </article>
+{% endblock %}
