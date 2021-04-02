@@ -244,7 +244,7 @@ class TwitterAPI:
 
     def _save_relate_tweets(self, status: Dict[str, any]):
         try:
-            for id_ in gen_related_tweets(status):
+            for id_ in gen_related_tweets(self.col, status):
                 try:
                     docu = self.api.get_status(id_, tweet_mode="extended")
                 except tweepy.error.RateLimitError:

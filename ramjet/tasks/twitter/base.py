@@ -72,7 +72,7 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
 
 
 def gen_related_tweets(
-    # tweetCol: pymongo.collection.Collection,
+    tweetCol: pymongo.collection.Collection,
     tweet: Dict[str, any],
 ) -> List[str]:
     related_ids = []
