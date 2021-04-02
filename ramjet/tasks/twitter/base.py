@@ -83,7 +83,7 @@ def gen_related_tweets(
         tweet["retweeted_status"]["id"]
     )
     tweet.get("quoted_status") and related_ids.append(tweet["quoted_status"]["id"])
-    return related_ids
+    return list(filter(lambda id_: not tweetCol.find_one({"id": id_}), related_ids))
     # for _id in filter(lambda id_: not tweetCol.find_one({"id": id_}), related_ids):
     #     yield _id
 
