@@ -115,17 +115,17 @@ class TwitterAPI:
                 if s["id"] < current_id:
                     current_id = s["id"]
 
-                for sid in gen_related_tweets(self.db["tweets"], s):
-                    try:
-                        s = self.api.get_status(sid, tweet_mode="extended")
-                    except tweepy.error.TweepError as err:
-                        logger.warn(f"get status got error: {err}")
-                        continue
-                    except Exception as err:
-                        logger.exception(f"get status {sid}")
-                        continue
+                # for sid in gen_related_tweets(self.db["tweets"], s):
+                #     try:
+                #         s = self.api.get_status(sid, tweet_mode="extended")
+                #     except tweepy.error.TweepError as err:
+                #         logger.warn(f"get status got error: {err}")
+                #         continue
+                #     except Exception as err:
+                #         logger.exception(f"get status {sid}")
+                #         continue
 
-                    yield s
+                #     yield s
 
     @property
     def col(self):
@@ -249,21 +249,7 @@ class TwitterAPI:
 
     def _save_relate_tweets(self, status: Dict[str, any]):
         try:
-            related_ids = []
-            status.get("in_reply_to_status_id") and related_ids.append(
-                status["in_reply_to_status_id"]
-            )
-            status.get("retweeted_status", {}).get("id") and related_ids.append(
-                status["retweeted_status"]["id"]
-            )
-            status.get("quoted_status", {}).get("id") and related_ids.append(
-                status["quoted_status"]["id"]
-            )
-            related_ids = filter(
-                lambda id_: not self.db["tweets"].find_one({"id": id_}), related_ids
-            )
-
-            for id_ in related_ids:
+            for id_ in gen_related_tweets(status):
                 try:
                     docu = self.api.get_status(id_, tweet_mode="extended")
                 except tweepy.error.RateLimitError:

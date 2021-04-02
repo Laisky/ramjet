@@ -1,7 +1,7 @@
 import datetime
 import random
 import re
-from typing import Dict, Generator
+from typing import Dict, Generator, List
 
 import pymongo
 from ramjet.settings import logger as ramjet_logger
@@ -72,8 +72,9 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
 
 
 def gen_related_tweets(
-    tweetCol: pymongo.collection.Collection, tweet: Dict[str, any]
-) -> Generator[str, None, None]:
+    # tweetCol: pymongo.collection.Collection,
+    tweet: Dict[str, any],
+) -> List[str]:
     related_ids = []
     tweet.get("in_reply_to_status_id") and related_ids.append(
         tweet["in_reply_to_status_id"]
@@ -82,8 +83,9 @@ def gen_related_tweets(
         tweet["retweeted_status"]["id"]
     )
     tweet.get("quoted_status") and related_ids.append(tweet["quoted_status"]["id"])
-    for _id in filter(lambda id_: not tweetCol.find_one({"id": id_}), related_ids):
-        yield _id
+    return related_ids
+    # for _id in filter(lambda id_: not tweetCol.find_one({"id": id_}), related_ids):
+    #     yield _id
 
 
 def twitter_history_parser(tweet: Dict[str, any]):
