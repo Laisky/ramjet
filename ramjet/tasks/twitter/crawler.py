@@ -292,7 +292,6 @@ class TwitterAPI:
                 logger.exception(f"load tweet {tweet_id} got error")
                 continue
             else:
-                logger.info(f"save tweet [{tweet['user']['screen_name']}]{tweet['id']}")
                 self.save_tweet(tweet)
                 self._save_relate_tweets(tweet)
                 self._save_replies(tweet)
