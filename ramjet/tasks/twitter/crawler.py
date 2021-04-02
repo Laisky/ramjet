@@ -25,7 +25,7 @@ def bind_task():
 
         logger.info("run")
         twitter = TwitterAPI()
-        thread_executor.submit(twitter.run())
+        thread_executor.submit(twitter.run)
 
     run()
 
@@ -90,6 +90,8 @@ class TwitterAPI:
         Twitter 只能反向回溯，从最近的推文开始向前查找
         """
         last_id = max(int(last_id) - 100, 0)
+        # last_id = 0
+
         logger.info(f"g_load_tweets for {last_id=}")
         last_tweets = self.api.user_timeline(count=1, tweet_mode="extended")
         if not last_tweets:
@@ -293,9 +295,7 @@ class TwitterAPI:
                 logger.exception(f"load tweet {tweet_id} got error")
                 continue
             else:
-                logger.info(
-                    f"save tweet [{tweet['user']['screen_name']}]{tweet['id']}"
-                )
+                logger.info(f"save tweet [{tweet['user']['screen_name']}]{tweet['id']}")
                 self.save_tweet(tweet)
                 self._save_relate_tweets(tweet)
                 self._save_replies(tweet)
