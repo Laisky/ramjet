@@ -18,5 +18,15 @@
         </p>
         <p>推特上能够自动显示摘要和图片</p>
 
+        <h2>四、收录指定推文</h2>
+        <form action="/twitter/fetch/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="text">Twitter Status ID:</label>
+                <input type="text" name="tweet_id" />
+
+                <input type="submit" value="Submit" />
+            </div>
+        </form>
+
     </article>
 {% endblock %}

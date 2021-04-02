@@ -11,7 +11,7 @@ twitter_surl_regex = re.compile("https?://t\.co/[A-z0-9]*")
 
 
 def get_tweet_text(tweet: Dict[str, any]) -> str:
-    return tweet.get("full_text") or tweet.get("text")
+    return tweet.get("full_text") or tweet.get("text", "")
 
 
 def replace_to_laisky_url(url: str) -> str:
@@ -41,7 +41,7 @@ def replace_media_urls(tweet: Dict[str, any]) -> None:
             durl = replace_to_laisky_url(durl)
             if durl:
                 tweet["text"] = tweet["text"].replace(surl, durl)
-                media['media_url_https'] = durl
+                media["media_url_https"] = durl
 
 
 def replace_short_urls(tweet: Dict[str, any]) -> None:
