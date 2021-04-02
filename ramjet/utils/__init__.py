@@ -106,7 +106,7 @@ class MultiProcessLogHandler(logging.Handler):
 
 def setup_log():
     logger = logging.getLogger(LOG_NAME)
-    _format = '[%(asctime)s - %(levelname)s - %(name)s] %(message)s'
+    _format = '[%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d] %(message)s'
     formatter = logging.Formatter(_format)
     # set stdout
     ch = logging.StreamHandler(sys.stdout)
