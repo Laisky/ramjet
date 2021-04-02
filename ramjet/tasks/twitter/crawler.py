@@ -30,7 +30,7 @@ def bind_task():
     run()
 
 
-class CrawlerView(web.View):
+class FetchView(web.View):
     async def get(self):
         tweet_id = self.request.match_info["tweet_id"]
         return web.Response(
@@ -38,7 +38,7 @@ class CrawlerView(web.View):
         )
 
     async def post(self):
-        tweet_id = self.request.match_info["tweet_id"]
+        tweet_id = (await self.request.post())["tweet_id"]
         logger.info(f"fetch tweet {tweet_id}")
         thread_executor.submit(TwitterAPI().run_for_tweet_id, tweet_id)
         return web.Response(text=f"starting to fetch {tweet_id}")
@@ -150,16 +150,17 @@ class TwitterAPI:
         return docu and docu["id"]
 
     def save_tweet(self, tweet: Dict[str, any]):
-        logger.debug("save_tweet")
 
         # parse tweet
         docu = self.parse_tweet(tweet)
         self.download_images_for_tweet(tweet)
 
         # save tweet
-        logger.info(f"save tweet {docu['id']}")
+        logger.info(f"save_tweet {docu['id']}")
         self.db["tweets"].update_one(
-            {"id_str": str(docu["id"])}, {"$set": docu}, upsert=True
+            {"id_str": str(docu["id"])},
+            {"$set": docu, "$addToSet": {"viewer": self._current_user_id}},
+            upsert=True,
         )
         user = docu.get("user")
         if user:
@@ -167,11 +168,6 @@ class TwitterAPI:
             self.db["users"].update_one(
                 {"id_str": str(user["id"])}, {"$set": user}, upsert=True
             )
-
-        self.db["tweets"].update_one(
-            {"id_str": str(docu["id"])},
-            {"$addToSet": {"viewer": self._current_user_id}},
-        )
 
     def _convert_media_url(self, src: str) -> str:
         src = src.replace(
@@ -290,7 +286,8 @@ class TwitterAPI:
             self.set_api(u["access_token"], u["access_token_secret"])
 
             try:
-                tweet = self.api.get_status(tweet_id)
+                tweet = self.api.get_status(tweet_id, tweet_mode='extended')
+                assert tweet
             except Exception:
                 logger.exception(f"load tweet {tweet_id} got error")
                 continue
