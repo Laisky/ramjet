@@ -152,8 +152,8 @@ class TwitterAPI:
     def save_tweet(self, tweet: Dict[str, any]):
 
         # parse tweet
-        docu = self.parse_tweet(tweet)
         self.download_images_for_tweet(tweet)
+        docu = self.parse_tweet(tweet)
 
         # save tweet
         logger.info(f"save_tweet {docu['id']}")
@@ -179,11 +179,6 @@ class TwitterAPI:
         return src
 
     def _download_image(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
-        tweet["text"] = tweet["text"].replace(
-            media_entity["url"],
-            self._convert_media_url(media_entity["media_url_https"]),
-        )
-
         fpath = Path(TWITTER_IMAGE_DIR, media_entity["media_url_https"].split("/")[-1])
         if fpath.is_file():
             return
