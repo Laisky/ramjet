@@ -265,7 +265,7 @@ class TwitterAPI:
 
             for id_ in related_ids:
                 try:
-                    docu = self.api.get_status(id_)
+                    docu = self.api.get_status(id_, tweet_mode="extended")
                 except tweepy.error.RateLimitError:
                     time.sleep(10)
                 except Exception:
@@ -286,7 +286,7 @@ class TwitterAPI:
             self.set_api(u["access_token"], u["access_token_secret"])
 
             try:
-                tweet = self.api.get_status(tweet_id, tweet_mode='extended')
+                tweet = self.api.get_status(tweet_id, tweet_mode="extended")
                 assert tweet
             except Exception:
                 logger.exception(f"load tweet {tweet_id} got error")
