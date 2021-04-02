@@ -3,15 +3,15 @@
 
 import gc
 
-from ramjet.settings import logger
 from ramjet.engines import ioloop
+from ramjet.settings import logger
 
-logger = logger.getChild('tasks.heart')
+logger = logger.getChild("tasks.heart")
 
 
 def bind_task():
     def callback(*args, **kw):
-        logger.info('tasks heart!')
+        logger.info("tasks heart!")
         gc.collect()
         ioloop.call_later(60, callback, *args, **kw)
 

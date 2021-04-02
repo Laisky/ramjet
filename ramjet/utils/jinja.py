@@ -1,32 +1,35 @@
-import traceback
 import datetime
 import json
+import traceback
 
 from ramjet.settings import logger
 
 
 def debug_wrapper(func):
     def wrapper(*args, **kw):
-        logger.debug('debug_wrapper for args {}, kw {}'.format(args, kw))
+        logger.debug("debug_wrapper for args {}, kw {}".format(args, kw))
         try:
             yield from func(*args, **kw)
         except Exception:
             self = args[0]
             err_msg = {
-                'uri': self.request.uri,
-                'version': self.request.version,
-                'headers': self.request.headers,
-                'cookies': self.request.cookies,
+                "uri": self.request.uri,
+                "version": self.request.version,
+                "headers": self.request.headers,
+                "cookies": self.request.cookies,
             }
-            logger.error('{}\n-----\n{}'.format(
-                json.dumps(err_msg, indent=4, sort_keys=True),
-                traceback.format_exc(),
-            ))
+            logger.error(
+                "{}\n-----\n{}".format(
+                    json.dumps(err_msg, indent=4, sort_keys=True),
+                    traceback.format_exc(),
+                )
+            )
             raise
+
     return wrapper
 
 
-class TemplateRendering():
+class TemplateRendering:
 
     """
     A simple class to hold methods for rendering templates.
@@ -40,11 +43,15 @@ class TemplateRendering():
 
     def render_template(self, template_name, **kw):
         if not self._jinja_env:
-            self._jinja_env.filters.update({
-                'utc2cst': lambda dt: dt + datetime.timedelta(hours=8),
-                'jstime2py': lambda ts: datetime.datetime.fromtimestamp(ts / 1000),
-                'time_format': lambda dt: datetime.datetime.strftime(dt, '%Y/%m/%d %H:%M:%S'),
-            })
+            self._jinja_env.filters.update(
+                {
+                    "utc2cst": lambda dt: dt + datetime.timedelta(hours=8),
+                    "jstime2py": lambda ts: datetime.datetime.fromtimestamp(ts / 1000),
+                    "time_format": lambda dt: datetime.datetime.strftime(
+                        dt, "%Y/%m/%d %H:%M:%S"
+                    ),
+                }
+            )
 
         template = self._jinja_env.get_template(template_name)
         content = template.render(kw)

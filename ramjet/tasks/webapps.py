@@ -9,7 +9,7 @@ import aiohttp_jinja2
 from ramjet.settings import logger
 
 
-logger = logger.getChild('tasks.webapps')
+logger = logger.getChild("tasks.webapps")
 
 
 def bind_task():
@@ -17,13 +17,12 @@ def bind_task():
 
 
 def bind_handle(add_route):
-    logger.info('bind_handle')
-    add_route('/', WebApps)
+    logger.info("bind_handle")
+    add_route("/", WebApps)
 
 
 class WebApps(web.View):
-
-    @aiohttp_jinja2.template('static/dist/index.html')
+    @aiohttp_jinja2.template("static/dist/index.html")
     async def get(self):
-        logger.info('get WebApps')
+        logger.info("get WebApps")
         return None

@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import jwt
 import bcrypt
-
+import jwt
 from ramjet.settings import SECRET_KEY
 
 
@@ -16,7 +15,7 @@ def validate_passwd(passwd, hashed):
 
 
 def generate_token(json_, secret=SECRET_KEY):
-    return jwt.encode(json_, secret, algorithm='HS512').decode()
+    return jwt.encode(json_, secret, algorithm="HS512").decode()
 
 
 def validate_token(token, secret=SECRET_KEY):
