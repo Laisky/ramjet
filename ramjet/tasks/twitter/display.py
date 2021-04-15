@@ -28,7 +28,8 @@ class Status(BaseDisplay):
     @aiohttp_jinja2.template("twitter/tweet.html")
     async def get(self):
         tweet_id = self.request.match_info["tweet_id"]
-        query = GraphQLRequest(query=f"""
+        query = GraphQLRequest(
+            query=f"""
             query {{
                 TwitterStatues(
                     tweet_id: "{tweet_id}",
@@ -40,15 +41,16 @@ class Status(BaseDisplay):
                     }}
                 }}
             }}
-        """)
-        docu = (await self.gq.query(query)).data['TwitterStatues'][0]
-        docu['images'] = docu.get('images', [])
+        """
+        )
+        docu = (await self.gq.query(query)).data["TwitterStatues"][0]
+        docu["images"] = docu.get("images", [])
         return {
             "id": tweet_id,
             "text": docu["text"],
-            "image": "" if len(docu['images']) == 0 else docu['images'][0],
-            "images": docu['images'],
-            "user": docu.get("user", {}).get("name", "佚名"),
+            "image": docu["images"][0] if docu["images"] else "",
+            "images": docu["images"],
+            "user": (docu.get("user", {}) or {}).get("name", "佚名"),
         }
 
 
@@ -60,11 +62,15 @@ class StatusSearch(BaseDisplay):
     @aiohttp_jinja2.template("twitter/search.html")
     async def post(self):
         search_text = (await self.request.post())["text"]
-        query = GraphQLRequest(query=f"""
+        query = GraphQLRequest(
+            query=f"""
             query {{
                 TwitterStatues(
                     regexp: "{search_text}",
+                    sort: {{sort_by: "created_at", order: DESC}},
+                    page: {{size: 100, page: 0}},
                 ) {{
+                    id
                     text
                     images
                     user {{
@@ -72,8 +78,10 @@ class StatusSearch(BaseDisplay):
                     }}
                 }}
             }}
-        """)
-        docus = (await self.gq.query(query)).data['TwitterStatues']
+        """
+        )
+        docus = (await self.gq.query(query)).data["TwitterStatues"]
+        docus = list(filter(lambda d: d, docus))
         return {
             "search_text": search_text,
             "tweets": docus,

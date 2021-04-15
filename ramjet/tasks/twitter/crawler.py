@@ -8,8 +8,13 @@ import requests
 import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
-from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
-                             CONSUMER_SECRET, TWITTER_IMAGE_DIR)
+from ramjet.settings import (
+    ACCESS_TOKEN,
+    ACCESS_TOKEN_SECRET,
+    CONSUMER_KEY,
+    CONSUMER_SECRET,
+    TWITTER_IMAGE_DIR,
+)
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
@@ -156,7 +161,7 @@ class TwitterAPI:
         docu = self.parse_tweet(tweet)
 
         # save tweet
-        logger.info(f"save_tweet {docu['id']}")
+        logger.info(f"save_tweet {docu.get('id')} {docu.get('created_at')}")
         self.db["tweets"].update_one(
             {"id_str": str(docu["id"])},
             {"$set": docu, "$addToSet": {"viewer": self._current_user_id}},
@@ -207,10 +212,6 @@ class TwitterAPI:
             return
 
         max_url = max_url[: max_url.rfind("?")]
-        tweet["text"] = tweet["text"].replace(
-            media_entity["url"], self._convert_media_url(max_url)
-        )
-
         fpath = Path(TWITTER_IMAGE_DIR, max_url.split("/")[-1])
         if fpath.is_file():
             return
