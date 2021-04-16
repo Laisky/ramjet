@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Twitter Searcg{% endblock %}
 {% block body %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/twitter/">Twitter</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Search</li>
+    </ol>
+</nav>
+
+
 <form action="/twitter/status/search/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
     <div class="form-group">
         <label for="text">Twitter Status Text:</label>
@@ -13,7 +21,7 @@
 <article>
     {% for tweet in tweets %}
     <div class="list-group">
-        <a href="https://app.laisky.com/twitter/status/{{tweet['id']}}/" class="list-group-item">
+        <a href="/twitter/status/{{tweet['id']}}/" class="list-group-item">
             <h4 class="list-group-item-heading">{{(tweet.get('user', {}) or {}).get('name', '佚名')}}:</h4>
             <p class="list-group-item-text">{{tweet['text']}}</p>
         </a>
