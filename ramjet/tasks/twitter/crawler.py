@@ -44,9 +44,13 @@ class FetchView(web.View):
 
     async def post(self):
         tweet_id = (await self.request.post())["tweet_id"]
+        tweet_id = tweet_id.strip("/")
+        if "/" in tweet_id:
+            tweet_id = tweet_id.split("/")[-1]
+
         logger.info(f"fetch tweet {tweet_id}")
         thread_executor.submit(TwitterAPI().run_for_tweet_id, tweet_id)
-        return web.Response(text=f"starting to fetch {tweet_id}")
+        return web.Response(text=f"succeed submit {tweet_id}")
 
 
 class TwitterAPI:
@@ -73,12 +77,19 @@ class TwitterAPI:
         return self.__api
 
     def _save_replies(self, tweet: Dict[str, any]):
+        logger.debug(f"_save_replies for {tweet['id']}")
         try:
             for new_tweet in self.__api.search(
                 q=f"to:{tweet['user']['screen_name']}",
                 since_id=tweet["id"],
                 tweet_mode="extended",
             )["statuses"]:
+                if new_tweet["id"] == tweet["id"]:
+                    continue
+
+                # if self.col.find_one({"id_str": new_tweet["id_str"]}):
+                #     continue
+
                 try:
                     self.save_tweet(new_tweet)
                     self._save_replies(new_tweet)
@@ -244,6 +255,7 @@ class TwitterAPI:
             yield u
 
     def _save_relate_tweets(self, status: Dict[str, any]):
+        logger.debug(f"_save_relate_tweets for {status['id']}")
         try:
             for id_ in gen_related_tweets(self.col, status):
                 try:

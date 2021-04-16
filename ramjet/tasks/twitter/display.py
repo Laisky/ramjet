@@ -35,6 +35,7 @@ class Status(BaseDisplay):
                     tweet_id: "{tweet_id}",
                 ) {{
                     text
+                    created_at
                     images
                     user {{
                         name
@@ -45,12 +46,34 @@ class Status(BaseDisplay):
         )
         docu = (await self.gq.query(query)).data["TwitterStatues"][0]
         docu["images"] = docu.get("images", [])
+
+        # load threads
+        query = GraphQLRequest(
+            query=f"""
+            query {{
+                TwitterThreads(
+                    tweet_id: "{tweet_id}",
+                ) {{
+                    id
+                    text
+                    created_at
+                    user {{
+                        name
+                    }}
+                }}
+            }}
+        """
+        )
+        threads = (await self.gq.query(query)).data["TwitterThreads"]
+
         return {
             "id": tweet_id,
             "text": docu["text"],
             "image": docu["images"][0] if docu["images"] else "",
             "images": docu["images"],
+            "created_at": docu["created_at"],
             "user": (docu.get("user", {}) or {}).get("name", "佚名"),
+            "threads": threads,
         }
 
 

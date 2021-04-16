@@ -1,24 +1,58 @@
 {% extends "base.html" %}
 {% block head %}
-    {{ super() }}
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{user}}">
-    <meta name="twitter:description" content="{{text}}">
-    <meta name="twitter:image" content="{{image}}">
-    <meta name="twitter:site" content="https://app.laisky.com/twitter/status/{{id}}/">
+{{ super() }}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{user}}">
+<meta name="twitter:description" content="{{text}}">
+<meta name="twitter:image" content="{{image}}">
+<meta name="twitter:site" content="https://app.laisky.com/twitter/status/{{id}}/">
 {% endblock %}
 {% block title %}Tweet: {{id}}{% endblock %}
 {% block body %}
-    <article>
-        {{text}}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/twitter/">Twitter</a></li>
+        <li class="breadcrumb-item"><a href="/twitter/status/search/">Search</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Status</li>
+    </ol>
+</nav>
+
+<div class="card w-100">
+    <div class="card-body">
+        <h5 class="card-title">{{user}}</h5>
+        <h6 class="card-subtitle mb-2 text-muted">{{created_at}}</h6>
+        <p class="card-text">
+            {{text}}
+        </p>
         <div class="images">
             {% for url in images %}
-            <img src="{{url}}" alt="">
+            <a href="{{url}}"><img src="{{url}}" class="img-fluid" alt="" /></a>
             {% endfor %}
         </div>
-    </article>
+        <small>{{id}}</small>
+    </div>
+
+</div>
+
+<hr />
+<h3>Threads:</h3>
+
+<div class="list-group" style="margin-bottom: 20px;">
+    {% for tweet in threads %}
+    <a href="/twitter/status/{{tweet['id']}}/" class="list-group-item list-group-item-action">
+        <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">{{(tweet.get('user', {}) or {}).get('name', '佚名')}}</h5>
+            <small>{{tweet['created_at']}}</small>
+        </div>
+        <p class="mb-1">{{tweet['text']}}</p>
+        <small>{{tweet['id']}}</small>
+    </a>
+    {% endfor %}
+</div>
+
 {% endblock %}
 {% block css %}
+{{ super() }}
 <style>
     img {
         max-width: 450px;
