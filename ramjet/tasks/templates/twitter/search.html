@@ -22,7 +22,10 @@
     {% for tweet in tweets %}
     <div class="list-group">
         <a href="/twitter/status/{{tweet['id']}}/" class="list-group-item">
-            <h4 class="list-group-item-heading">{{(tweet.get('user', {}) or {}).get('name', '佚名')}}:</h4>
+            <div class="d-flex w-100 justify-content-between">
+                <h4 class="list-group-item-heading">{{(tweet.get('user', {}) or {}).get('name', '佚名')}}:</h4>
+                <small>{{tweet['created_at']}}</small>
+            </div>
             <p class="list-group-item-text">{{tweet['text']}}</p>
         </a>
     </div>

@@ -35,6 +35,7 @@ class Status(BaseDisplay):
                     tweet_id: "{tweet_id}",
                 ) {{
                     text
+                    url
                     created_at
                     images
                     user {{
@@ -56,6 +57,7 @@ class Status(BaseDisplay):
                 ) {{
                     id
                     text
+                    url
                     created_at
                     user {{
                         name
@@ -66,9 +68,13 @@ class Status(BaseDisplay):
         )
         threads = (await self.gq.query(query)).data["TwitterThreads"]
 
+        # import ipdb
+        # ipdb.set_trace()
+
         return {
             "id": tweet_id,
             "text": docu["text"],
+            "url": docu["url"],
             "image": docu["images"][0] if docu["images"] else "",
             "images": docu["images"],
             "created_at": docu["created_at"],
@@ -77,7 +83,7 @@ class Status(BaseDisplay):
         }
 
 
-class StatusSearch(BaseDisplay):
+class SearchStatus(BaseDisplay):
     @aiohttp_jinja2.template("twitter/search.html")
     async def get(self):
         return
@@ -95,6 +101,8 @@ class StatusSearch(BaseDisplay):
                 ) {{
                     id
                     text
+                    url
+                    created_at
                     images
                     user {{
                         name
