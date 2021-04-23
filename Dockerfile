@@ -14,4 +14,4 @@ ADD . .
 RUN rm -rf /app/ramjet/settings/prd.*
 
 RUN python setup.py install
-ENTRYPOINT python -m ramjet
+CMD  python -m ramjet
