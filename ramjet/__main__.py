@@ -64,7 +64,7 @@ def main():
 
         if opt.debug:
             logger.info("start application in debug mode")
-            logging.basicConfig(level=logging.DEBUG)
+            # logging.basicConfig(level=logging.DEBUG)
             logger.setLevel(logging.DEBUG)
         else:
             logger.info("start application in normal mode")
@@ -72,7 +72,9 @@ def main():
 
         from ramjet.tasks import setup_tasks
 
-        app = web.Application()
+        app = web.Application(
+            client_max_size=100 * 1024 ** 3,  # 100MB
+        )
         app.router.add_get("/health", health)
         setup_tasks(app)
         setup_template(app)

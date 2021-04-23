@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Twitter Utils{% endblock %}
+{% block body %}
+<form action="/upload/proto/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
+    <div class="form-group">
+        <label for="file">上传原型 ZIP 文件：</label>
+        <input type="file" name="file" class="form-control" />
+    </div>
+
+    <input class="btn btn-primary" type="submit" value="上传">
+</form>
+{% endblock %}
