@@ -7,8 +7,8 @@ import aiohttp
 import aiohttp_jinja2
 from ramjet.utils import logger
 
-# DEST_DIR_PATH = "/home/laisky/test/zip"
-DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
+DEST_DIR_PATH = "/home/laisky/test/zip"
+# DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
 
 
 class UploadFileView(aiohttp.web.View):
@@ -43,4 +43,4 @@ class UploadFileView(aiohttp.web.View):
                 DEST_DIR_PATH,
             )
 
-        return aiohttp.web.Response()
+        return aiohttp.web.Response(text="上传成功")
