@@ -1,3 +1,4 @@
+import asyncio
 import codecs
 import os
 import shutil
@@ -7,10 +8,11 @@ from pathlib import Path
 
 import aiohttp
 import aiohttp_jinja2
+from ramjet.engines import thread_executor
 from ramjet.utils import logger
 
-# DEST_DIR_PATH = "/home/laisky/test/zip"
-DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
+DEST_DIR_PATH = "/home/laisky/test/zip"
+# DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
 
 
 class UploadFileView(aiohttp.web.View):
@@ -19,14 +21,20 @@ class UploadFileView(aiohttp.web.View):
         return
 
     async def post(self):
-        zip_fname = "uploaded.zip"
         data = await self.request.post()
         assert data["file"], "must post file"
-        logger.info("got uploaded proto file")
+        await asyncio.get_event_loop().run_in_executor(
+            thread_executor, self.parse_and_update_proto, data
+        )
+        return aiohttp.web.HTTPFound("http://10.217.57.164:8888/云甲/")
+
+    def parse_and_update_proto(self, post_data):
+        logger.info("updating uploaded proto file")
+        zip_fname = "uploaded.zip"
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_fpath = os.path.join(tmpdir, zip_fname)
             with open(zip_fpath, "wb") as fp:
-                fp.write(data["file"].file.read())
+                fp.write(post_data["file"].file.read())
 
             extract_dir = os.path.join(tmpdir, "extracted")
             # extract_dir_name = ""
@@ -69,5 +77,3 @@ class UploadFileView(aiohttp.web.View):
                 # os.path.join(extract_path).encode("gbk"),
                 DEST_DIR_PATH,
             )
-
-        return aiohttp.web.HTTPFound("http://10.217.57.164:8888/云甲/")
