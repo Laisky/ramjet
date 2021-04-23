@@ -35,16 +35,22 @@ class UploadFileView(aiohttp.web.View):
                     extract_fpath = Path(fp.extract(fname, extract_dir))
                     # print(list(os.walk(extract_dir)))
                     # print(">> fname", fname)
-                    new_fpath = os.path.join(
-                        extract_dir, fname.encode("cp437").decode("utf8")
-                    )
+                    try:
+                        new_fpath = os.path.join(
+                            extract_dir, fname.encode("cp437").decode("utf8")
+                        )
+                    except:
+                        new_fpath = os.path.join(
+                            extract_dir, fname.encode("cp437").decode("gbk")
+                        )
+
                     new_dir = os.path.dirname(new_fpath)
                     if not os.path.exists(new_dir):
                         os.mkdir(new_dir)
 
                     extract_fpath.rename(new_fpath)
 
-            print(list(os.walk(extract_dir)))
+            # print(list(os.walk(extract_dir)))
 
             # 解压的文件夹名是乱码，暂时不清楚怎么处理，直接保存了拿来用
             # extract_dir_name = fp.namelist()[0]
