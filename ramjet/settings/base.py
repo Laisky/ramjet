@@ -6,6 +6,14 @@ import tempfile
 HOST = "127.0.0.1"
 PORT = 37851
 
+
+MAIL_HOST = ""
+MAIL_USERNAME = ""
+MAIL_PASSWD = ""
+MAIL_PORT = 0
+MAIL_FROM_ADDR = ""
+MAIL_TO_ADDRS = ""
+
 # worker
 N_THREAD_WORKER = 8
 N_PROCESS_WORKER = 2
@@ -53,3 +61,11 @@ INSTALL_TASKS = [
     "dlp",
     "upload",
 ]
+
+
+# db
+MONGO_HOST = ""
+MONGO_PORT = 0
+MONGO_DB = ""
+MONGO_USER = ""
+MONGO_PASSWD = ""
