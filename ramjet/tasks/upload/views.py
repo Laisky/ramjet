@@ -1,14 +1,16 @@
+import codecs
 import os
 import shutil
 import tempfile
 import zipfile
+from pathlib import Path
 
 import aiohttp
 import aiohttp_jinja2
 from ramjet.utils import logger
 
-# DEST_DIR_PATH = "/home/laisky/test/zip"
-DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
+DEST_DIR_PATH = "/home/laisky/test/zip"
+# DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
 
 
 class UploadFileView(aiohttp.web.View):
@@ -26,12 +28,28 @@ class UploadFileView(aiohttp.web.View):
             with open(zip_fpath, "wb") as fp:
                 fp.write(data["file"].file.read())
 
-            extract_path = os.path.join(tmpdir, "extracted")
-            extract_dir_name = ""
+            extract_dir = os.path.join(tmpdir, "extracted")
+            # extract_dir_name = ""
             with zipfile.ZipFile(zip_fpath) as fp:
-                # 解压的文件夹名是乱码，暂时不清楚怎么处理，直接保存了拿来用
-                extract_dir_name = fp.namelist()[0]
-                fp.extractall(extract_path)
+                for fname in fp.namelist():
+                    extract_fpath = Path(fp.extract(fname, extract_dir))
+                    # print(list(os.walk(extract_dir)))
+                    # print(">> fname", fname)
+                    new_fpath = os.path.join(
+                        extract_dir, fname.encode("cp437").decode("utf8")
+                    )
+                    new_dir = os.path.dirname(new_fpath)
+                    if not os.path.exists(new_dir):
+                        os.mkdir(new_dir)
+
+                    extract_fpath.rename(new_fpath)
+
+            print(list(os.walk(extract_dir)))
+
+            # 解压的文件夹名是乱码，暂时不清楚怎么处理，直接保存了拿来用
+            # extract_dir_name = fp.namelist()[0]
+            # print(fp.namelist())
+            # fp.extractall(extract_path)
 
             logger.info(f"remove dir {DEST_DIR_PATH}")
             if os.path.isdir(DEST_DIR_PATH):
@@ -40,7 +58,8 @@ class UploadFileView(aiohttp.web.View):
             # os.mkdir(DEST_DIR_PATH)
             logger.info(f"update dir {DEST_DIR_PATH}")
             shutil.move(
-                os.path.join(extract_path, extract_dir_name),
+                # os.path.join(extract_path, extract_dir_name),
+                extract_dir,
                 # os.path.join(extract_path).encode("gbk"),
                 DEST_DIR_PATH,
             )
