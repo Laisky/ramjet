@@ -34,13 +34,15 @@ class UploadFileView(aiohttp.web.View):
                 fp.extractall(extract_path)
 
             logger.info(f"remove dir {DEST_DIR_PATH}")
-            shutil.rmtree(DEST_DIR_PATH, ignore_errors=True)
+            if os.path.isdir(DEST_DIR_PATH):
+                shutil.rmtree(DEST_DIR_PATH)
+
             # os.mkdir(DEST_DIR_PATH)
             logger.info(f"update dir {DEST_DIR_PATH}")
-            os.rename(
+            shutil.move(
                 os.path.join(extract_path, extract_dir_name),
                 # os.path.join(extract_path).encode("gbk"),
                 DEST_DIR_PATH,
             )
 
-        return aiohttp.web.Response(text="上传成功")
+        return aiohttp.web.HTTPFound("http://10.217.57.164:8888/")
