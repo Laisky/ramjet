@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}DLP 图片盲水印 - 上传图片{% endblock %}
+{% block body %}
+<article>
+    <form action="/dlp/image/watermark/verify/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
+        <label for="image">Choose image need verify:</label>
+        <input type="file" name="image" id="image" />
+
+        <input type="submit" value="上传图片" />
+    </form>
+</article>
+{% endblock %}
