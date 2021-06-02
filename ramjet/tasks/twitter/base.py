@@ -75,14 +75,25 @@ def gen_related_tweets(
     tweetCol: pymongo.collection.Collection,
     tweet: Dict[str, any],
 ) -> List[str]:
+    """generate replies & retweeted & quoted tweets
+
+    Args:
+        tweetCol (pymongo.collection.Collection): [description]
+        tweet (Dict[str, any]): [description]
+
+    Returns:
+        List[str]: [description]
+    """
     related_ids = []
-    tweet.get("in_reply_to_status_id") and related_ids.append(
-        tweet["in_reply_to_status_id"]
-    )
-    tweet.get("retweeted_status") and related_ids.append(
-        tweet["retweeted_status"]["id"]
-    )
-    tweet.get("quoted_status") and related_ids.append(tweet["quoted_status"]["id"])
+    if tweet.get("in_reply_to_status_id"):
+        related_ids.append(tweet["in_reply_to_status_id"])
+
+    if tweet.get("retweeted_status"):
+        related_ids.append(tweet["retweeted_status"]["id"])
+
+    if tweet.get("quoted_status"):
+        related_ids.append(tweet["quoted_status"]["id"])
+
     return list(
         filter(lambda id_: not tweetCol.find_one({"id_str": str(id_)}), related_ids)
     )

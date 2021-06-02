@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from threading import RLock
 from typing import Dict
@@ -47,6 +48,9 @@ class FetchView(web.View):
         tweet_id = tweet_id.strip("/")
         if "/" in tweet_id:
             tweet_id = tweet_id.split("/")[-1]
+
+        if "?" in tweet_id:
+            tweet_id = tweet_id.split("?")[0]
 
         logger.info(f"fetch tweet {tweet_id}")
         thread_executor.submit(TwitterAPI().run_for_tweet_id, tweet_id)
@@ -289,6 +293,7 @@ class TwitterAPI:
                 return
 
     def run(self):
+        """routine work to crawling twitter tweets"""
         if not lock.acquire(blocking=False):
             return
 
