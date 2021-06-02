@@ -96,7 +96,7 @@ class TwitterAPI:
 
                 try:
                     self.save_tweet(new_tweet)
-                    self._save_replies(new_tweet)
+                    # self._save_replies(new_tweet)
                     # self._save_relate_tweets(new_tweet)
                 except Exception:
                     logger.exception("save tweet")
