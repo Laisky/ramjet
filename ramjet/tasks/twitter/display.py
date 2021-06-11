@@ -43,10 +43,10 @@ class Status(BaseDisplay):
         """
         )
         resp = await self.gq.query(query)
-        data = resp.data.get("TwitterStatues")
+        data = resp.data
         assert data, f"load tweet `{tweet_id}` got: {resp.errors}"
 
-        docu = data[0]
+        docu = data["TwitterStatues"][0]
         docu["images"] = docu.get("images", [])
 
         # load threads
@@ -67,7 +67,9 @@ class Status(BaseDisplay):
             }}
         """
         )
-        threads = (await self.gq.query(query)).data["TwitterThreads"]
+        resp = await self.gq.query(query)
+        assert resp.data, f"load tweet `{tweet_id}` threads: {resp.errors}"
+        threads = resp.data["TwitterThreads"]
 
         # import ipdb
         # ipdb.set_trace()
@@ -113,10 +115,10 @@ class SearchStatus(BaseDisplay):
         """
         )
         resp = await self.gq.query(query)
-        data = resp.data.get("TwitterStatues")
+        data = resp.data
         assert data, f"search tweets `{search_text}` got: {resp.errors}"
 
-        docus = list(filter(lambda d: d, data))
+        docus = list(filter(lambda d: d, data["TwitterStatues"]))
         return {
             "search_text": search_text,
             "tweets": docus,
