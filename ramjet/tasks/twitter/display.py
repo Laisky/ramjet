@@ -46,7 +46,8 @@ class Status(BaseDisplay):
         data = resp.data.get("TwitterStatues")
         assert data, f"load tweet `{tweet_id}` got: {resp.errors}"
 
-        data[0]["images"] = data[0].get("images", [])
+        docu = data[0]
+        docu["images"] = docu.get("images", [])
 
         # load threads
         query = GraphQLRequest(
