@@ -1,10 +1,7 @@
 import aiohttp
 import aiohttp_jinja2
-import pymongo
-from aiographql.client import GraphQLClient, GraphQLRequest
-from ramjet.utils import get_conn, get_gq_cli, logger
-
-from .base import replace_media_urls
+from aiographql.client import GraphQLRequest
+from ramjet.utils import get_conn, get_gq_cli
 
 
 class BaseDisplay(aiohttp.web.View):
@@ -45,8 +42,11 @@ class Status(BaseDisplay):
             }}
         """
         )
-        docu = (await self.gq.query(query)).data["TwitterStatues"][0]
-        docu["images"] = docu.get("images", [])
+        resp = await self.gq.query(query)
+        data = resp.data.get("TwitterStatues")
+        assert data, f"load tweet `{tweet_id}` got: {resp.errors}"
+
+        data[0]["images"] = data[0].get("images", [])
 
         # load threads
         query = GraphQLRequest(
@@ -111,8 +111,11 @@ class SearchStatus(BaseDisplay):
             }}
         """
         )
-        docus = (await self.gq.query(query)).data["TwitterStatues"]
-        docus = list(filter(lambda d: d, docus))
+        resp = await self.gq.query(query)
+        data = resp.data.get("TwitterStatues")
+        assert data, f"search tweets `{search_text}` got: {resp.errors}"
+
+        docus = list(filter(lambda d: d, data))
         return {
             "search_text": search_text,
             "tweets": docus,
