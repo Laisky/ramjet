@@ -63,7 +63,7 @@ data_files = [
     "CHANGELOG.md",
     "LICENSE",
     "Makefile",
-    "package.json",
+    # "package.json",
     "tox.ini",
 ]
 
