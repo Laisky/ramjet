@@ -34,3 +34,4 @@ requests
 
 # aws
 boto3~=1.4.8
+tornado>=5.1 # not directly required, pinned by Snyk to avoid a vulnerability
