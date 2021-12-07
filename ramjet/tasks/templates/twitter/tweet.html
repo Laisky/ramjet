@@ -42,7 +42,7 @@
     <li href="/twitter/status/{{tweet['id']}}/" class="list-group-item list-group-item-action"
         style="border-width: 1px;">
         <div class="d-flex w-100 justify-content-between">
-            <h5 class="mb-1">{{(tweet.get('user', {}) or {}).get('name', '佚名')}}</h5>
+            <h5 class="mb-1"><a href="https://app.laisky.com/twitter/status/{{tweet['id']}}/">➡️</a> {{(tweet.get('user', {}) or {}).get('name', '佚名')}}</h5>
             <small>{{tweet['created_at']}}</small>
         </div>
         <p class="mb-1">{{tweet['text']}}</p>

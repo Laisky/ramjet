@@ -14,4 +14,9 @@ ADD . .
 RUN rm -rf /app/ramjet/settings/prd.*
 
 RUN python setup.py install
+
+RUN adduser --disabled-password --gecos '' laisky \
+    && chown -R laisky:laisky /app
+USER laisky
+
 CMD [ "python" , "-m" , "ramjet" ]
