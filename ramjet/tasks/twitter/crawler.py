@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 from threading import RLock
-from typing import Dict
+from typing import Any, Dict
 
 import pymongo
 import requests
@@ -44,7 +44,7 @@ class FetchView(web.View):
         )
 
     async def post(self):
-        tweet_id = (await self.request.post())["tweet_id"]
+        tweet_id = str((await self.request.post())["tweet_id"])
         tweet_id = tweet_id.strip("/")
         if "/" in tweet_id:
             tweet_id = tweet_id.split("/")[-1]
@@ -59,7 +59,7 @@ class FetchView(web.View):
 
 class TwitterAPI:
 
-    __api = None
+    __api: API = None
     __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     _current_user_id: int
 
@@ -80,7 +80,7 @@ class TwitterAPI:
         )
         return self.__api
 
-    def _save_replies(self, tweet: Dict[str, any]):
+    def _save_replies(self, tweet: Dict[str, Any]):
         logger.debug(f"_save_replies for {tweet['id']}")
         try:
             for new_tweet in self.__api.search(
@@ -113,23 +113,34 @@ class TwitterAPI:
         # last_id = 0
 
         logger.info(f"g_load_tweets for {last_id=}")
-        last_tweets = self.api.user_timeline(count=1, tweet_mode="extended")
+        last_tweets = self.api.user_timeline(
+            count=1,
+            tweet_mode="extended",
+            exclude_replies=False,
+            include_rts=True,
+        )
         if not last_tweets:
             return
 
         yield last_tweets[0]
-        current_id = last_tweets[0]["id"]
+        current_id: int = last_tweets[0]["id"]
+        is_last_batch: bool = False
         while True:
             tweets = self.api.user_timeline(
-                max_id=current_id, count=100, tweet_mode="extended"
+                max_id=current_id,
+                count=100,
+                exclude_replies=False,
+                include_rts=True,
+                tweet_mode="extended",
             )
             if len(tweets) == 1:  # 到头了
                 logger.info("loaded all tweets")
                 return
 
             for s in tweets:
-                if s["id"] <= last_id:  # 已存储
-                    return
+                if s["id"] <= last_id:
+                    # arrive at the newest tweet in db
+                    is_last_batch = True
 
                 yield s
                 if s["id"] < current_id:
@@ -146,6 +157,9 @@ class TwitterAPI:
                 #         continue
 
                 #     yield s
+
+            if is_last_batch:
+                return
 
     @property
     def col(self):
@@ -169,7 +183,7 @@ class TwitterAPI:
         )
         return docu and docu["id"]
 
-    def save_tweet(self, tweet: Dict[str, any]):
+    def save_tweet(self, tweet: Dict[str, Any]):
 
         # parse tweet
         self.download_images_for_tweet(tweet)
@@ -198,7 +212,7 @@ class TwitterAPI:
         )
         return src
 
-    def _download_image(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
+    def _download_image(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
         fpath = Path(TWITTER_IMAGE_DIR, media_entity["media_url_https"].split("/")[-1])
         if fpath.is_file():
             return
@@ -215,7 +229,7 @@ class TwitterAPI:
 
             logger.info(f"succeed download image {tweet['id']} -> {fpath}")
 
-    def _download_video(self, tweet: Dict[str, any], media_entity: Dict[str, any]):
+    def _download_video(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
         max_bitrate = 0
         max_url = ""
         for v in media_entity["video_info"]["variants"]:
@@ -241,7 +255,7 @@ class TwitterAPI:
 
             logger.info(f"succeed download image {tweet['id']} -> {fpath}")
 
-    def download_images_for_tweet(self, tweet: Dict[str, any]):
+    def download_images_for_tweet(self, tweet: Dict[str, Any]):
         media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(
             "entities", {}
         ).get("media", [])
@@ -258,7 +272,7 @@ class TwitterAPI:
         for u in self.db["account"].find():
             yield u
 
-    def _save_relate_tweets(self, status: Dict[str, any]):
+    def _save_relate_tweets(self, status: Dict[str, Any]):
         logger.debug(f"_save_relate_tweets for {status['id']}")
         try:
             for id_ in gen_related_tweets(self.col, status):
