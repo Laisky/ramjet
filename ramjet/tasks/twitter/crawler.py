@@ -9,13 +9,8 @@ import requests
 import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
-from ramjet.settings import (
-    ACCESS_TOKEN,
-    ACCESS_TOKEN_SECRET,
-    CONSUMER_KEY,
-    CONSUMER_SECRET,
-    TWITTER_IMAGE_DIR,
-)
+from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
+                             CONSUMER_SECRET, TWITTER_IMAGE_DIR)
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
@@ -59,7 +54,7 @@ class FetchView(web.View):
 
 class TwitterAPI:
 
-    __api: API = None
+    __api = None
     __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     _current_user_id: int
 
@@ -83,7 +78,7 @@ class TwitterAPI:
     def _save_replies(self, tweet: Dict[str, Any]):
         logger.debug(f"_save_replies for {tweet['id']}")
         try:
-            for new_tweet in self.__api.search(
+            for new_tweet in self.__api.search_tweets(
                 q=f"to:{tweet['user']['screen_name']}",
                 since_id=tweet["id"],
                 tweet_mode="extended",
