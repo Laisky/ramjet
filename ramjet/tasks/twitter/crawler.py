@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 import pymongo
 import requests
@@ -14,7 +14,8 @@ from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
-from .base import gen_related_tweets, logger, twitter_api_parser
+from .base import (gen_related_tweets, get_image_filepath, logger,
+                   twitter_api_parser)
 
 lock = RLock()
 
@@ -54,7 +55,7 @@ class FetchView(web.View):
 
 class TwitterAPI:
 
-    __api = None
+    __api: API = None
     __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     _current_user_id: int
 
@@ -208,7 +209,7 @@ class TwitterAPI:
         return src
 
     def _download_image(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
-        fpath = Path(TWITTER_IMAGE_DIR, media_entity["media_url_https"].split("/")[-1])
+        fpath = get_image_filepath(media_entity)
         if fpath.is_file():
             return
 
@@ -236,7 +237,7 @@ class TwitterAPI:
             return
 
         max_url = max_url[: max_url.rfind("?")]
-        fpath = Path(TWITTER_IMAGE_DIR, max_url.split("/")[-1])
+        fpath = get_image_filepath(media_entity)
         if fpath.is_file():
             return
 
@@ -272,15 +273,18 @@ class TwitterAPI:
         try:
             for id_ in gen_related_tweets(self.col, status):
                 try:
-                    docu = self.api.get_status(id_, tweet_mode="extended")
-                except tweepy.error.RateLimitError:
-                    time.sleep(10)
-                except Exception:
-                    logger.exception(f"load tweet {id_} got error")
-                    raise
-                else:
-                    self.save_tweet(docu)
-                    self._save_relate_tweets(docu)
+                    try:
+                        docu = self.api.get_status(id_, tweet_mode="extended")
+                    except tweepy.error.RateLimitError:
+                        time.sleep(10)
+                    except Exception:
+                        logger.exception(f"load tweet {id_=} got error")
+                        raise
+                    else:
+                        self.save_tweet(docu)
+                        self._save_relate_tweets(docu)
+                except Exception as err:
+                    logger.exception(f"save tweet {id_=}")
         except Exception:
             logger.exception(f"_save_relate_tweets")
 

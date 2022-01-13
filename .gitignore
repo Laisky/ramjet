@@ -74,3 +74,4 @@ tags
 .vscode
 dist
 notebook
+/.pytest_cache

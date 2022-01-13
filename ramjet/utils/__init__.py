@@ -17,7 +17,8 @@ from ramjet.engines import thread_executor
 from ramjet.settings import LOG_NAME, LOG_PATH, MAIL_FROM_ADDR, MAIL_TO_ADDRS
 
 from .db import get_conn, get_gq_cli
-from .encrypt import generate_passwd, generate_token, validate_passwd, validate_token
+from .encrypt import (generate_passwd, generate_token, validate_passwd,
+                      validate_token)
 from .jinja import TemplateRendering, debug_wrapper
 from .mail import send_mail
 
@@ -71,7 +72,7 @@ class MultiProcessLogHandler(logging.Handler):
         self.setup_queue()
         thread_executor.submit(self.run_dispatcher)
 
-    def get_email_sender():
+    def get_email_sender(self):
         return opt.email_sender
 
     def emit(self, record):

@@ -1,16 +1,20 @@
 import datetime
+import os
 import random
 import re
-from typing import Dict, Generator, List
+from hashlib import md5
+from pathlib import Path
+from typing import Any, Dict, Generator, List
 
 import pymongo
+from ramjet.settings import TWITTER_IMAGE_DIR
 from ramjet.settings import logger as ramjet_logger
 
 logger = ramjet_logger.getChild("tasks.twitter")
-twitter_surl_regex = re.compile("https?://t\.co/[A-z0-9]*")
+twitter_surl_regex = re.compile(r"https?://t\.co/[A-z0-9]*")
 
 
-def get_tweet_text(tweet: Dict[str, any]) -> str:
+def get_tweet_text(tweet: Dict[str, Any]) -> str:
     return tweet.get("full_text") or tweet.get("text", "")
 
 
@@ -33,7 +37,21 @@ def replace_to_laisky_url(url: str) -> str:
     return url
 
 
-def replace_media_urls(tweet: Dict[str, any]) -> None:
+def get_image_filepath(media_entity: Dict[str, Any]) -> Path:
+    fname = media_entity["media_url_https"].split("/")[-1]
+    fname = get_md5_hierachy_dir(fname)
+    p = Path(TWITTER_IMAGE_DIR, fname).absolute()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def get_md5_hierachy_dir(fname: str) -> str:
+    hashed = md5(fname.encode("utf8")).hexdigest()
+    c1, c2 = hashed[:2], hashed[2:4]
+    return os.path.join(c1, c2, fname)
+
+
+def replace_media_urls(tweet: Dict[str, Any]) -> None:
     for ee in ["entities", "extended_entities"]:
         for media in tweet.get(ee, {}).get("media", []):
             surl = media.get("url", "")
@@ -44,7 +62,7 @@ def replace_media_urls(tweet: Dict[str, any]) -> None:
                 media["media_url_https"] = durl
 
 
-def replace_short_urls(tweet: Dict[str, any]) -> None:
+def replace_short_urls(tweet: Dict[str, Any]) -> None:
     for media in tweet.get("entities", {}).get("urls", []):
         surl = media.get("url", "")
         durl = media.get("expanded_url")
@@ -52,7 +70,7 @@ def replace_short_urls(tweet: Dict[str, any]) -> None:
             tweet["text"] = tweet["text"].replace(surl, durl)
 
 
-def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
+def twitter_api_parser(tweet: Dict[str, Any]) -> Dict[str, Any]:
     """Parse tweet document got from twitter api"""
     reg_topic = re.compile(r"[\b|\s]#(\S+)")
     tweet["topics"] = reg_topic.findall(get_tweet_text(tweet).replace(".", "_"))
@@ -73,13 +91,13 @@ def twitter_api_parser(tweet: Dict[str, any]) -> Dict[str, any]:
 
 def gen_related_tweets(
     tweetCol: pymongo.collection.Collection,
-    tweet: Dict[str, any],
+    tweet: Dict[str, Any],
 ) -> List[str]:
     """generate replies & retweeted & quoted tweets
 
     Args:
         tweetCol (pymongo.collection.Collection): [description]
-        tweet (Dict[str, any]): [description]
+        tweet (Dict[str, Any]): [description]
 
     Returns:
         List[str]: [description]
@@ -101,7 +119,7 @@ def gen_related_tweets(
     #     yield _id
 
 
-def twitter_history_parser(tweet: Dict[str, any]):
+def twitter_history_parser(tweet: Dict[str, Any]):
     """NOTIMPLEMENT!!!
 
     Tweets that from twitter history propose:
