@@ -83,7 +83,6 @@ def twitter_api_parser(tweet: Dict[str, Any]) -> Dict[str, Any]:
 
     # replace url
     tweet["text"] = get_tweet_text(tweet)
-    replace_media_urls(tweet)
     replace_short_urls(tweet)
 
     return tweet

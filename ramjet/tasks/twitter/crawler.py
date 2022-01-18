@@ -19,7 +19,13 @@ from ramjet.settings import (
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
-from .base import gen_related_tweets, get_image_filepath, logger, twitter_api_parser
+from .base import (
+    gen_related_tweets,
+    get_image_filepath,
+    logger,
+    twitter_api_parser,
+    replace_media_urls,
+)
 
 lock = RLock()
 
@@ -261,11 +267,15 @@ class TwitterAPI:
         ).get("media", [])
 
         if self.is_download_media(tweet):
-            for img in media:
-                if img["type"] == "photo":
-                    self._download_image(tweet, img)
-                elif img["type"] == "video":
-                    self._download_video(tweet, img)
+            return
+
+        for img in media:
+            if img["type"] == "photo":
+                self._download_image(tweet, img)
+            elif img["type"] == "video":
+                self._download_video(tweet, img)
+
+        replace_media_urls(tweet)
 
     def is_download_media(self, tweet: Dict[str, Any]) -> bool:
         """only download medias for user in users table, to save disk space"""
