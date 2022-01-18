@@ -279,11 +279,11 @@ class TwitterAPI:
 
     def is_download_media(self, tweet: Dict[str, Any]) -> bool:
         """only download medias for user in users table, to save disk space"""
-        user = tweet.get("user", {}).get("id_str")
-        if not user:
+        user_id = tweet.get("user", {}).get("id_str", "").strip()
+        if not user_id:
             return False
 
-        return self.db["users"].find_one({"id_str": str(user["id"])}) is not None
+        return self.db["users"].find_one({"id_str": user_id}) is not None
 
     def g_load_user(self):
         logger.debug("g_load_user_auth")
