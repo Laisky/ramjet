@@ -9,13 +9,17 @@ import requests
 import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
-from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
-                             CONSUMER_SECRET, TWITTER_IMAGE_DIR)
+from ramjet.settings import (
+    ACCESS_TOKEN,
+    ACCESS_TOKEN_SECRET,
+    CONSUMER_KEY,
+    CONSUMER_SECRET,
+    TWITTER_IMAGE_DIR,
+)
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
-from .base import (gen_related_tweets, get_image_filepath, logger,
-                   twitter_api_parser)
+from .base import gen_related_tweets, get_image_filepath, logger, twitter_api_parser
 
 lock = RLock()
 
@@ -199,14 +203,14 @@ class TwitterAPI:
                 {"id_str": str(user["id"])}, {"$set": user}, upsert=True
             )
 
-    def _convert_media_url(self, src: str) -> str:
-        src = src.replace(
-            "http://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
-        )
-        src = src.replace(
-            "https://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
-        )
-        return src
+    # def _convert_media_url(self, src: str) -> str:
+    #     src = src.replace(
+    #         "http://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+    #     )
+    #     src = src.replace(
+    #         "https://pbs.twimg.com/media/", "https://s3.laisky.com/uploads/twitter/"
+    #     )
+    #     return src
 
     def _download_image(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
         fpath = get_image_filepath(media_entity)
@@ -256,11 +260,20 @@ class TwitterAPI:
             "entities", {}
         ).get("media", [])
 
-        for img in media:
-            if img["type"] == "photo":
-                self._download_image(tweet, img)
-            elif img["type"] == "video":
-                self._download_video(tweet, img)
+        if self.is_download_media(tweet):
+            for img in media:
+                if img["type"] == "photo":
+                    self._download_image(tweet, img)
+                elif img["type"] == "video":
+                    self._download_video(tweet, img)
+
+    def is_download_media(self, tweet: Dict[str, Any]) -> bool:
+        """only download medias for user in users table, to save disk space"""
+        user = tweet.get("user", {}).get("id_str")
+        if not user:
+            return False
+
+        return self.db["users"].find_one({"id_str": str(user["id"])}) is not None
 
     def g_load_user(self):
         logger.debug("g_load_user_auth")
