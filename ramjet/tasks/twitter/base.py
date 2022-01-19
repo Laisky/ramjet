@@ -58,7 +58,7 @@ def replace_media_urls(tweet: Dict[str, Any]) -> None:
             durl = media.get("media_url_https") or media.get("media_url")
             durl = replace_to_laisky_url(durl)
             if durl:
-                tweet["text"] = tweet["text"].replace(surl, durl)
+                tweet['full_text'] = get_tweet_text(tweet).replace(surl, durl)
                 media["media_url_https"] = durl
 
 
