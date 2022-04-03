@@ -1,4 +1,4 @@
-FROM python:3.9.11-buster
+FROM python:3.9.12-buster
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make gcc git build-essential ca-certificates curl \
