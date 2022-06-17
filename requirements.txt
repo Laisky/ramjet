@@ -34,4 +34,4 @@ tweepy~=4.4.0
 requests
 
 # aws
-boto3~=1.4.8
+boto3~=1.24.11

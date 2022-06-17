@@ -18,6 +18,8 @@ from ramjet.settings import (
     S3_SERVER,
     S3_REGION,
     S3_BUCKET,
+    S3_KEY,
+    S3_SECRET,
 )
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
@@ -79,6 +81,8 @@ class TwitterAPI:
         self.__s3cli = connect_s3(
             S3_SERVER,
             S3_REGION,
+            S3_KEY,
+            S3_SECRET,
         )
 
     @property

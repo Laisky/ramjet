@@ -9,6 +9,8 @@ import botocore
 from botocore.exceptions import ClientError
 from kipp.utils import setup_logger
 
+from ramjet.settings import S3_SERVER, S3_REGION, S3_BUCKET, S3_KEY, S3_SECRET
+
 logger = setup_logger("s3_uploader")
 
 
@@ -39,9 +41,13 @@ def _get_s3_fname(root, file_name):
     return file_name[len(root) :].lstrip("/")
 
 
-def connect_s3(server: str, region: str):
+def connect_s3(
+    server: str, region: str, access_key: str, secret_key: str
+) -> boto3.client:
     b3_session = boto3.Session(
-        aws_access_key_id="1", aws_secret_access_key="1", region_name=region
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name=region,
     )
     return b3_session.client("s3", endpoint_url=server)
 
@@ -52,7 +58,7 @@ def _list_all_files(dir) -> Generator:
             yield os.path.join(root, file)
 
 
-def upload_file_in_mem(s3_client, file_cnt: bytes, bucket: str, key:str):
+def upload_file_in_mem(s3_client, file_cnt: bytes, bucket: str, key: str):
     """Upload a file in memory(without disk) to an S3 bucket"""
 
     try:
@@ -65,8 +71,10 @@ def upload_file_in_mem(s3_client, file_cnt: bytes, bucket: str, key:str):
 
 if __name__ == "__main__":
     s3_cli = connect_s3(
-        "http://100.97.108.34:8333",
-        "home",
+        S3_SERVER,
+        S3_REGION,
+        S3_KEY,
+        S3_SECRET,
     )
     with open(r"/home/laisky/repo/laisky/ramjet/README.md", "rb") as f:
         upload_file(s3_cli, "test", "README.md", f.read())
