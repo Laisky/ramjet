@@ -60,6 +60,7 @@ INSTALL_TASKS = [
     "email_proxy",
     "dlp",
     "upload",
+    "monitors",
 ]
 
 

@@ -15,6 +15,11 @@ from ramjet.settings import (
     CONSUMER_KEY,
     CONSUMER_SECRET,
     TWITTER_IMAGE_DIR,
+    S3_SERVER,
+    S3_REGION,
+    S3_BUCKET,
+    S3_KEY,
+    S3_SECRET,
 )
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
@@ -22,10 +27,12 @@ from tweepy import API, OAuthHandler
 from .base import (
     gen_related_tweets,
     get_image_filepath,
+    get_s3_key,
     logger,
     twitter_api_parser,
     replace_media_urls,
 )
+from .s3 import upload_file_in_mem, connect_s3, is_file_exists
 
 lock = RLock()
 
@@ -68,6 +75,15 @@ class TwitterAPI:
     __api: API = None
     __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     _current_user_id: int
+    __s3cli = None
+
+    def __init__(self):
+        self.__s3cli = connect_s3(
+            S3_SERVER,
+            S3_REGION,
+            S3_KEY,
+            S3_SECRET,
+        )
 
     @property
     def api(self):
@@ -219,10 +235,7 @@ class TwitterAPI:
     #     return src
 
     def _download_image(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
-        fpath = get_image_filepath(media_entity)
-        if fpath.is_file():
-            return
-
+        fkey = get_s3_key(media_entity)
         with requests.get(media_entity["media_url_https"] + ":orig") as r:
             if r.status_code != 200:
                 logger.error(
@@ -230,10 +243,14 @@ class TwitterAPI:
                 )
                 return
 
-            with open(fpath, "wb") as f:
-                f.write(r.content)
+            if is_file_exists(self.__s3cli, len(r.content), S3_BUCKET, fkey):
+                return
 
-            logger.info(f"succeed download image {tweet['id']} -> {fpath}")
+            upload_file_in_mem(
+                self.__s3cli, r.content, S3_BUCKET, get_s3_key(media_entity)
+            )
+
+            logger.info(f"processed image {tweet['id']} -> {fkey}")
 
     def _download_video(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
         max_bitrate = 0
@@ -247,27 +264,29 @@ class TwitterAPI:
             return
 
         max_url = max_url[: max_url.rfind("?")]
-        fpath = get_image_filepath(media_entity)
-        if fpath.is_file():
-            return
 
+        fkey = get_s3_key(media_entity)
         with requests.get(max_url) as r:
             if r.status_code != 200:
                 logger.error(f"download {max_url}: [{r.status_code}]{r.content}")
                 return
 
-            with open(fpath, "wb") as f:
-                f.write(r.content)
+            if is_file_exists(self.__s3cli, len(r.content), S3_BUCKET, fkey):
+                return
 
-            logger.info(f"succeed download image {tweet['id']} -> {fpath}")
+            upload_file_in_mem(
+                self.__s3cli, r.content, S3_BUCKET, get_s3_key(media_entity)
+            )
+
+            logger.info(f"processed video {tweet['id']} -> {fkey}")
 
     def download_images_for_tweet(self, tweet: Dict[str, Any]):
         media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(
             "entities", {}
         ).get("media", [])
 
-        if self.is_download_media(tweet):
-            return
+        # if self.is_download_media(tweet):
+        #     return
 
         for img in media:
             if img["type"] == "photo":
@@ -348,7 +367,7 @@ class TwitterAPI:
                         self._save_replies(status)
                         self.save_tweet(status)
                 except Exception:
-                    logger.exception(f"try load user {u['username']} tweets")
+                    logger.exception(f"save user {u['username']} tweets")
         except Exception as err:
             logger.exception(err)
         else:

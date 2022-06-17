@@ -45,6 +45,12 @@ def get_image_filepath(media_entity: Dict[str, Any]) -> Path:
     return p
 
 
+def get_s3_key(media_entity: Dict[str, Any]) -> str:
+    """generate s3 key for file"""
+    fname = media_entity["media_url_https"].split("/")[-1]
+    return os.path.join("twitter", get_md5_hierachy_dir(fname))
+
+
 def get_md5_hierachy_dir(fname: str) -> str:
     hashed = md5(fname.encode("utf8")).hexdigest()
     c1, c2 = hashed[:2], hashed[2:4]
@@ -58,7 +64,7 @@ def replace_media_urls(tweet: Dict[str, Any]) -> None:
             durl = media.get("media_url_https") or media.get("media_url")
             durl = replace_to_laisky_url(durl)
             if durl:
-                tweet['full_text'] = get_tweet_text(tweet).replace(surl, durl)
+                tweet["full_text"] = get_tweet_text(tweet).replace(surl, durl)
                 media["media_url_https"] = durl
 
 
