@@ -26,15 +26,16 @@ def is_file_exists(s3_client, fsize: int, bucket: str, key: str) -> bool:
         assert (
             resp_code == 200
         ), f"status code is {response['ResponseMetadata']['HTTPStatusCode']}"
-        assert response["ContentLength"] == fsize, "file size mismatch"
-        return True
+        if response["ContentLength"] != fsize:
+            return False
     except ClientError as e:
         if e.response["Error"]["Code"] == "404":
             return False
 
-        logger.exception(f"head file {bucket}/{key}")
+        logger.info(f"head file {bucket}/{key}")
+        raise e
 
-    return False
+    return True
 
 
 def _get_s3_fname(root, file_name):
@@ -72,9 +73,13 @@ def upload_file_in_mem(s3_client, file_cnt: bytes, bucket: str, key: str):
 if __name__ == "__main__":
     s3_cli = connect_s3(
         S3_SERVER,
+        # "http://100.97.108.34:19000",
         S3_REGION,
         S3_KEY,
         S3_SECRET,
     )
-    with open(r"/home/laisky/repo/laisky/ramjet/README.md", "rb") as f:
-        upload_file(s3_cli, "test", "README.md", f.read())
+
+    is_file_exists(s3_cli, 0, S3_BUCKET, "twitter/51/12/FWaJuP9UsAAnw9s.png")
+
+    # with open(r"/home/laisky/repo/laisky/ramjet/README.md", "rb") as f:
+    #     upload_file(s3_cli, "test", "README.md", f.read())
