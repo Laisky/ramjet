@@ -49,6 +49,7 @@ pytz==2021.3
 pytz-deprecation-shim==0.1.0.post0
 pytzdata==2020.1
 PyYAML==5.4.1
+-e git+ssh://git@github.com/Laisky/ramjet.git@849667eeb19fa9355576ed5e0b736995ebadba60#egg=ramjet
 regex==2021.11.10
 requests==2.26.0
 requests-oauthlib==1.3.0
@@ -58,12 +59,12 @@ s3transfer==0.6.0
 six==1.16.0
 snaptime==0.2.4
 tomli==1.2.3
-tornado==4.5.3
+tornado==5.1
 tweepy==4.4.0
 typing_extensions==4.0.0
 tzdata==2021.5
 tzlocal==4.1
-ujson==4.3.0
+ujson==5.2.0
 urllib3==1.26.7
 xxhash==1.4.4
 yarl==1.7.2
