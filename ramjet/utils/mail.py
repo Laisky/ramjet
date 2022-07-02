@@ -6,6 +6,11 @@ from ramjet.settings import (MAIL_FROM_ADDR, MAIL_HOST, MAIL_PASSWD, MAIL_PORT,
                              MAIL_USERNAME)
 
 
+
+def send_alert(*, to_addrs, subject, content, from_addr=MAIL_FROM_ADDR):
+    # FIXME: change to telegram
+    return
+
 def send_mail(*, to_addrs, subject, content, from_addr=MAIL_FROM_ADDR):
     """Send email
 
@@ -31,4 +36,4 @@ def send_mail(*, to_addrs, subject, content, from_addr=MAIL_FROM_ADDR):
 
 
 if __name__ == "__main__":
-    send_mail(to_addrs=["ppcelery@gmail.com"], subject="test", content="yooo")
+    send_alert(to_addrs=["ppcelery@gmail.com"], subject="test", content="yooo")

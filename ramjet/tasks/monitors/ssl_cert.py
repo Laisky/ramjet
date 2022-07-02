@@ -5,7 +5,7 @@ from textwrap import dedent
 from collections import namedtuple
 
 from ramjet.engines import ioloop, thread_executor
-from ramjet.utils import send_mail
+from ramjet.utils import send_alert
 from .base import logger as monitor_logger
 
 _SiteConf = namedtuple("_SiteConf", ["domain", "check_ssl"])
@@ -60,7 +60,7 @@ def send_alert_email(domain, expired_at):
             domain=domain, expired_at=expired_at
         )
     )
-    send_mail(
+    send_alert(
         to_addrs=ALERT_RECEIVERS,
         subject="HTTPS cert going to expired!",
         content=content,
