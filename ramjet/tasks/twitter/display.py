@@ -50,26 +50,26 @@ class Status(BaseDisplay):
         docu["images"] = docu.get("images", [])
 
         # load threads
-        query = GraphQLRequest(
-            query=f"""
-            query {{
-                TwitterThreads(
-                    tweet_id: "{tweet_id}",
-                ) {{
-                    id
-                    text
-                    url
-                    created_at
-                    user {{
-                        name
-                    }}
-                }}
-            }}
-        """
-        )
-        resp = await self.gq.query(query)
-        assert resp.data, f"load tweet `{tweet_id}` threads: {resp.errors}"
-        threads = resp.data["TwitterThreads"]
+        # query = GraphQLRequest(
+        #     query=f"""
+        #     query {{
+        #         TwitterThreads(
+        #             tweet_id: "{tweet_id}",
+        #         ) {{
+        #             id
+        #             text
+        #             url
+        #             created_at
+        #             user {{
+        #                 name
+        #             }}
+        #         }}
+        #     }}
+        # """
+        # )
+        # resp = await self.gq.query(query)
+        # assert resp.data, f"load tweet `{tweet_id}` threads: {resp.errors}"
+        # threads = resp.data["TwitterThreads"]
 
         # import ipdb
         # ipdb.set_trace()
@@ -82,7 +82,7 @@ class Status(BaseDisplay):
             "images": docu["images"],
             "created_at": docu["created_at"],
             "user": (docu.get("user", {}) or {}).get("name", "佚名"),
-            "threads": threads,
+            # "threads": threads,
         }
 
 

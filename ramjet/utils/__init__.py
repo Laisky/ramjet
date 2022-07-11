@@ -94,14 +94,14 @@ class MultiProcessLogHandler(logging.Handler):
                 return
 
             # logging.getLogger().handle(record)
-            if record.levelno > logging.WARNING:
-                thread_executor.submit(
-                    self.get_email_sender().send_email,
-                    mail_to=MAIL_TO_ADDRS,
-                    mail_from=MAIL_FROM_ADDR,
-                    subject="Ramjet error alert",
-                    content="{}\n{}".format(record.message, record.exc_text),
-                )
+            # if record.levelno > logging.WARNING:
+            #     thread_executor.submit(
+            #         self.get_email_sender().send_email,
+            #         mail_to=MAIL_TO_ADDRS,
+            #         mail_from=MAIL_FROM_ADDR,
+            #         subject="Ramjet error alert",
+            #         content="{}\n{}".format(record.message, record.exc_text),
+            #     )
 
     def setup_queue(self):
         self.queue = multiprocessing.Queue(-1)

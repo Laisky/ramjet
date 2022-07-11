@@ -37,18 +37,7 @@
 <hr />
 <h3>Threads:</h3>
 
-<ul class="list-group" style="margin-bottom: 20px;">
-    {% for tweet in threads %}
-    <li href="/twitter/status/{{tweet['id']}}/" class="list-group-item list-group-item-action"
-        style="border-width: 1px;">
-        <div class="d-flex w-100 justify-content-between">
-            <h5 class="mb-1"><a href="https://app.laisky.com/twitter/status/{{tweet['id']}}/">➡️</a> {{(tweet.get('user', {}) or {}).get('name', '佚名')}}</h5>
-            <small>{{tweet['created_at']}}</small>
-        </div>
-        <p class="mb-1">{{tweet['text']}}</p>
-        <small><a href="https://twitter.com/archillect/status/{{tweet['id']}}">{{tweet['id']}}</a></small>
-    </li>
-    {% endfor %}
+<ul class="list-group" id="twitterThread" style="margin-bottom: 20px;">
 </ul>
 
 {% endblock %}
@@ -60,4 +49,49 @@
         max-height: 450px;
     }
 </style>
+{% endblock %}
+
+{% block js %}
+<script type="module">
+    import graphqlRequest from 'https://cdn.skypack.dev/graphql-request';
+    let graphql = graphqlRequest;
+
+    (function(){
+        const tweetID = "{{id}}";
+
+        let foo = async () => {
+            const resp = await graphql(window.GraphqlAPI, `query {
+                TwitterThreads(
+                    tweet_id: "${tweetID}",
+                ) {
+                    id
+                    text
+                    url
+                    created_at
+                    user {
+                        name
+                    }
+                }
+            }`)
+
+            const threads = resp.TwitterThreads;
+            const ul = document.getElementById('twitterThread');
+            threads.forEach(tweet => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item list-group-item-action';
+                li.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1"><a href="https://app.laisky.com/twitter/status/${tweet.id}/">➡️</a> ${tweet.user && tweet.user.name || '佚名'}</h5>
+                        <small>${tweet.created_at}</small>
+                    </div>
+                    <p class="mb-1">${tweet.text}</p>
+                    <small><a href="https://twitter.com/archillect/status/${tweet.id}">${tweet.id}</a></small>
+                `;
+                ul.appendChild(li);
+            });
+        };
+
+        foo();
+    }());
+</script>
 {% endblock %}
