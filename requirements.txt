@@ -1,10 +1,11 @@
 aiographql-client==1.0.3a2
-aiohttp==3.7.4.post0
+aiohttp==3.8.1
 aiohttp-jinja2==1.1.2
 aiohttp-session==2.7.0
 aiomysql==0.0.22
+aiosignal==1.2.0
 async-generator==1.10
-async-timeout==3.0.1
+async-timeout==4.0.2
 asyncio-extras==1.3.2
 attrs==21.2.0
 bcrypt==3.1.7
@@ -21,6 +22,7 @@ click==8.0.3
 cryptography==2.9.2
 dateparser==1.1.0
 docutils==0.18.1
+frozenlist==1.3.0
 future==0.18.2
 graphql-core==3.1.6
 humanize==3.12.0
@@ -49,6 +51,7 @@ pytz==2021.3
 pytz-deprecation-shim==0.1.0.post0
 pytzdata==2020.1
 PyYAML==5.4.1
+-e git+ssh://git@github.com/Laisky/ramjet.git@568f9d66ee65284506e7373d31f9e3d7ca36b86b#egg=ramjet
 regex==2021.11.10
 requests==2.26.0
 requests-oauthlib==1.3.0
