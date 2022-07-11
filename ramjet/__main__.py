@@ -83,12 +83,12 @@ def main():
         web.run_app(app, host=opt.HOST, port=opt.PORT)
     except Exception:
         logger.exception("ramjet got error:")
-        opt.email_sender.send_email(
-            mail_to=settings.MAIL_TO_ADDRS,
-            mail_from=settings.MAIL_FROM_ADDR,
-            subject="ramjet error",
-            content=traceback.format_exc(),
-        )
+        # opt.email_sender.send_email(
+        #     mail_to=settings.MAIL_TO_ADDRS,
+        #     mail_from=settings.MAIL_FROM_ADDR,
+        #     subject="ramjet error",
+        #     content=traceback.format_exc(),
+        # )
         raise
     finally:
         os._exit(0)

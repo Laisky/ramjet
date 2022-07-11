@@ -9,7 +9,7 @@
 </nav>
 
 
-<form action="/twitter/status/search/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
+<form action="/twitter/status/search/" method="post" id="twitterSearch" accept-charset="utf-8" enctype="multipart/form-data">
     <div class="form-group">
         <label for="text">Twitter Status Text:</label>
         <input type="text" name="text" value="{{search_text}}" />
@@ -18,7 +18,7 @@
     </div>
 </form>
 
-<article>
+<article id="tweets">
     {% for tweet in tweets %}
     <div class="list-group">
         <a href="/twitter/status/{{tweet['id']}}/" class="list-group-item">
@@ -31,4 +31,55 @@
     </div>
     {% endfor %}
 </article>
+{% endblock %}
+
+{% block js %}
+<script type="module">
+    import graphqlRequest from 'https://cdn.skypack.dev/graphql-request';
+    window.graphql = graphqlRequest;
+</script>
+<script async type="text/javascript">
+    (function(){
+        $("#twitterSearch").on("submit", async (e) =>{
+            e.preventDefault();
+            var text = $("#twitterSearch input").val();
+
+            console.log(text);
+
+            const resp = await graphql(window.GraphqlAPI, `query {
+                TwitterStatues(
+                    regexp: "${text}",
+                    page: {page: 0, size: 99},
+                ) {
+                    id
+                    text
+                    created_at
+                    user {
+                        name
+                    }
+                }
+            }`)
+
+
+            var tweets = resp.TwitterStatues;
+            var html = "";
+            for(var i = 0; i < tweets.length; i++){
+                var tweet = tweets[i];
+                html += `
+                    <div class="list-group">
+                        <a href="/twitter/status/${tweet.id}/" class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h4 class="list-group-item-heading">${tweet.user && tweet.user.name || '佚名'}:</h4>
+                                <small>${tweet.created_at}</small>
+                            </div>
+                            <p class="list-group-item-text">${tweet.text}</p>
+                        </a>
+                    </div>`;
+            }
+
+            $("#tweets").html(html);
+            return false;
+        });
+    }());
+</script>
 {% endblock %}
