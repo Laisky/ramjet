@@ -113,8 +113,8 @@ class TwitterAPI:
                 if new_tweet["id"] == tweet["id"]:
                     continue
 
-                # if self.col.find_one({"id_str": new_tweet["id_str"]}):
-                #     continue
+                if self.col.find_one({"id_str": new_tweet["id_str"]}):
+                    continue
 
                 try:
                     self.save_tweet(new_tweet)
