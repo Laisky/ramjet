@@ -35,8 +35,15 @@
 
 {% block js %}
 <script type="module">
-    import graphqlRequest from 'https://cdn.skypack.dev/graphql-request';
-    window.graphql = graphqlRequest;
+    import { GraphQLClient } from 'https://cdn.skypack.dev/graphql-request';
+    window.graphql = new GraphQLClient(window.GraphqlAPI, {
+        headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': '*',
+            'Access-Control-Allow-Headers': '*'
+        }
+    });
 </script>
 <script async type="text/javascript">
     (function(){
@@ -46,7 +53,7 @@
 
             console.log(text);
 
-            const resp = await graphql(window.GraphqlAPI, `query {
+            const resp = await graphql.request(`query {
                 TwitterStatues(
                     regexp: "${text}",
                     page: {page: 0, size: 99},
