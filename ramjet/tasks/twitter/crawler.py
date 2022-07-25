@@ -113,9 +113,6 @@ class TwitterAPI:
                 if new_tweet["id"] == tweet["id"]:
                     continue
 
-                if self.col.find_one({"id_str": new_tweet["id_str"]}):
-                    continue
-
                 try:
                     self.save_tweet(new_tweet)
                     # self._save_replies(new_tweet)
@@ -206,6 +203,9 @@ class TwitterAPI:
         return docu and docu["id"]
 
     def save_tweet(self, tweet: Dict[str, Any]):
+
+        if self.col.find_one({"id_str": tweet["id_str"]}):
+            return
 
         # parse tweet
         self.download_images_for_tweet(tweet)
