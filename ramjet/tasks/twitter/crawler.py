@@ -204,7 +204,7 @@ class TwitterAPI:
 
     def save_tweet(self, tweet: Dict[str, Any]):
 
-        if self.col.find_one({"id_str": tweet["id_str"]}):
+        if self.col.find_one({"id_str": tweet["id_str"]}, projection=["_id"]):
             return
 
         # parse tweet
