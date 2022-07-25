@@ -208,7 +208,7 @@ class TwitterAPI:
             return
 
         # parse tweet
-        self.download_images_for_tweet(tweet)
+        self.download_medias_for_tweet(tweet)
         docu = self.parse_tweet(tweet)
 
         # save tweet
@@ -280,7 +280,7 @@ class TwitterAPI:
 
             logger.info(f"processed video {tweet['id']} -> {fkey}")
 
-    def download_images_for_tweet(self, tweet: Dict[str, Any]):
+    def download_medias_for_tweet(self, tweet: Dict[str, Any]):
         media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(
             "entities", {}
         ).get("media", [])
