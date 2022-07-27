@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Generator, List
 
 import pymongo
+import re
 from ramjet.settings import TWITTER_IMAGE_DIR
 from ramjet.settings import logger as ramjet_logger
 
@@ -45,9 +46,15 @@ def get_image_filepath(media_entity: Dict[str, Any]) -> Path:
     return p
 
 
-def get_s3_key(media_entity: Dict[str, Any]) -> str:
-    """generate s3 key for file"""
-    fname = media_entity["media_url_https"].split("/")[-1]
+def get_s3_key(media_entity: Dict[str, Any], fname: str = "") -> str:
+    """generate s3 key for file
+
+    Args:
+        fname: video's filename need extract from `extended_entities.media.video_info.variants` manually
+    """
+    if not fname:
+        fname = media_entity["media_url_https"].split("/")[-1]
+
     return os.path.join("twitter", get_md5_hierachy_dir(fname))
 
 
@@ -57,15 +64,26 @@ def get_md5_hierachy_dir(fname: str) -> str:
     return os.path.join(c1, c2, fname)
 
 
-def replace_media_urls(tweet: Dict[str, Any]) -> None:
+def replace_media_urls(tweet: Dict[str, Any], medias: List[str]) -> None:
+    if not medias:
+        return
+
     for ee in ["entities", "extended_entities"]:
         for media in tweet.get(ee, {}).get("media", []):
             surl = media.get("url", "")
-            durl = media.get("media_url_https") or media.get("media_url")
-            durl = replace_to_laisky_url(durl)
-            if durl:
-                tweet["full_text"] = get_tweet_text(tweet).replace(surl, durl)
-                media["media_url_https"] = durl
+            # durl = media.get("media_url_https") or media.get("media_url")
+            # durl = replace_to_laisky_url(durl)
+
+            # remove short url
+            tweet["full_text"] = re.sub(
+                r"https://pbs\.twimg\.com/.*?\.(jpg|jpeg|png|mp4)",
+                "",
+                tweet["full_text"],
+            )
+            tweet["full_text"] = get_tweet_text(tweet).replace(surl, "")
+
+    for new_url in medias:
+        tweet["full_text"] += f" {new_url}"
 
 
 def replace_short_urls(tweet: Dict[str, Any]) -> None:

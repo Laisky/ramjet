@@ -2,37 +2,22 @@ import json
 import time
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, Union
+from typing import Any, Dict, List, Union
 
 import pymongo
 import requests
 import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
-from ramjet.settings import (
-    ACCESS_TOKEN,
-    ACCESS_TOKEN_SECRET,
-    CONSUMER_KEY,
-    CONSUMER_SECRET,
-    TWITTER_IMAGE_DIR,
-    S3_SERVER,
-    S3_REGION,
-    S3_BUCKET,
-    S3_KEY,
-    S3_SECRET,
-)
+from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
+                             CONSUMER_SECRET, S3_BUCKET, S3_KEY, S3_REGION,
+                             S3_SECRET, S3_SERVER, TWITTER_IMAGE_DIR)
 from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
-from .base import (
-    gen_related_tweets,
-    get_image_filepath,
-    get_s3_key,
-    logger,
-    twitter_api_parser,
-    replace_media_urls,
-)
-from .s3 import upload_file_in_mem, connect_s3, is_file_exists
+from .base import (gen_related_tweets, get_image_filepath, get_s3_key, logger,
+                   replace_media_urls, twitter_api_parser)
+from .s3 import connect_s3, is_file_exists, upload_file_in_mem
 
 lock = RLock()
 
@@ -234,25 +219,29 @@ class TwitterAPI:
     #     )
     #     return src
 
-    def _download_image(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
+    def _download_image(
+        self, tweet: Dict[str, Any], media_entity: Dict[str, Any]
+    ) -> List[str]:
         fkey = get_s3_key(media_entity)
+        media_url = f"https://s3.laisky.com/{S3_BUCKET}/{fkey}"
         with requests.get(media_entity["media_url_https"] + ":orig") as r:
-            if r.status_code != 200:
-                logger.error(
-                    f"download {media_entity['media_url_https']}: [{r.status_code}]{r.content}"
-                )
-                return
+            assert (
+                r.status_code == 200
+            ), f"download {media_entity['media_url_https']}: [{r.status_code}]{r.content}"
 
             if is_file_exists(self.__s3cli, len(r.content), S3_BUCKET, fkey):
-                return
+                return [media_url]
 
             upload_file_in_mem(
                 self.__s3cli, r.content, S3_BUCKET, get_s3_key(media_entity)
             )
 
             logger.info(f"processed image {tweet['id']} -> {fkey}")
+            return [media_url]
 
-    def _download_video(self, tweet: Dict[str, Any], media_entity: Dict[str, Any]):
+    def _download_video(
+        self, tweet: Dict[str, Any], media_entity: Dict[str, Any]
+    ) -> List[str]:
         max_bitrate = 0
         max_url = ""
         for v in media_entity["video_info"]["variants"]:
@@ -261,24 +250,28 @@ class TwitterAPI:
                 max_url = v.get("url", "")
 
         if not max_url:
-            return
+            return []
 
+        # https://video.twimg.com/ext_tw_video/1485662967387492354/pu/vid/960x544/0jVjzJr2sRgfSPzc.mp4?tag=12
         max_url = max_url[: max_url.rfind("?")]
 
-        fkey = get_s3_key(media_entity)
+        fkey = get_s3_key(media_entity, fname=max_url.split("/")[-1])
+        media_url = f"https://s3.laisky.com/{S3_BUCKET}/{fkey}"
         with requests.get(max_url) as r:
-            if r.status_code != 200:
-                logger.error(f"download {max_url}: [{r.status_code}]{r.content}")
-                return
+            assert (
+                r.status_code == 200
+            ), f"download {max_url}: [{r.status_code}]{r.content}"
 
             if is_file_exists(self.__s3cli, len(r.content), S3_BUCKET, fkey):
-                return
+                return [media_url]
 
             upload_file_in_mem(
                 self.__s3cli, r.content, S3_BUCKET, get_s3_key(media_entity)
             )
 
             logger.info(f"processed video {tweet['id']} -> {fkey}")
+
+        return [media_url]
 
     def download_medias_for_tweet(self, tweet: Dict[str, Any]):
         media = tweet.get("extended_entities", {}).get("media", []) or tweet.get(
@@ -288,13 +281,18 @@ class TwitterAPI:
         # if self.is_download_media(tweet):
         #     return
 
+        logger.info(f'download medias for tweet {tweet.get("id_str")}')
+        medias = []
         for img in media:
             if img["type"] == "photo":
-                self._download_image(tweet, img)
+                medias += self._download_image(tweet, img)
             elif img["type"] == "video":
-                self._download_video(tweet, img)
+                medias += self._download_video(tweet, img)
 
-        replace_media_urls(tweet)
+        if not medias:
+            return
+
+        replace_media_urls(tweet, medias)
 
     def is_download_media(self, tweet: Dict[str, Any]) -> bool:
         """only download medias for user in users table, to save disk space"""
@@ -378,6 +376,7 @@ class TwitterAPI:
     def run_for_archive_data(self, user_id: int, tweet_fpath: str):
         self._current_user_id = user_id
         user = self.db["users"].find_one({"id_str": str(user_id)})
+        assert user
         del user["_id"]
 
         with open(tweet_fpath) as fp:
@@ -387,3 +386,37 @@ class TwitterAPI:
                 self._save_relate_tweets(tweet)
                 self._save_replies(tweet)
                 self.save_tweet(tweet)
+
+    def run_for_replace_all_twitter_url(self):
+        """remove twitter pbs url in tweets
+
+        ::
+            https://pbs.twimg.com/ext_tw_video_thumb/1550911725381222402/pu/img/lY5GUM_9pTdvV29O.jpg
+        """
+
+        total = processed = 0
+        for tweet in self.col.find(
+            {"full_text": {"$regex": r"/pbs.twimg.com/"}}, no_cursor_timeout=True
+        ):
+            if total % 100 == 0:
+                logger.info(f"processed {processed}/{total}")
+
+            total += 1
+            if not tweet.get("full_text"):
+                continue
+
+            full_text = tweet["full_text"]
+            if "pbs.twimg.com" not in full_text:
+                continue
+
+            try:
+                self.download_medias_for_tweet(tweet)
+            except Exception:
+                logger.exception(f"download medias for tweet {tweet['id']}")
+                continue
+
+            print(f">> {tweet['id_str']} : {tweet['full_text']}")
+            # return
+
+            self.col.update_one({"_id": tweet["_id"]}, {"$set": {"full_text": tweet['full_text']}})
+            processed += 1
