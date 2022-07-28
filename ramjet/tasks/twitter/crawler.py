@@ -16,7 +16,7 @@ from ramjet.utils import get_conn
 from tweepy import API, OAuthHandler
 
 from .base import (gen_related_tweets, get_image_filepath, get_s3_key, logger,
-                   replace_media_urls, twitter_api_parser)
+                   replace_media_urls, parse_tweet_text)
 from .s3 import connect_s3, is_file_exists, upload_file_in_mem
 
 lock = RLock()
@@ -173,9 +173,9 @@ class TwitterAPI:
     def db(self):
         return get_conn()["twitter"]
 
-    def parse_tweet(self, tweet):
+    def parse_tweet(self, tweet:Dict[str, Any]) -> Dict[str, Any]:
         logger.debug("parse_tweet")
-        return twitter_api_parser(tweet)
+        return parse_tweet_text(tweet)
 
     def get_last_tweet_id(self):
         """
@@ -193,17 +193,17 @@ class TwitterAPI:
             return
 
         # parse tweet
+        tweet = self.parse_tweet(tweet)
         self.download_medias_for_tweet(tweet)
-        docu = self.parse_tweet(tweet)
 
         # save tweet
-        logger.info(f"save_tweet {docu.get('id')} {docu.get('created_at')}")
+        logger.info(f"save_tweet {tweet.get('id')} {tweet.get('created_at')}")
         self.db["tweets"].update_one(
-            {"id_str": str(docu["id"])},
-            {"$set": docu, "$addToSet": {"viewer": self._current_user_id}},
+            {"id_str": str(tweet["id"])},
+            {"$set": tweet, "$addToSet": {"viewer": self._current_user_id}},
             upsert=True,
         )
-        user = docu.get("user")
+        user = tweet.get("user")
         if user:
             user["id_str"] = str(user["id"])
             self.db["users"].update_one(
@@ -233,7 +233,7 @@ class TwitterAPI:
                 return [media_url]
 
             upload_file_in_mem(
-                self.__s3cli, r.content, S3_BUCKET, get_s3_key(media_entity)
+                self.__s3cli, r.content, S3_BUCKET, fkey
             )
 
             logger.info(f"processed image {tweet['id']} -> {fkey}")
@@ -266,7 +266,7 @@ class TwitterAPI:
                 return [media_url]
 
             upload_file_in_mem(
-                self.__s3cli, r.content, S3_BUCKET, get_s3_key(media_entity)
+                self.__s3cli, r.content, S3_BUCKET, fkey
             )
 
             logger.info(f"processed video {tweet['id']} -> {fkey}")
@@ -386,37 +386,3 @@ class TwitterAPI:
                 self._save_relate_tweets(tweet)
                 self._save_replies(tweet)
                 self.save_tweet(tweet)
-
-    def run_for_replace_all_twitter_url(self):
-        """remove twitter pbs url in tweets
-
-        ::
-            https://pbs.twimg.com/ext_tw_video_thumb/1550911725381222402/pu/img/lY5GUM_9pTdvV29O.jpg
-        """
-
-        total = processed = 0
-        for tweet in self.col.find(
-            {"full_text": {"$regex": r"/pbs.twimg.com/"}}, no_cursor_timeout=True
-        ):
-            if total % 100 == 0:
-                logger.info(f"processed {processed}/{total}")
-
-            total += 1
-            if not tweet.get("full_text"):
-                continue
-
-            full_text = tweet["full_text"]
-            if "pbs.twimg.com" not in full_text:
-                continue
-
-            try:
-                self.download_medias_for_tweet(tweet)
-            except Exception:
-                logger.exception(f"download medias for tweet {tweet['id']}")
-                continue
-
-            print(f">> {tweet['id_str']} : {tweet['full_text']}")
-            # return
-
-            self.col.update_one({"_id": tweet["_id"]}, {"$set": {"full_text": tweet['full_text']}})
-            processed += 1

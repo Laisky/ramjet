@@ -19,23 +19,23 @@ def get_tweet_text(tweet: Dict[str, Any]) -> str:
     return tweet.get("full_text") or tweet.get("text", "")
 
 
-def replace_to_laisky_url(url: str) -> str:
-    srv_addr = random.choice(
-        [
-            "s1.laisky.com",
-            "s2.laisky.com",
-            "s3.laisky.com",
-        ]
-    )
+# def replace_to_laisky_url(url: str) -> str:
+#     srv_addr = random.choice(
+#         [
+#             "s1.laisky.com",
+#             "s2.laisky.com",
+#             "s3.laisky.com",
+#         ]
+#     )
 
-    url = url.replace(
-        "http://pbs.twimg.com/media/", f"https://{srv_addr}/uploads/twitter/"
-    )
-    url = url.replace(
-        "https://pbs.twimg.com/media/", f"https://{srv_addr}/uploads/twitter/"
-    )
+#     url = url.replace(
+#         "http://pbs.twimg.com/media/", f"https://{srv_addr}/uploads/twitter/"
+#     )
+#     url = url.replace(
+#         "https://pbs.twimg.com/media/", f"https://{srv_addr}/uploads/twitter/"
+#     )
 
-    return url
+#     return url
 
 
 def get_image_filepath(media_entity: Dict[str, Any]) -> Path:
@@ -75,15 +75,15 @@ def replace_media_urls(tweet: Dict[str, Any], medias: List[str]) -> None:
             # durl = replace_to_laisky_url(durl)
 
             # remove short url
-            tweet["full_text"] = re.sub(
+            tweet["text"] = re.sub(
                 r"https://pbs\.twimg\.com/.*?\.(jpg|jpeg|png|mp4)",
                 "",
-                tweet["full_text"],
+                tweet["text"],
             )
-            tweet["full_text"] = get_tweet_text(tweet).replace(surl, "")
+            tweet["text"] = get_tweet_text(tweet).replace(surl, "")
 
     for new_url in medias:
-        tweet["full_text"] += f" {new_url}"
+        tweet["text"] += f" {new_url}"
 
 
 def replace_short_urls(tweet: Dict[str, Any]) -> None:
@@ -94,19 +94,24 @@ def replace_short_urls(tweet: Dict[str, Any]) -> None:
             tweet["text"] = tweet["text"].replace(surl, durl)
 
 
-def twitter_api_parser(tweet: Dict[str, Any]) -> Dict[str, Any]:
+def parse_tweet_text(tweet: Dict[str, Any]) -> Dict[str, Any]:
     """Parse tweet document got from twitter api"""
     reg_topic = re.compile(r"[\b|\s]#(\S+)")
     tweet["topics"] = reg_topic.findall(get_tweet_text(tweet).replace(".", "_"))
-    tweet["created_at"] = datetime.datetime.strptime(
-        tweet["created_at"], "%a %b %d %H:%M:%S +0000 %Y"
-    )
+
+    if isinstance(tweet["created_at"], str):
+        tweet["created_at"] = datetime.datetime.strptime(
+            tweet["created_at"], "%a %b %d %H:%M:%S +0000 %Y"
+        )
 
     tweet["id"] = int(tweet["id"])
     tweet["id_str"] = str(tweet["id"])
 
     # replace url
     tweet["text"] = get_tweet_text(tweet)
+    if tweet.get("full_text"):
+        del tweet["full_text"]
+
     replace_short_urls(tweet)
 
     return tweet
