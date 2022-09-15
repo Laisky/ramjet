@@ -12,4 +12,4 @@ def get_conn():
 
 
 def get_gq_cli():
-    return GraphQLClient(endpoint="https://blog.laisky.com/graphql/query/")
+    return GraphQLClient(endpoint="https://graphql.laisky.com/query/")
