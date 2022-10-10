@@ -26,10 +26,20 @@ def bind_task():
     def run():
         later = 60
         ioloop.call_later(later, run)
+        thread_executor.submit(_run)
 
-        logger.info("run")
-        twitter = TwitterAPI()
-        thread_executor.submit(twitter.run)
+        def _run():
+            if not lock.acquire(blocking=False):
+                return
+
+            try:
+                logger.info("run")
+                twitter = TwitterAPI()
+                twitter.crawl_timeline()
+            except Exception as err:
+                logger.exception("run twitter task")
+            finally:
+                lock.release()
 
     run()
 
@@ -345,11 +355,8 @@ class TwitterAPI:
                 self._save_replies(tweet)
                 return
 
-    def run(self):
+    def crawl_timeline(self):
         """routine work to crawling twitter tweets"""
-        if not lock.acquire(blocking=False):
-            return
-
         logger.debug("run TwitterAPI")
         count = 0
         try:
@@ -370,8 +377,9 @@ class TwitterAPI:
             logger.exception(err)
         else:
             logger.info("save {} tweets".format(count))
-        finally:
-            lock.release()
+
+    def delete_old_tweets(self):
+
 
     def run_for_archive_data(self, user_id: int, tweet_fpath: str):
         self._current_user_id = user_id
