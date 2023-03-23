@@ -12,7 +12,7 @@ from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
                              CONSUMER_SECRET, S3_BUCKET, S3_KEY, S3_REGION,
                              S3_SECRET, S3_SERVER, TWITTER_IMAGE_DIR)
-from ramjet.utils import get_conn
+from ramjet.utils import get_db
 from tweepy import API, OAuthHandler
 
 from .base import (gen_related_tweets, get_image_filepath, get_s3_key, logger,
@@ -167,11 +167,11 @@ class TwitterAPI:
 
     @property
     def col(self):
-        return get_conn()["twitter"]["tweets"]
+        return get_db()["twitter"]["tweets"]
 
     @property
     def db(self):
-        return get_conn()["twitter"]
+        return get_db()["twitter"]
 
     def parse_tweet(self, tweet:Dict[str, Any]) -> Dict[str, Any]:
         logger.debug("parse_tweet")
