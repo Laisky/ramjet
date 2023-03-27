@@ -12,7 +12,7 @@ access_token, access_token_secret = auth.get_access_token("verifier_value")
 # auth.access_token_secret
 """
 
-import urllib
+import urllib.parse
 
 import aiohttp_jinja2
 import tweepy

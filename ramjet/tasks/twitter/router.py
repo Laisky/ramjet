@@ -1,4 +1,4 @@
-import aiohttp
+import aiohttp.web
 import aiohttp_jinja2
 
 from .base import logger
