@@ -3,6 +3,7 @@ FROM python:3.9.16-bullseye
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make gcc git build-essential ca-certificates curl \
     libxslt-dev libxml2-dev libc-dev libssl-dev libffi-dev zlib1g-dev libopenblas-base libomp-dev \
+    libmagic-dev poppler-utils tesseract-ocr libreoffice \
     && update-ca-certificates
 
 WORKDIR /app
