@@ -17,9 +17,12 @@ class Index(aiohttp.web.View):
 
 class Query(aiohttp.web.View):
     async def get(self):
+        project = self.request.query.get("p")
         question = self.request.query.get("q")
+        if not project:
+            return aiohttp.web.Response(text="p is required", status=400)
         if not question:
             return aiohttp.web.Response(text="q is required", status=400)
 
-        resp = await query(question)
+        resp = await query(project, question)
         return aiohttp.web.json_response(resp._asdict())

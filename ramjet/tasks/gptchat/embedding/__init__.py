@@ -6,24 +6,32 @@ from langchain import OpenAI
 from ramjet.engines import thread_executor
 import asyncio
 from ..base import logger
-from .data import load_store, prepare_data
+from .data import load_all_stores, prepare_data
 
 os.environ["OPENAI_API_KEY"] = OPENAI_TOKEN
 
-store = None
+all_chains = {}
 
 Response = namedtuple("Response", ["question", "text", "url"])
 
+
 def setup():
     prepare_data()
-    global store
-    store = load_store()
-    logger.info("succeed setup basebit data")
+    global all_chains
+    for project_name, store in load_all_stores().items():
+        all_chains[project_name] = VectorDBQAWithSourcesChain.from_llm(
+            llm=OpenAI(temperature=0), vectorstore=store
+        )
 
-async def query(question: str):
-    return await asyncio.get_running_loop().run_in_executor(thread_executor, _query, question)
+        logger.info(f"load chain for project: {project_name}")
 
-def _query(question: str) -> Response:
-    chain = VectorDBQAWithSourcesChain.from_llm(llm=OpenAI(temperature=0), vectorstore=store)
-    resp = chain({"question": question})
+
+async def query(project_name: str, question: str):
+    return await asyncio.get_running_loop().run_in_executor(
+        thread_executor, _query, project_name, question
+    )
+
+
+def _query(project_name: str, question: str) -> Response:
+    resp = all_chains[project_name]({"question": question})
     return Response(question=question, text=resp["answer"], url=resp.get("sources", ""))
