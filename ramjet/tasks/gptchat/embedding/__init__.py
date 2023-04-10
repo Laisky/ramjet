@@ -27,6 +27,7 @@ def setup():
                 streaming=False,
             ),
             vectorstore=store,
+            reduce_k_below_max_tokens=True,
         )
 
         logger.info(f"load chain for project: {project_name}")
