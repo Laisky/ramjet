@@ -7,6 +7,7 @@ RUN apt-get update \
     && update-ca-certificates
 
 WORKDIR /app
+RUN pip install "torch==2.0.0"
 ADD ./requirements.txt .
 RUN pip install -r requirements.txt
 
