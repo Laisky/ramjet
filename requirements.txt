@@ -87,3 +87,4 @@ unstructured-inference==0.2.11
 urllib3==1.26.7
 xxhash==1.4.4
 yarl==1.7.2
+numpy>=1.22.2 # not directly required, pinned by Snyk to avoid a vulnerability
