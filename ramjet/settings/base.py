@@ -61,7 +61,7 @@ INSTALL_TASKS = [
     "dlp",
     "upload",
     "monitors",
-    "gptchat",
+    # "gptchat",
 ]
 
 
