@@ -34,9 +34,8 @@ def setup():
         If you don't know the answer, just say that "I don't know", don't try to make up an answer.
         ----------------
         {summaries}
-    """
+        """
     )
-
     messages = [
         SystemMessagePromptTemplate.from_template(system_template),
         HumanMessagePromptTemplate.from_template("{question}"),
