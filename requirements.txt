@@ -34,7 +34,7 @@ jieba==0.39
 Jinja2==3.0.3
 jmespath==0.10.0
 kipp==0.2.9
-langchain==0.0.150
+langchain==0.0.119
 MarkupSafe==2.0.1
 marshmallow==3.19.0
 marshmallow-enum==1.5.1
@@ -69,8 +69,9 @@ ruamel.yaml.clib==0.2.6
 s3transfer==0.6.0
 six==1.16.0
 snaptime==0.2.4
-SQLAlchemy==2.0.11
+SQLAlchemy==1.4.47
 tenacity==8.2.2
+tiktoken==0.3.3
 tomli==1.2.3
 tornado==6.3.1
 tqdm==4.65.0
