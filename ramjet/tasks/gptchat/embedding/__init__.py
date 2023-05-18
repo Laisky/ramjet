@@ -2,7 +2,7 @@ import os
 from collections import namedtuple
 from textwrap import dedent
 
-from ramjet.settings import OPENAI_API, OPENAI_TOKEN_AZURE
+from ramjet.settings import OPENAI_API, OPENAI_TOKEN
 from langchain.chains import VectorDBQAWithSourcesChain
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts.chat import (
@@ -16,8 +16,9 @@ import asyncio
 from ..base import logger
 from .data import load_all_stores, prepare_data
 
-os.environ["OPENAI_API_BASE"] = OPENAI_API
-os.environ["OPENAI_API_KEY"] = OPENAI_TOKEN_AZURE
+# os.environ["OPENAI_API_TYPE"] = "azure"
+# os.environ["OPENAI_API_BASE"] = OPENAI_API
+os.environ["OPENAI_API_KEY"] = OPENAI_TOKEN
 
 all_chains = {}
 
