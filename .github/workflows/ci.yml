@@ -3,11 +3,7 @@ name: ci
 on:
   push:
     branches:
-<<<<<<< HEAD
       - 'master'
-=======
-      - 'release/gptchat'
->>>>>>> release/gptchat
 
 jobs:
   docker:
@@ -34,8 +30,4 @@ jobs:
         with:
           context: .
           push: true
-<<<<<<< HEAD
           tags: ppcelery/ramjet:latest
-=======
-          tags: ppcelery/ramjet:gpt-latest
->>>>>>> release/gptchat
