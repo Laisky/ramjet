@@ -1,4 +1,4 @@
-import aiohttp
+import aiohttp.web
 import aiohttp_jinja2
 
 from .base import logger
@@ -14,7 +14,7 @@ def bind_handle(add_route):
     add_route("fetch/", FetchView)
     add_route("status/search/", SearchStatus)
     add_route("status/{tweet_id}/", Status)
-    add_route("", Index)
+    add_route("/", Index)
 
 
 class Index(aiohttp.web.View):

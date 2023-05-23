@@ -6,8 +6,8 @@ from functools import wraps
 
 from asyncio_extras import async_contextmanager
 import aiomysql
-import motor
-import motor.motor_asyncio
+# import motor
+# import motor.motor_asyncio
 import pymongo
 from kipp.options import opt
 
@@ -109,7 +109,7 @@ class BaseMongoModel(object):
             }
             cls._db_name = opt.MONGODBS[cls._db_alias]['NAME']
 
-        cls._CONNECTION = motor.motor_asyncio.AsyncIOMotorClient(**args)
+        # cls._CONNECTION = motor.motor_asyncio.AsyncIOMotorClient(**args)
         cls._MONGO_CONNECTION = pymongo.MongoClient(**args)
         await cls.auth(auth_args)
         return cls
