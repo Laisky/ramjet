@@ -2,9 +2,9 @@ import os
 from collections import namedtuple
 from textwrap import dedent
 
-from ramjet.settings import OPENAI_API, OPENAI_TOKEN
+from ramjet import settings
 from langchain.chains import VectorDBQAWithSourcesChain
-from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
@@ -16,9 +16,22 @@ import asyncio
 from ..base import logger
 from .data import load_all_stores, prepare_data
 
-# os.environ["OPENAI_API_TYPE"] = "azure"
-# os.environ["OPENAI_API_BASE"] = OPENAI_API
-os.environ["OPENAI_API_KEY"] = OPENAI_TOKEN
+# -------------------------------------
+# openai
+# -------------------------------------
+# os.environ["OPENAI_API_KEY"] = OPENAI_TOKEN
+# -------------------------------------
+
+# -------------------------------------
+# azure
+# -------------------------------------
+os.environ["OPENAI_API_TYPE"] = "azure"
+os.environ["OPENAI_API_KEY"] = settings.OPENAI_AZURE_TOKEN
+os.environ["OPENAI_API_BASE"] = settings.OPENAI_AZURE_API
+os.environ["OPENAI_API_VERSION"] = "2023-05-15"
+os.environ["OPENAI_EMBEDDINGS_DEPLOYMENT"] = "embedding"
+# -------------------------------------
+
 
 all_chains = {}
 
@@ -46,7 +59,15 @@ def setup():
 
     for project_name, store in load_all_stores().items():
         chain_type_kwargs = {"prompt": prompt}
-        llm = ChatOpenAI(
+        # llm = ChatOpenAI(
+        #     model_name="gpt-3.5-turbo",
+        #     temperature=0,
+        #     max_tokens=1000,
+        #     streaming=False,
+        # )
+
+        llm = AzureChatOpenAI(
+            deployment_name="gpt35",
             model_name="gpt-3.5-turbo",
             temperature=0,
             max_tokens=1000,

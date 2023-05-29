@@ -34,7 +34,8 @@ jieba==0.39
 Jinja2==3.0.3
 jmespath==0.10.0
 kipp==0.2.9
-langchain==0.0.119
+# langchain==0.0.119
+git+https://github.com/Laisky/langchain.git@c5505ed3
 MarkupSafe==2.0.1
 marshmallow==3.19.0
 marshmallow-enum==1.5.1

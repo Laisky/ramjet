@@ -9,11 +9,11 @@ from typing import Dict
 import faiss
 from kipp import options as opt
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+# from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
 from langchain.vectorstores import FAISS
 
 from ramjet.settings import prd
-from ramjet.utils import get_db
+# from ramjet.utils import get_db
 from ..base import logger
 
 
