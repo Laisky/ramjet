@@ -19,17 +19,18 @@ from .data import load_all_stores, prepare_data
 # -------------------------------------
 # openai
 # -------------------------------------
-# os.environ["OPENAI_API_KEY"] = OPENAI_TOKEN
+os.environ["OPENAI_API_KEY"] = settings.OPENAI_TOKEN
+# os.environ["OPENAI_API_BASE"] = settings.OPENAI_API
 # -------------------------------------
 
 # -------------------------------------
 # azure
 # -------------------------------------
-os.environ["OPENAI_API_TYPE"] = "azure"
-os.environ["OPENAI_API_KEY"] = settings.OPENAI_AZURE_TOKEN
-os.environ["OPENAI_API_BASE"] = settings.OPENAI_AZURE_API
-os.environ["OPENAI_API_VERSION"] = "2023-05-15"
-os.environ["OPENAI_EMBEDDINGS_DEPLOYMENT"] = "embedding"
+# os.environ["OPENAI_API_TYPE"] = "azure"
+# os.environ["OPENAI_API_KEY"] = settings.OPENAI_AZURE_TOKEN
+# os.environ["OPENAI_API_BASE"] = settings.OPENAI_AZURE_API
+# os.environ["OPENAI_API_VERSION"] = "2023-05-15"
+# os.environ["OPENAI_EMBEDDINGS_DEPLOYMENT"] = "embedding"
 # -------------------------------------
 
 
@@ -59,20 +60,20 @@ def setup():
 
     for project_name, store in load_all_stores().items():
         chain_type_kwargs = {"prompt": prompt}
-        # llm = ChatOpenAI(
-        #     model_name="gpt-3.5-turbo",
-        #     temperature=0,
-        #     max_tokens=1000,
-        #     streaming=False,
-        # )
-
-        llm = AzureChatOpenAI(
-            deployment_name="gpt35",
+        llm = ChatOpenAI(
             model_name="gpt-3.5-turbo",
             temperature=0,
             max_tokens=1000,
             streaming=False,
         )
+
+        # llm = AzureChatOpenAI(
+        #     deployment_name="gpt35",
+        #     model_name="gpt-3.5-turbo",
+        #     temperature=0,
+        #     max_tokens=1000,
+        #     streaming=False,
+        # )
 
         all_chains[project_name] = VectorDBQAWithSourcesChain.from_chain_type(
             llm=llm,
