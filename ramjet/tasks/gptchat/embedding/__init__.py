@@ -3,7 +3,7 @@ from collections import namedtuple
 from textwrap import dedent
 
 from ramjet import settings
-from langchain.chains import VectorDBQAWithSourcesChain
+from langchain.chains import VectorDBQAWithSourcesChain, RetrievalQAWithSourcesChain
 from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
 from langchain.prompts.chat import (
     ChatPromptTemplate,
@@ -16,26 +16,22 @@ import asyncio
 from ..base import logger
 from .data import load_all_stores, prepare_data
 
-# -------------------------------------
-# openai
-# -------------------------------------
-os.environ["OPENAI_API_KEY"] = settings.OPENAI_TOKEN
-# os.environ["OPENAI_API_BASE"] = settings.OPENAI_API
-# -------------------------------------
+if settings.OPENAI_TYPE == "openai":
+    os.environ["OPENAI_API_KEY"] = settings.OPENAI_TOKEN
+    os.environ["OPENAI_API_BASE"] = settings.OPENAI_API
+elif settings.OPENAI_TYPE == "azure":
+    os.environ["OPENAI_API_TYPE"] = "azure"
+    os.environ["OPENAI_API_VERSION"] = settings.OPENAI_AZURE_VERSION
+    os.environ["OPENAI_API_BASE"] = settings.OPENAI_AZURE_API
+    os.environ["OPENAI_API_KEY"] = settings.OPENAI_AZURE_TOKEN
 
-# -------------------------------------
-# azure
-# -------------------------------------
-# os.environ["OPENAI_API_TYPE"] = "azure"
-# os.environ["OPENAI_API_KEY"] = settings.OPENAI_AZURE_TOKEN
-# os.environ["OPENAI_API_BASE"] = settings.OPENAI_AZURE_API
-# os.environ["OPENAI_API_VERSION"] = "2023-05-15"
-# os.environ["OPENAI_EMBEDDINGS_DEPLOYMENT"] = "embedding"
-# -------------------------------------
+    azure_embeddings_deploymentid = settings.OPENAI_AZURE_DEPLOYMENTS[
+        "embeddings"
+    ].deployment_id
+    azure_gpt_deploymentid = settings.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
 
 
 all_chains = {}
-
 Response = namedtuple("Response", ["question", "text", "url"])
 
 
@@ -60,24 +56,35 @@ def setup():
 
     for project_name, store in load_all_stores().items():
         chain_type_kwargs = {"prompt": prompt}
-        llm = ChatOpenAI(
-            model_name="gpt-3.5-turbo",
-            temperature=0,
-            max_tokens=1000,
-            streaming=False,
-        )
 
-        # llm = AzureChatOpenAI(
-        #     deployment_name="gpt35",
-        #     model_name="gpt-3.5-turbo",
-        #     temperature=0,
-        #     max_tokens=1000,
-        #     streaming=False,
+        if settings.OPENAI_TYPE == "openai":
+            llm = ChatOpenAI(
+                model_name="gpt-3.5-turbo",
+                temperature=0,
+                max_tokens=1000,
+                streaming=False,
+            )
+        elif settings.OPENAI_TYPE == "azure":
+            llm = AzureChatOpenAI(
+                deployment_name="gpt35",
+                model_name="gpt-3.5-turbo",
+                temperature=0,
+                max_tokens=1000,
+                streaming=False,
+            )
+
+        # all_chains[project_name] = VectorDBQAWithSourcesChain.from_chain_type(
+        #     llm=llm,
+        #     vectorstore=store,
+        #     return_source_documents=True,
+        #     chain_type_kwargs=chain_type_kwargs,
+        #     reduce_k_below_max_tokens=True,
         # )
 
-        all_chains[project_name] = VectorDBQAWithSourcesChain.from_chain_type(
+        all_chains[project_name] = RetrievalQAWithSourcesChain.from_chain_type(
             llm=llm,
-            vectorstore=store,
+            chain_type="stuff",
+            retriever=store.as_retriever(),
             return_source_documents=True,
             chain_type_kwargs=chain_type_kwargs,
             reduce_k_below_max_tokens=True,
