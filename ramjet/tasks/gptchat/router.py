@@ -3,7 +3,7 @@ import urllib.parse
 import aiohttp.web
 
 from .base import logger
-from .embedding import setup, query
+from .embedding.query import setup, query
 
 def bind_handle(add_route):
     logger.info("bind gpt web handlers")
