@@ -120,4 +120,4 @@ def _query(project_name: str, question: str) -> Response:
     return Response(
         question=question,
         text=resp,
-        url=refs)
+        url=list(set(refs)))
