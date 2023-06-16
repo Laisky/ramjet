@@ -12,7 +12,7 @@ from minio.error import S3Error
 
 from ramjet.settings import prd
 from ramjet.engines import thread_executor
-from .auth import authenticate
+from .auth import authenticate_by_appkey as authenticate
 from .base import logger
 from .embedding.query import setup, query
 from .embedding.embeddings import embedding_pdf, save_encrypt_store, new_store
@@ -57,9 +57,8 @@ class PDFFiles(aiohttp.web.View):
         )
 
     @authenticate
-    async def get(self, user):
+    async def get(self, uid):
         """list s3 files"""
-        uid = user["sub"]
         objs = []
         for obj in self.s3.list_objects(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
@@ -76,13 +75,13 @@ class PDFFiles(aiohttp.web.View):
         )
 
     @authenticate
-    async def post(self, user):
+    async def post(self, uid):
         """Upload pdf file by form"""
         data = await self.request.post()
 
         ioloop = asyncio.get_event_loop()
         objs = await ioloop.run_in_executor(
-            thread_executor, user, self.process_file, data
+            thread_executor, uid, self.process_file, data
         )
 
         return aiohttp.web.json_response(
@@ -91,7 +90,7 @@ class PDFFiles(aiohttp.web.View):
             }
         )
 
-    def process_file(self, user, data) -> List[str]:
+    def process_file(self, uid, data) -> List[str]:
         file = data.get("file", "")
         assert type(file) == FileField, "file must be FileField"
 
@@ -122,7 +121,7 @@ class PDFFiles(aiohttp.web.View):
 
             # upload index to s3
             for fpath in files:
-                objkey = quote(user["sub"] + fpath.removeprefix(tmp.name))
+                objkey = quote(uid + fpath.removeprefix(tmp.name))
                 objs.append(objkey)
                 with open(fpath, "rb") as f:
                     self.s3.fput_object(

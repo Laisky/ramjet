@@ -27,7 +27,7 @@ async def verify_user(request) -> Mapping:
 
 
 def authenticate(func):
-    """Decorator to authenticate a request"""
+    """Decorator to authenticate a request by authorization header"""
 
     @functools.wraps(func)
     async def wrapper(self, *args, **kwargs):
@@ -36,6 +36,22 @@ def authenticate(func):
         except (web.HTTPUnauthorized, AssertionError):
             return web.json_response({"error": "Unauthorized"}, status=401)
 
-        return await func(self.request, payload, *args, **kwargs)
+        return await func(self, payload, *args, **kwargs)
+
+    return wrapper
+
+def authenticate_by_appkey(func):
+    """Decorator to authenticate a request"""
+
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        apikey: str = self.request.headers["Authorization"]
+        apikey = apikey.removeprefix("Bearer ")
+
+        uid: str = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey, "")
+        if not uid:
+            raise web.HTTPUnauthorized()
+
+        return await func(self, uid, *args, **kwargs)
 
     return wrapper
