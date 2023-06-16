@@ -49,7 +49,7 @@ def setup():
             llm = AzureChatOpenAI(
                 client=None,
                 deployment_name="gpt35",
-                model_name="gpt-3.5-turbo",
+                # model_name="gpt-3.5-turbo",
                 temperature=0,
                 max_tokens=1000,
                 streaming=False,
@@ -57,7 +57,7 @@ def setup():
         else:
             llm = ChatOpenAI(
                 client=None,
-                model_name="gpt-3.5-turbo",
+                # model_name="gpt-3.5-turbo",
                 temperature=0,
                 max_tokens=1000,
                 streaming=False,
