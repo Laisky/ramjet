@@ -45,7 +45,7 @@ def authenticate_by_appkey(func):
 
     @functools.wraps(func)
     async def wrapper(self, *args, **kwargs):
-        apikey: str = self.request.headers["Authorization"]
+        apikey: str = self.request.headers.get("Authorization", "")
         apikey = apikey.removeprefix("Bearer ")
 
         uid: str = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey, "")

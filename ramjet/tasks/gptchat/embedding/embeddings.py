@@ -7,6 +7,7 @@ import textwrap
 from collections import namedtuple
 from typing import List
 from Crypto.Cipher import AES
+from sys import path
 import hashlib
 
 import openai
@@ -17,27 +18,9 @@ from langchain.vectorstores import FAISS
 from pymongo import MongoClient
 from kipp.utils import setup_logger
 
-from sys import path
-
 from ramjet.settings import prd
 
-# ----------------------------------------------
-# Azure
-# ----------------------------------------------
-os.environ["OPENAI_API_TYPE"] = "azure"
-os.environ["OPENAI_API_VERSION"] = "2023-05-15"
-os.environ["OPENAI_API_BASE"] = prd.OPENAI_AZURE_API + "/"
-os.environ["OPENAI_API_KEY"] = prd.OPENAI_AZURE_TOKEN
 
-azure_embeddings_deploymentid = "embedding"
-azure_gpt_deploymentid = "gpt35"
-# ----------------------------------------------
-
-# ----------------------------------------------
-# OpenAI
-# ----------------------------------------------
-# os.environ["OPENAI_API_KEY"] = prd.OPENAI_TOKEN
-# ----------------------------------------------
 
 Index = namedtuple("index", ["store", "scaned_files"])
 
@@ -103,7 +86,6 @@ def embedding_pdf(fpath: str, fkey: str) -> Index:
             furl = prd.OPENAI_EMBEDDING_URL_PREFIX + quote(fkey, safe="")
             metadatas.append({"source": f"{furl}#page={page+1}"})
 
-
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -142,10 +124,23 @@ def embedding_markdowns(index: Index, fpaths, url, replace_by_url):
 
 
 def new_store() -> Index:
-    embedding_model = OpenAIEmbeddings(
-        model="text-embedding-ada-002",
-        deployment=azure_embeddings_deploymentid,
-    )
+    if os.environ.get("OPENAI_API_TYPE") == "azure":
+        azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
+            "embeddings"
+        ].deployment_id
+        azure_gpt_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
+
+        embedding_model = OpenAIEmbeddings(
+            client=None,
+            model="text-embedding-ada-002",
+            deployment=azure_embeddings_deploymentid,
+        )
+    else:
+        embedding_model = OpenAIEmbeddings(
+            client=None,
+            model="text-embedding-ada-002",
+        )
+
     store = FAISS.from_texts(
         ["world"], embedding_model, metadatas=[{"source": "hello"}]
     )
@@ -179,11 +174,11 @@ def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:
         List[str]: saved filepaths
     """
     key = derive_key(password)
-
     store_index = index.store.index
 
     # do not encrypt index
     fpath_prefix = os.path.join(dirpath, name)
+    logger.debug(f"save index to {fpath_prefix}.index")
     faiss.write_index(store_index, f"{fpath_prefix}.index")
     index.store.index = None
 

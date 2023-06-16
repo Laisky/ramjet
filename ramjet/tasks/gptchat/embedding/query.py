@@ -18,20 +18,6 @@ from langchain.chains.question_answering import load_qa_chain
 from ..base import logger
 from .data import load_all_stores, prepare_data
 
-if settings.OPENAI_TYPE == "openai":
-    os.environ["OPENAI_API_KEY"] = settings.OPENAI_TOKEN
-    os.environ["OPENAI_API_BASE"] = settings.OPENAI_API
-elif settings.OPENAI_TYPE == "azure":
-    os.environ["OPENAI_API_TYPE"] = "azure"
-    os.environ["OPENAI_API_VERSION"] = settings.OPENAI_AZURE_VERSION
-    os.environ["OPENAI_API_BASE"] = settings.OPENAI_AZURE_API
-    os.environ["OPENAI_API_KEY"] = settings.OPENAI_AZURE_TOKEN
-
-    azure_embeddings_deploymentid = settings.OPENAI_AZURE_DEPLOYMENTS[
-        "embeddings"
-    ].deployment_id
-    azure_gpt_deploymentid = settings.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
-
 
 all_chains = {}
 Response = namedtuple("Response", ["question", "text", "url"])
@@ -59,16 +45,18 @@ def setup():
     for project_name, store in load_all_stores().items():
         chain_type_kwargs = {"prompt": prompt}
 
-        if settings.OPENAI_TYPE == "openai":
-            llm = ChatOpenAI(
+        if os.environ.get("OPENAI_API_TYPE", "") == "azure":
+            llm = AzureChatOpenAI(
+                client=None,
+                deployment_name="gpt35",
                 model_name="gpt-3.5-turbo",
                 temperature=0,
                 max_tokens=1000,
                 streaming=False,
             )
-        elif settings.OPENAI_TYPE == "azure":
-            llm = AzureChatOpenAI(
-                deployment_name="gpt35",
+        else:
+            llm = ChatOpenAI(
+                client=None,
                 model_name="gpt-3.5-turbo",
                 temperature=0,
                 max_tokens=1000,
@@ -88,7 +76,7 @@ def setup():
         logger.info(f"load chain for project: {project_name}")
 
 
-def build_chain(llm: AzureChatOpenAI, store: FAISS):
+def build_chain(llm, store: FAISS):
     def chain(query):
         related_docs = store.similarity_search(
             query=query["question"],

@@ -50,7 +50,7 @@ class PDFFiles(aiohttp.web.View):
     def __init__(self, *args, **kw):
         super().__init__(*args, **kw)
         self.s3: Minio = Minio(
-            endpoint="100.97.108.34:19000",
+            endpoint=prd.S3_MINIO_ADDR,
             access_key=prd.S3_KEY,
             secret_key=prd.S3_SECRET,
             secure=False,
@@ -80,9 +80,14 @@ class PDFFiles(aiohttp.web.View):
         data = await self.request.post()
 
         ioloop = asyncio.get_event_loop()
-        objs = await ioloop.run_in_executor(
-            thread_executor, uid, self.process_file, data
-        )
+
+        try:
+            objs = await ioloop.run_in_executor(
+                thread_executor, self.process_file, uid, data
+            )
+        except Exception as e:
+            logger.exception(f"failed to process file {data.get('file', '')}")
+            return aiohttp.web.json_response({"error": str(e)}, status=400)
 
         return aiohttp.web.json_response(
             {
@@ -102,6 +107,7 @@ class PDFFiles(aiohttp.web.View):
         assert type(data_key) == str, "data_key must be string"
         assert data_key, "data_key is required"
 
+        logger.info(f"process file {file.filename} for {uid}")
         # write file to tmp file and delete after used
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(file.file.read())
@@ -111,17 +117,17 @@ class PDFFiles(aiohttp.web.View):
 
         # save index to temp dir
         objs = []
-        with tempfile.NamedTemporaryFile() as tmp:
+        with tempfile.TemporaryDirectory() as tmpdir:
             files = save_encrypt_store(
                 index,
-                dirpath=tmp.name,
+                dirpath=tmpdir,
                 name=dataset_name,
                 password=data_key,
             )
 
             # upload index to s3
             for fpath in files:
-                objkey = quote(uid + fpath.removeprefix(tmp.name))
+                objkey = quote(uid + fpath.removeprefix(tmpdir))
                 objs.append(objkey)
                 with open(fpath, "rb") as f:
                     self.s3.fput_object(
