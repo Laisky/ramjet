@@ -1,36 +1,40 @@
 import asyncio
-import pickle
+import base64
 import os
-import urllib.parse
-from urllib.parse import quote
+import pickle
+import re
 import tempfile
-from typing import List, Dict, Tuple
+import urllib.parse
 from collections import namedtuple
+from typing import Dict, List, Tuple
+from urllib.parse import quote
 
-from aiohttp.web_request import FileField
 import aiohttp.web
-from minio import Minio
-from minio.error import S3Error
-from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
+from aiohttp.web_request import FileField
+from Crypto.Cipher import AES
+from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
 from langchain.prompts.chat import (
     ChatPromptTemplate,
-    SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
+    SystemMessagePromptTemplate,
 )
+from minio import Minio
+from minio.error import S3Error
 
-from ramjet.settings import prd
 from ramjet.engines import thread_executor
+from ramjet.settings import prd
+
 from .auth import authenticate_by_appkey as authenticate
 from .base import logger
-from .embedding.query import setup, query
 from .embedding.embeddings import (
-    embedding_pdf,
-    save_encrypt_store,
-    new_store,
-    load_encrypt_store,
     Index,
+    derive_key,
+    embedding_pdf,
+    load_encrypt_store,
+    new_store,
+    save_encrypt_store,
 )
-from .embedding.query import build_chain
+from .embedding.query import build_chain, query, setup
 
 s3cli: Minio = Minio(
     endpoint=prd.S3_MINIO_ADDR,
@@ -38,6 +42,10 @@ s3cli: Minio = Minio(
     secret_key=prd.S3_SECRET,
     secure=False,
 )
+
+
+dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 
 def bind_handle(add_route):
     logger.info("bind gpt web handlers")
@@ -47,6 +55,7 @@ def bind_handle(add_route):
     add_route("query", Query)
     add_route("files", PDFFiles)
     add_route("ctx", EmbeddingContext)
+    add_route("encrypted-files", EncryptedFiles)
 
 
 class LandingPage(aiohttp.web.View):
@@ -70,6 +79,40 @@ class Query(aiohttp.web.View):
         return aiohttp.web.json_response(resp._asdict())
 
 
+class EncryptedFiles(aiohttp.web.View):
+    async def get(self):
+        # https://uid:password@fikekey.pdf
+        # get uid and password from request basic auth
+        auth_header = self.request.headers.get("Authorization")
+        if auth_header:
+            encoded_credentials = auth_header.split(" ")[1]
+            decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            username, password = decoded_credentials.split(":")
+        else:
+            return aiohttp.web.Response(text="Authorization required", status=401)
+
+        # download pdf file to temp dir
+        filekey = self.request.url.path.removeprefix("/encrypted-files/public/")
+        filename = os.path.basename(filekey)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fpath = os.path.join(tmpdir, filename)
+            s3cli.fget_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=filekey,
+                file_path=fpath,
+            )
+
+            # decrypt pdf file
+            with open(fpath, "rb") as f:
+                data = f.read()
+                key = derive_key(password)
+                cipher = AES.new(key, AES.MODE_EAX, nonce=data[:16])
+                data = cipher.decrypt_and_verify(data[16:-16], data[-16:])
+
+        # return decrypted pdf file
+        return aiohttp.web.Response(body=data, content_type="application/pdf")
+
+
 class PDFFiles(aiohttp.web.View):
     """build private dataset by embedding pdf files"""
 
@@ -79,7 +122,7 @@ class PDFFiles(aiohttp.web.View):
         objs = []
         for obj in s3cli.list_objects(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            prefix=uid,
+            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}",
             recursive=True,
         ):
             if obj.object_name.endswith(".store"):
@@ -96,9 +139,8 @@ class PDFFiles(aiohttp.web.View):
         """Upload pdf file by form"""
         data = await self.request.post()
 
-        ioloop = asyncio.get_event_loop()
-
         try:
+            ioloop = asyncio.get_event_loop()
             objs = await ioloop.run_in_executor(
                 thread_executor, self.process_file, uid, data
             )
@@ -119,32 +161,56 @@ class PDFFiles(aiohttp.web.View):
         dataset_name = data.get("file_key", "")
         assert type(dataset_name) == str, "file_key must be string"
         assert dataset_name, "file_key is required"
+        assert dataset_name_regex.match(
+            dataset_name
+        ), "file_key should only contain [a-zA-Z0-9_-]"
 
-        data_key = data.get("data_key", "")
-        assert type(data_key) == str, "data_key must be string"
-        assert data_key, "data_key is required"
+        password = data.get("data_key", "")
+        assert type(password) == str, "data_key must be string"
+        assert password, "data_key is required"
 
         logger.info(f"process file {file.filename} for {uid}")
         # write file to tmp file and delete after used
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(file.file.read())
             tmp.flush()
-
-            index = embedding_pdf(tmp.name, dataset_name)
+            url_prefix = f"https://{uid}:{password}@chat2.laisky.com/encrypted-files/public/embeddings/"
+            index = embedding_pdf(tmp.name, dataset_name, url_prefix)
 
         # save index to temp dir
         objs = []
         with tempfile.TemporaryDirectory() as tmpdir:
+            # encrypt and upload origin pdf file
+            encrypted_file_path = os.path.join(tmpdir, dataset_name + ".pdf")
+            logger.debug(f"try to upload {encrypted_file_path}")
+            with open(encrypted_file_path, "wb") as f:
+                key = derive_key(password)
+                cipher = AES.new(key, AES.MODE_EAX)
+                ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.store))
+                [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
+                objkey = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.pdf"
+                objs.append(objkey)
+                s3cli.fput_object(
+                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                    object_name=objkey,
+                    file_path=encrypted_file_path,
+                )
+            logger.info(f"succeed upload {encrypted_file_path} to s3")
+
+            # encrypt and upload index
             files = save_encrypt_store(
                 index,
                 dirpath=tmpdir,
                 name=dataset_name,
-                password=data_key,
+                password=password,
             )
-
-            # upload index to s3
             for fpath in files:
-                objkey = quote(uid + fpath.removeprefix(tmpdir))
+                objkey = quote(
+                    f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/"
+                    + uid
+                    + fpath.removeprefix(tmpdir)
+                )
+                logger.debug(f"try upload {objkey} to s3")
                 objs.append(objkey)
                 with open(fpath, "rb") as f:
                     s3cli.fput_object(
@@ -152,12 +218,14 @@ class PDFFiles(aiohttp.web.View):
                         object_name=objkey,
                         file_path=fpath,
                     )
+                logger.info(f"succeed upload {objkey} to s3")
 
         return objs
 
 
 UserChain = namedtuple("UserChain", ["chain", "index"])
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
+
 
 class EmbeddingContext(aiohttp.web.View):
     """build private knowledge base by consisit of embedding indices"""
@@ -246,8 +314,8 @@ class EmbeddingContext(aiohttp.web.View):
         """load datasets from s3"""
         store = new_store()
         for dataset in datasets:
-            idx_key = f"{uid}/{dataset}.index"
-            store_key = f"{uid}/{dataset}.store"
+            idx_key = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset}.index"
+            store_key = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset}.store"
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 idx_path = os.path.join(tmpdir, idx_key)
@@ -266,12 +334,12 @@ class EmbeddingContext(aiohttp.web.View):
                 )
 
                 store_part = load_encrypt_store(
-                    dirpath=os.path.join(tmpdir, uid),
+                    dirpath=os.path.dirname(idx_path),
                     name=dataset,
                     password=password,
                 )
 
             store.store.merge_from(store_part.store)
 
-        logger.info("build private knowledge base for {uid}")
+        logger.info(f"build private knowledge base for {uid}")
         return store

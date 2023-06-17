@@ -1,26 +1,24 @@
-import os
-import glob
 import codecs
+import glob
+import hashlib
+import os
 import pickle
 import re
 import textwrap
 from collections import namedtuple
-from typing import List
-from Crypto.Cipher import AES
 from sys import path
-import hashlib
+from typing import List
 
-import openai
 import faiss
+import openai
+from Crypto.Cipher import AES
+from kipp.utils import setup_logger
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
 from langchain.vectorstores import FAISS
 from pymongo import MongoClient
-from kipp.utils import setup_logger
 
 from ramjet.settings import prd
-
-
 
 Index = namedtuple("index", ["store", "scaned_files"])
 
@@ -49,11 +47,10 @@ index_dirpath = prd.OPENAI_INDEX_DIR
 from urllib.parse import quote
 
 from langchain.document_loaders import PyPDFLoader
-
-# from langchain.document_loaders import UnstructuredPDFLoader
-from langchain.vectorstores import FAISS
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+# from langchain.document_loaders import UnstructuredPDFLoader
+from langchain.vectorstores import FAISS
 
 text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
 markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
@@ -65,7 +62,7 @@ def is_file_scaned(index: Index, fpath):
     return os.path.split(fpath)[1] in index.scaned_files
 
 
-def embedding_pdf(fpath: str, fkey: str) -> Index:
+def embedding_pdf(fpath: str, fkey: str, url_prefix: str) -> Index:
     """embedding pdf file
 
     Args:
@@ -84,10 +81,11 @@ def embedding_pdf(fpath: str, fkey: str) -> Index:
         docs.extend(splits)
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for ichunk, _ in enumerate(splits):
-            furl = prd.OPENAI_EMBEDDING_URL_PREFIX + quote(fkey, safe="")
+            # furl = prd.OPENAI_EMBEDDING_REF_URL_PREFIX.format(uid, password) + quote(fkey, safe="")
+            furl = f'{url_prefix}{quote(fkey, safe="")}.pdf'
             metadatas.append({"source": f"{furl}#page={page+1}"})
 
-    logger.info(f"embedding {fpath} with {len(docs)} chunks")
+    logger.info(f"succeed embedding {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -194,6 +192,9 @@ def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:
     #     cipher = AES.new(key, AES.MODE_EAX)
     #     ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.scaned_files))
     #     [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
+
+    # test
+    load_encrypt_store(dirpath, name, password)
 
     return [
         f"{fpath_prefix}.index",
