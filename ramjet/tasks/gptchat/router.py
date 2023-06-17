@@ -55,7 +55,7 @@ def bind_handle(add_route):
     add_route("query", Query)
     add_route("files", PDFFiles)
     add_route("ctx", EmbeddingContext)
-    add_route("encrypted-files", EncryptedFiles)
+    add_route("encrypted-files/{filekey}", EncryptedFiles)
 
 
 class LandingPage(aiohttp.web.View):
@@ -92,7 +92,7 @@ class EncryptedFiles(aiohttp.web.View):
             return aiohttp.web.Response(text="Authorization required", status=401)
 
         # download pdf file to temp dir
-        filekey = self.request.url.path.removeprefix("/encrypted-files/public/")
+        filekey =  self.request.match_info["filekey"]
         filename = os.path.basename(filekey)
         with tempfile.TemporaryDirectory() as tmpdir:
             fpath = os.path.join(tmpdir, filename)
@@ -174,7 +174,7 @@ class PDFFiles(aiohttp.web.View):
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(file.file.read())
             tmp.flush()
-            url_prefix = f"https://{uid}:{password}@chat2.laisky.com/encrypted-files/public/embeddings/"
+            url_prefix = f"https://{uid}:{password}@chat2.laisky.com/encrypted-files/embeddings/"
             index = embedding_pdf(tmp.name, dataset_name, url_prefix)
 
         # save index to temp dir
