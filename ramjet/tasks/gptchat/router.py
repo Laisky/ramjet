@@ -114,7 +114,7 @@ class PDFFiles(aiohttp.web.View):
 
     def process_file(self, uid, data) -> List[str]:
         file = data.get("file", "")
-        assert type(file) == FileField, "file must be FileField"
+        assert type(file) == FileField, f"file must be FileField, got {type(file)}"
 
         dataset_name = data.get("file_key", "")
         assert type(dataset_name) == str, "file_key must be string"

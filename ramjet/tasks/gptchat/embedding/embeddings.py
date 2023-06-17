@@ -82,10 +82,12 @@ def embedding_pdf(fpath: str, fkey: str) -> Index:
     for page, data in enumerate(loader.load_and_split()):
         splits = text_splitter.split_text(data.page_content)
         docs.extend(splits)
+        logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for ichunk, _ in enumerate(splits):
             furl = prd.OPENAI_EMBEDDING_URL_PREFIX + quote(fkey, safe="")
             metadatas.append({"source": f"{furl}#page={page+1}"})
 
+    logger.info(f"embedding {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
