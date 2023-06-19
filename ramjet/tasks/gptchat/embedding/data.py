@@ -19,10 +19,29 @@ from ..base import logger
 
 def load_all_stores() -> Dict[str, FAISS]:
     stores = {}
+    if os.environ.get("OPENAI_API_TYPE") == "azure":
+        azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
+            "embeddings"
+        ].deployment_id
+        # azure_gpt_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
+
+        embedding_model = OpenAIEmbeddings(
+            client=None,
+            model="text-embedding-ada-002",
+            deployment=azure_embeddings_deploymentid,
+        )
+    else:
+        embedding_model = OpenAIEmbeddings(
+            client=None,
+            model="text-embedding-ada-002",
+        )
+
     for project_name in prd.OPENAI_EMBEDDING_QA:
         fname = os.path.join(prd.OPENAI_INDEX_DIR, project_name)
         with open(fname+".store", "rb") as f:
             store = pickle.load(f)
+
+        store.embedding_function = embedding_model.embed_query
         store.index = faiss.read_index(fname+".index")
         stores[project_name] = store
 

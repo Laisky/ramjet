@@ -2,8 +2,10 @@ import os
 
 from ramjet.settings import prd
 from .router import bind_handle
+from .base import logger
 
 
+logger.info(f"{prd.OPENAI_TYPE=}")
 if prd.OPENAI_TYPE == "azure":
     os.environ["OPENAI_API_TYPE"] = "azure"
     os.environ["OPENAI_API_VERSION"] = "2023-05-15"

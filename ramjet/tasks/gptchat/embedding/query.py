@@ -17,6 +17,7 @@ from langchain.chains.question_answering import load_qa_chain
 
 from ..base import logger
 from .data import load_all_stores, prepare_data
+from .embeddings import new_store
 
 
 all_chains = {}
