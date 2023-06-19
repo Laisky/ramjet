@@ -94,13 +94,7 @@ def build_chain(llm, store: FAISS):
     return chain
 
 
-async def query(project_name: str, question: str):
-    return await asyncio.get_running_loop().run_in_executor(
-        thread_executor, _query, project_name, question
-    )
-
-
-def _query(project_name: str, question: str) -> Response:
+def query(project_name: str, question: str) -> Response:
     resp, refs = all_chains[project_name](
         {"question": question},
         # return_only_outputs=True,

@@ -20,7 +20,6 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
 )
 from minio import Minio
-from minio.error import S3Error
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
@@ -37,6 +36,10 @@ from .embedding.embeddings import (
 )
 from .embedding.query import build_chain, query, setup
 
+
+user_prcess_file_sema_lock = threading.RLock()
+user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
+dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
 s3cli: Minio = Minio(
     endpoint=prd.S3_MINIO_ADDR,
     access_key=prd.S3_KEY,
@@ -45,7 +48,37 @@ s3cli: Minio = Minio(
 )
 
 
-dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
+def uid_method_ratelimiter(concurrent=1):
+    """rate limit by uid
+
+    the first argument of the decorated function must be uid
+    """
+
+    def decorator(func):
+        def wrapper(self, uid: str, *args, **kwargs):
+            limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
+
+            sema = user_prcess_file_sema.get(uid)
+            if not sema:
+                with user_prcess_file_sema_lock:
+                    sema = user_prcess_file_sema.get(uid)
+                    if not sema:
+                        sema = threading.Semaphore(concurrent)
+                        user_prcess_file_sema[uid] = sema
+
+            if not sema.acquire(blocking=False):
+                raise aiohttp.web.HTTPTooManyRequests(
+                    reason=f"current user {uid} can only process {limit} files concurrently"
+                )
+
+            try:
+                return func(self, uid, *args, **kwargs)
+            finally:
+                sema.release()
+
+        return wrapper
+
+    return decorator
 
 
 def bind_handle(add_route):
@@ -76,8 +109,16 @@ class Query(aiohttp.web.View):
         if not question:
             return aiohttp.web.Response(text="q is required", status=400)
 
-        resp = await query(project, question)
+        ioloop = asyncio.get_running_loop()
+        resp = await ioloop.run_in_executor(
+            thread_executor, self.query, "public", project, question
+        )
+
         return aiohttp.web.json_response(resp._asdict())
+
+    @uid_method_ratelimiter(10)
+    def query(self, uid: str, project: str, question: str):
+        return query(project, question)
 
 
 class EncryptedFiles(aiohttp.web.View):
@@ -123,43 +164,6 @@ class EncryptedFiles(aiohttp.web.View):
         return aiohttp.web.Response(body=data, content_type="application/pdf")
 
 
-user_prcess_file_sema_lock = threading.RLock()
-user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
-
-
-def uid_limitrate(concurrent=1):
-    """rate limit by uid
-
-    the first argument of the decorated function must be uid
-    """
-
-    def decorator(func):
-        def wrapper(uid: str, *args, **kwargs):
-            limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
-
-            sema = user_prcess_file_sema.get(uid)
-            if not sema:
-                with user_prcess_file_sema_lock:
-                    sema = user_prcess_file_sema.get(uid)
-                    if not sema:
-                        sema = threading.Semaphore(concurrent)
-                        user_prcess_file_sema[uid] = sema
-
-            if not sema.acquire(blocking=False):
-                raise aiohttp.web.HTTPTooManyRequests(
-                    reason=f"current user {uid} can only process {limit} files concurrently"
-                )
-
-            try:
-                return func(uid, *args, **kwargs)
-            finally:
-                sema.release()
-
-        return wrapper
-
-    return decorator
-
-
 class PDFFiles(aiohttp.web.View):
     """build private dataset by embedding pdf files"""
 
@@ -201,7 +205,7 @@ class PDFFiles(aiohttp.web.View):
             }
         )
 
-    @uid_limitrate(concurrent=1)
+    @uid_method_ratelimiter(concurrent=1)
     def process_file(self, uid, data) -> List[str]:
         # check locks
         sema = user_prcess_file_sema.get(uid, threading.Semaphore(1))
@@ -328,6 +332,7 @@ class EmbeddingContext(aiohttp.web.View):
             }
         )
 
+    @uid_method_ratelimiter(concurrent=1)
     def query(self, uid: str, query: str) -> Tuple[str, List[str]]:
         resp, refs = user_embeddings_chain[uid].chain({"question": query})
         return resp, list(set(refs))
