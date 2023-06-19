@@ -48,7 +48,7 @@ s3cli: Minio = Minio(
 )
 
 
-def uid_method_ratelimiter(concurrent=1):
+def uid_method_ratelimiter(concurrent=3):
     """rate limit by uid
 
     the first argument of the decorated function must be uid
