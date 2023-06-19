@@ -55,7 +55,7 @@ def bind_handle(add_route):
     add_route("query", Query)
     add_route("files", PDFFiles)
     add_route("ctx", EmbeddingContext)
-    add_route("encrypted-files/{filekey}", EncryptedFiles)
+    add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
 
 
 class LandingPage(aiohttp.web.View):
@@ -80,6 +80,7 @@ class Query(aiohttp.web.View):
 
 
 class EncryptedFiles(aiohttp.web.View):
+
     async def get(self):
         # https://uid:password@fikekey.pdf
         # get uid and password from request basic auth
@@ -87,9 +88,11 @@ class EncryptedFiles(aiohttp.web.View):
         if auth_header:
             encoded_credentials = auth_header.split(" ")[1]
             decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
-            username, password = decoded_credentials.split(":")
+            _, password = decoded_credentials.split(":")
         else:
-            return aiohttp.web.Response(text="Authorization required", status=401)
+            response = aiohttp.web.Response(status=401)
+            response.headers['WWW-Authenticate'] = 'Basic realm="My Realm"'
+            return response
 
         # download pdf file to temp dir
         filekey =  self.request.match_info["filekey"]
@@ -98,16 +101,24 @@ class EncryptedFiles(aiohttp.web.View):
             fpath = os.path.join(tmpdir, filename)
             s3cli.fget_object(
                 bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=filekey,
+                object_name=f"{filekey}",
                 file_path=fpath,
+                request_headers={"Cache-Control": "no-cache"},
             )
 
             # decrypt pdf file
             with open(fpath, "rb") as f:
-                data = f.read()
-                key = derive_key(password)
-                cipher = AES.new(key, AES.MODE_EAX, nonce=data[:16])
-                data = cipher.decrypt_and_verify(data[16:-16], data[-16:])
+                try:
+                    key = derive_key(password)
+                    nonce, tag, ciphertext = [f.read(x) for x in (16, 16, -1)]
+                    cipher = AES.new(key, AES.MODE_EAX, nonce)
+                    data = cipher.decrypt_and_verify(ciphertext, tag)
+                except Exception:
+                    logger.exception(f"failed to decrypt file {filekey}, ask to retry")
+                    response = aiohttp.web.Response(status=401)
+                    response.headers['WWW-Authenticate'] = 'Basic realm="My Realm"'
+                    return response
+
 
         # return decrypted pdf file
         return aiohttp.web.Response(body=data, content_type="application/pdf")
@@ -169,33 +180,48 @@ class PDFFiles(aiohttp.web.View):
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
 
-        logger.info(f"process file {file.filename} for {uid}")
-        # write file to tmp file and delete after used
-        with tempfile.NamedTemporaryFile() as tmp:
-            tmp.write(file.file.read())
-            tmp.flush()
-            url_prefix = f"https://{uid}:{password}@chat2.laisky.com/encrypted-files/embeddings/"
-            index = embedding_pdf(tmp.name, dataset_name, url_prefix)
-
-        # save index to temp dir
         objs = []
+        encrypted_file_key = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.pdf"
+
+        logger.info(f"process file {file.filename} for {uid}")
         with tempfile.TemporaryDirectory() as tmpdir:
+            # copy uploaded file to temp dir
+            source_fpath = os.path.join(tmpdir, file.filename)
+            with open(source_fpath, "wb") as fp:
+                total_size = 0
+                chunk_size = 1024 * 1024 # 1MB
+                while True:
+                    chunk = file.file.read(chunk_size)
+                    if not chunk:
+                        break
+
+                    total_size += len(chunk)
+                    if total_size > prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT:
+                        raise Exception(f"file size should not exceed {prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes")
+
+                    fp.write(chunk)
+
+            metadata_name = f"{prd.OPENAI_EMBEDDING_REF_URL_PREFIX}{encrypted_file_key}"
+            index = embedding_pdf(fp.name, metadata_name)
+
             # encrypt and upload origin pdf file
             encrypted_file_path = os.path.join(tmpdir, dataset_name + ".pdf")
             logger.debug(f"try to upload {encrypted_file_path}")
-            with open(encrypted_file_path, "wb") as f:
-                key = derive_key(password)
-                cipher = AES.new(key, AES.MODE_EAX)
-                ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.store))
-                [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
-                objkey = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.pdf"
-                objs.append(objkey)
-                s3cli.fput_object(
-                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                    object_name=objkey,
-                    file_path=encrypted_file_path,
-                )
-            logger.info(f"succeed upload {encrypted_file_path} to s3")
+            with open(source_fpath, "rb") as src_fp:
+                with open(encrypted_file_path, "wb") as encrypted_fp:
+                    key = derive_key(password)
+                    cipher = AES.new(key, AES.MODE_EAX)
+                    ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(src_fp.read()))
+                    [encrypted_fp.write(x) for x in (cipher.nonce, tag, ciphertext)]
+                    encrypted_fp.flush()
+
+                    objs.append(encrypted_file_key)
+                    s3cli.fput_object(
+                        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                        object_name=encrypted_file_key,
+                        file_path=encrypted_file_path,
+                    )
+            logger.info(f"succeed upload encrypted source file {encrypted_file_key} to s3")
 
             # encrypt and upload index
             files = save_encrypt_store(
@@ -212,7 +238,7 @@ class PDFFiles(aiohttp.web.View):
                 )
                 logger.debug(f"try upload {objkey} to s3")
                 objs.append(objkey)
-                with open(fpath, "rb") as f:
+                with open(fpath, "rb") as encrypted_fp:
                     s3cli.fput_object(
                         bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                         object_name=objkey,
@@ -326,11 +352,15 @@ class EmbeddingContext(aiohttp.web.View):
                     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=idx_key,
                     file_path=idx_path,
+                    # request_headers={"Cache-Control": "no-cache"},
+
                 )
                 s3cli.fget_object(
                     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=store_key,
                     file_path=store_path,
+                    # request_headers={"Cache-Control": "no-cache"},
+
                 )
 
                 store_part = load_encrypt_store(

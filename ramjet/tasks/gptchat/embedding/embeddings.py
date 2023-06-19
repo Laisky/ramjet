@@ -62,7 +62,7 @@ def is_file_scaned(index: Index, fpath):
     return os.path.split(fpath)[1] in index.scaned_files
 
 
-def embedding_pdf(fpath: str, fkey: str, url_prefix: str) -> Index:
+def embedding_pdf(fpath: str, metadata_name: str) -> Index:
     """embedding pdf file
 
     Args:
@@ -72,6 +72,7 @@ def embedding_pdf(fpath: str, fkey: str, url_prefix: str) -> Index:
     Returns:
         Index: index
     """
+    logger.info(f"call embedding_pdf {fpath=}, {metadata_name=}")
     index = new_store()
     docs = []
     metadatas = []
@@ -82,8 +83,7 @@ def embedding_pdf(fpath: str, fkey: str, url_prefix: str) -> Index:
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for ichunk, _ in enumerate(splits):
             # furl = prd.OPENAI_EMBEDDING_REF_URL_PREFIX.format(uid, password) + quote(fkey, safe="")
-            furl = f'{url_prefix}{quote(fkey, safe="")}.pdf'
-            metadatas.append({"source": f"{furl}#page={page+1}"})
+            metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     logger.info(f"succeed embedding {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
