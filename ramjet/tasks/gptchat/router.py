@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import base64
 import os
 import pickle
@@ -124,6 +125,39 @@ class EncryptedFiles(aiohttp.web.View):
         return aiohttp.web.Response(body=data, content_type="application/pdf")
 
 
+user_prcess_file_sema_lock = threading.RLock()
+user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
+
+def uid_limitrate(concurrent=1):
+    """rate limit by uid
+
+    the first argument of the decorated function must be uid
+    """
+    def decorator(func):
+        def wrapper(uid: str, *args, **kwargs):
+            limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
+
+            sema = user_prcess_file_sema.get(uid)
+            if not sema:
+                with user_prcess_file_sema_lock:
+                    sema = user_prcess_file_sema.get(uid)
+                    if not sema:
+                        sema = threading.Semaphore(concurrent)
+                        user_prcess_file_sema[uid] = sema
+
+            if not sema.acquire(blocking=False):
+                raise aiohttp.web.HTTPTooManyRequests(
+                    reason=f"current user {uid} can only process {limit} files concurrently"
+                )
+
+            try:
+                return func(uid, *args, **kwargs)
+            finally:
+                sema.release()
+
+        return wrapper
+    return decorator
+
 class PDFFiles(aiohttp.web.View):
     """build private dataset by embedding pdf files"""
 
@@ -165,7 +199,11 @@ class PDFFiles(aiohttp.web.View):
             }
         )
 
+    @uid_limitrate(concurrent=1)
     def process_file(self, uid, data) -> List[str]:
+        # check locks
+        sema = user_prcess_file_sema.get(uid, threading.Semaphore(1))
+
         file = data.get("file", "")
         assert type(file) == FileField, f"file must be FileField, got {type(file)}"
 
