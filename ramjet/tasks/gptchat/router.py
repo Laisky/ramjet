@@ -1,10 +1,10 @@
 import asyncio
-import threading
 import base64
 import os
 import pickle
 import re
 import tempfile
+import threading
 import urllib.parse
 from collections import namedtuple
 from typing import Dict, List, Tuple
@@ -81,7 +81,6 @@ class Query(aiohttp.web.View):
 
 
 class EncryptedFiles(aiohttp.web.View):
-
     async def get(self):
         # https://uid:password@fikekey.pdf
         # get uid and password from request basic auth
@@ -92,11 +91,11 @@ class EncryptedFiles(aiohttp.web.View):
             _, password = decoded_credentials.split(":")
         else:
             response = aiohttp.web.Response(status=401)
-            response.headers['WWW-Authenticate'] = 'Basic realm="My Realm"'
+            response.headers["WWW-Authenticate"] = 'Basic realm="My Realm"'
             return response
 
         # download pdf file to temp dir
-        filekey =  self.request.match_info["filekey"]
+        filekey = self.request.match_info["filekey"]
         filename = os.path.basename(filekey)
         with tempfile.TemporaryDirectory() as tmpdir:
             fpath = os.path.join(tmpdir, filename)
@@ -117,9 +116,8 @@ class EncryptedFiles(aiohttp.web.View):
                 except Exception:
                     logger.exception(f"failed to decrypt file {filekey}, ask to retry")
                     response = aiohttp.web.Response(status=401)
-                    response.headers['WWW-Authenticate'] = 'Basic realm="My Realm"'
+                    response.headers["WWW-Authenticate"] = 'Basic realm="My Realm"'
                     return response
-
 
         # return decrypted pdf file
         return aiohttp.web.Response(body=data, content_type="application/pdf")
@@ -128,11 +126,13 @@ class EncryptedFiles(aiohttp.web.View):
 user_prcess_file_sema_lock = threading.RLock()
 user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
 
+
 def uid_limitrate(concurrent=1):
     """rate limit by uid
 
     the first argument of the decorated function must be uid
     """
+
     def decorator(func):
         def wrapper(uid: str, *args, **kwargs):
             limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
@@ -156,7 +156,9 @@ def uid_limitrate(concurrent=1):
                 sema.release()
 
         return wrapper
+
     return decorator
+
 
 class PDFFiles(aiohttp.web.View):
     """build private dataset by embedding pdf files"""
@@ -219,7 +221,9 @@ class PDFFiles(aiohttp.web.View):
         assert password, "data_key is required"
 
         objs = []
-        encrypted_file_key = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.pdf"
+        encrypted_file_key = (
+            f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.pdf"
+        )
 
         logger.info(f"process file {file.filename} for {uid}")
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -227,7 +231,7 @@ class PDFFiles(aiohttp.web.View):
             source_fpath = os.path.join(tmpdir, file.filename)
             with open(source_fpath, "wb") as fp:
                 total_size = 0
-                chunk_size = 1024 * 1024 # 1MB
+                chunk_size = 1024 * 1024  # 1MB
                 while True:
                     chunk = file.file.read(chunk_size)
                     if not chunk:
@@ -235,7 +239,9 @@ class PDFFiles(aiohttp.web.View):
 
                     total_size += len(chunk)
                     if total_size > prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT:
-                        raise Exception(f"file size should not exceed {prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes")
+                        raise Exception(
+                            f"file size should not exceed {prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes"
+                        )
 
                     fp.write(chunk)
 
@@ -249,7 +255,9 @@ class PDFFiles(aiohttp.web.View):
                 with open(encrypted_file_path, "wb") as encrypted_fp:
                     key = derive_key(password)
                     cipher = AES.new(key, AES.MODE_EAX)
-                    ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(src_fp.read()))
+                    ciphertext, tag = cipher.encrypt_and_digest(
+                        pickle.dumps(src_fp.read())
+                    )
                     [encrypted_fp.write(x) for x in (cipher.nonce, tag, ciphertext)]
                     encrypted_fp.flush()
 
@@ -259,7 +267,9 @@ class PDFFiles(aiohttp.web.View):
                         object_name=encrypted_file_key,
                         file_path=encrypted_file_path,
                     )
-            logger.info(f"succeed upload encrypted source file {encrypted_file_key} to s3")
+            logger.info(
+                f"succeed upload encrypted source file {encrypted_file_key} to s3"
+            )
 
             # encrypt and upload index
             files = save_encrypt_store(
@@ -391,14 +401,12 @@ class EmbeddingContext(aiohttp.web.View):
                     object_name=idx_key,
                     file_path=idx_path,
                     # request_headers={"Cache-Control": "no-cache"},
-
                 )
                 s3cli.fget_object(
                     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=store_key,
                     file_path=store_path,
                     # request_headers={"Cache-Control": "no-cache"},
-
                 )
 
                 store_part = load_encrypt_store(
