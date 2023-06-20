@@ -57,6 +57,25 @@ s3cli: Minio = Minio(
 )
 
 
+def uid_ratelimiter(uid: str, concurrent=3) -> threading.Semaphore:
+    limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
+
+    sema = user_prcess_file_sema.get(uid)
+    if not sema:
+        with user_prcess_file_sema_lock:
+            sema = user_prcess_file_sema.get(uid)
+            if not sema:
+                sema = threading.Semaphore(limit)
+                user_prcess_file_sema[uid] = sema
+
+    if not sema.acquire(blocking=False):
+        raise aiohttp.web.HTTPTooManyRequests(
+            reason=f"current user {uid} can only process {limit} files concurrently"
+        )
+
+    return sema
+
+
 def uid_method_ratelimiter(concurrent=3):
     """rate limit by uid
 
@@ -65,20 +84,7 @@ def uid_method_ratelimiter(concurrent=3):
 
     def decorator(func):
         def wrapper(self, uid: str, *args, **kwargs):
-            limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
-
-            sema = user_prcess_file_sema.get(uid)
-            if not sema:
-                with user_prcess_file_sema_lock:
-                    sema = user_prcess_file_sema.get(uid)
-                    if not sema:
-                        sema = threading.Semaphore(concurrent)
-                        user_prcess_file_sema[uid] = sema
-
-            if not sema.acquire(blocking=False):
-                raise aiohttp.web.HTTPTooManyRequests(
-                    reason=f"current user {uid} can only process {limit} files concurrently"
-                )
+            sema = uid_ratelimiter(uid, concurrent)
 
             try:
                 return func(self, uid, *args, **kwargs)
@@ -204,32 +210,38 @@ class PDFFiles(aiohttp.web.View):
         """Upload pdf file by form"""
         data = await self.request.post()
 
+        sema = uid_ratelimiter(uid, 3)
         try:
             ioloop = asyncio.get_event_loop()
 
             # do not wait task done
-            ioloop.run_in_executor(
-                thread_executor, self.process_file, uid, data
-            )
-
-
+            ioloop.run_in_executor(thread_executor, self.process_file, uid, data)
         except Exception as e:
             logger.exception(f"failed to process file {data.get('file', '')}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
+        finally:
+            sema.release()
 
         return aiohttp.web.json_response({"status": "ok"})
 
-    @uid_method_ratelimiter(concurrent=1)
     def process_file(self, uid, data) -> List[str]:
         dataset_name = data.get("file_key", "")
+        assert type(dataset_name) == str, "file_key must be string"
+        assert dataset_name, "file_key is required"
+        assert dataset_name_regex.match(
+            dataset_name
+        ), "file_key should only contain [a-zA-Z0-9_-]"
+
         try:
             with user_processing_files_lock:
-                user_processing_files.get(uid, set()).add(dataset_name)
+                fset = user_processing_files.get(uid, set())
+                fset.add(dataset_name)
+                user_processing_files[uid] = fset
 
             return self._process_file(uid, data)
         finally:
             with user_processing_files_lock:
-                user_processing_files.get(uid, set()).remove(dataset_name)
+                user_processing_files[uid].remove(dataset_name)
 
     def _process_file(self, uid, data) -> List[str]:
         """process user uploaded file by openai embeddings,
@@ -239,12 +251,6 @@ class PDFFiles(aiohttp.web.View):
         assert type(file) == FileField, f"file must be FileField, got {type(file)}"
 
         dataset_name = data.get("file_key", "")
-        assert type(dataset_name) == str, "file_key must be string"
-        assert dataset_name, "file_key is required"
-        assert dataset_name_regex.match(
-            dataset_name
-        ), "file_key should only contain [a-zA-Z0-9_-]"
-
         password = data.get("data_key", "")
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
