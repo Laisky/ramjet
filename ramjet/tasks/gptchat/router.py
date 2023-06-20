@@ -7,7 +7,7 @@ import tempfile
 import threading
 import urllib.parse
 from collections import namedtuple
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Set
 from urllib.parse import quote
 
 import aiohttp.web
@@ -37,9 +37,18 @@ from .embedding.embeddings import (
 from .embedding.query import build_chain, query, setup
 
 
+# limit concurrent process files by uid
 user_prcess_file_sema_lock = threading.RLock()
 user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
+
+# track processing files by uid
+# {uid: [filekeys]}
+user_processing_files_lock = threading.RLock()
+user_processing_files: Dict[str, Set[str]] = {}
+
+# valid dataset name
 dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 s3cli: Minio = Minio(
     endpoint=prd.S3_MINIO_ADDR,
     access_key=prd.S3_KEY,
@@ -170,7 +179,7 @@ class PDFFiles(aiohttp.web.View):
     @authenticate
     async def get(self, uid):
         """list s3 files"""
-        objs = []
+        objs: List[str] = []
         for obj in s3cli.list_objects(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
             prefix=f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}",
@@ -179,9 +188,14 @@ class PDFFiles(aiohttp.web.View):
             if obj.object_name.endswith(".store"):
                 objs.append(os.path.basename(obj.object_name.removesuffix(".store")))
 
+        with user_processing_files_lock:
+            processing_files = list(user_processing_files.get(uid, []))
+
         return aiohttp.web.json_response(
             {
                 "files": objs,
+                "processing_files": processing_files,
+                # "processing_files": ["test-1", "terrfrhlfkrehfkrhefhrelfhrelkfhkehrwlfhwlerkghlkrewhglhreglkhlrwekhglhwerlghrewhgkurhewlgkwhegst-2"],
             }
         )
 
@@ -192,24 +206,35 @@ class PDFFiles(aiohttp.web.View):
 
         try:
             ioloop = asyncio.get_event_loop()
-            objs = await ioloop.run_in_executor(
+
+            # do not wait task done
+            ioloop.run_in_executor(
                 thread_executor, self.process_file, uid, data
             )
+
+
         except Exception as e:
             logger.exception(f"failed to process file {data.get('file', '')}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
 
-        return aiohttp.web.json_response(
-            {
-                "file": objs,
-            }
-        )
+        return aiohttp.web.json_response({"status": "ok"})
 
     @uid_method_ratelimiter(concurrent=1)
     def process_file(self, uid, data) -> List[str]:
-        # check locks
-        sema = user_prcess_file_sema.get(uid, threading.Semaphore(1))
+        dataset_name = data.get("file_key", "")
+        try:
+            with user_processing_files_lock:
+                user_processing_files.get(uid, set()).add(dataset_name)
 
+            return self._process_file(uid, data)
+        finally:
+            with user_processing_files_lock:
+                user_processing_files.get(uid, set()).remove(dataset_name)
+
+    def _process_file(self, uid, data) -> List[str]:
+        """process user uploaded file by openai embeddings,
+        then encrypt and upload to s3
+        """
         file = data.get("file", "")
         assert type(file) == FileField, f"file must be FileField, got {type(file)}"
 
