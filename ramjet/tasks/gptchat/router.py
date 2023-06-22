@@ -341,16 +341,21 @@ class EmbeddingContext(aiohttp.web.View):
     @authenticate
     async def get(self, uid):
         """talk with user's private knowledge base"""
+        ioloop = asyncio.get_event_loop()
         try:
-            assert user_embeddings_chain.get(uid), "there is no context for this user"
-
             query = self.request.query.get("q", "").strip()
             assert query, "q is required"
+
+            password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
+            if uid not in user_embeddings_chain:
+                logger.debug(f"try restore user chain from s3 for {uid=}")
+                await ioloop.run_in_executor(
+                    thread_executor, self.restore_user_chain, uid, password
+                )
         except Exception as e:
             logger.exception(f"failed to get context for {uid}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
 
-        ioloop = asyncio.get_event_loop()
         resp, refs = await ioloop.run_in_executor(
             thread_executor, self.query, uid, query
         )
@@ -361,6 +366,35 @@ class EmbeddingContext(aiohttp.web.View):
                 "url": refs,
             }
         )
+
+    def restore_user_chain(self, uid: str, password: str):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # encrypt and upload origin pdf file
+            index_objkey = quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.index"
+            )
+            obj_objkey = quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.store"
+            )
+
+            s3cli.fget_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=index_objkey,
+                file_path=os.path.join(tmpdir, "qachat.index"),
+            )
+            s3cli.fget_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=obj_objkey,
+                file_path=os.path.join(tmpdir, "qachat.store"),
+            )
+
+            index = load_encrypt_store(
+                dirpath=tmpdir,
+                name="qachat",
+                password=password,
+            )
+            self.build_user_chain(uid, index)
+            logger.info(f"succeed restore user {uid=} chain from s3")
 
     @uid_method_ratelimiter(concurrent=1)
     def query(self, uid: str, query: str) -> Tuple[str, List[str]]:
@@ -423,6 +457,7 @@ class EmbeddingContext(aiohttp.web.View):
         logger.info(f"succeed to upload qa chat store {uid=}")
 
     def build_user_chain(self, uid: str, index: Index):
+        """build user's embedding index and save in memory"""
         if os.environ.get("OPENAI_API_TYPE", "") == "azure":
             llm = AzureChatOpenAI(
                 client=None,
