@@ -376,16 +376,13 @@ class EmbeddingContext(aiohttp.web.View):
             assert type(datasets) == list, "datasets must be list"
             assert datasets, "datasets is required"
 
-            data_key = data.get("data_key", "")
-            assert type(data_key) == str, "data_key must be string"
-            assert data_key, "data_key is required"
+            password = data.get("data_key", "")
+            assert type(password) == str, "data_key must be string"
+            assert password, "data_key is required"
 
             ioloop = asyncio.get_event_loop()
-            index = await ioloop.run_in_executor(
-                thread_executor, self.load_datasets, uid, datasets, data_key
-            )
             await ioloop.run_in_executor(
-                thread_executor, self.build_user_chain, uid, index
+                thread_executor, self._build_user_chatbot, uid, password, datasets
             )
         except Exception as e:
             logger.exception(f"failed to parse request body")
@@ -395,7 +392,12 @@ class EmbeddingContext(aiohttp.web.View):
             {"msg": "ok"},
         )
 
-    def save_user_chain(self, index: Index, uid: str, password:str):
+    def _build_user_chatbot(self, uid: str, password: str, datasets: List[str]):
+        index = self.load_datasets(uid, datasets, password)
+        self.build_user_chain(uid, index)
+        self.save_user_chain(index, uid, password)
+
+    def save_user_chain(self, index: Index, uid: str, password: str):
         """save user's embedding index to s3"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # encrypt and upload origin pdf file
@@ -417,6 +419,8 @@ class EmbeddingContext(aiohttp.web.View):
                     file_path=fpath,
                 )
                 logger.debug(f"upload {objkey} to s3")
+
+        logger.info(f"succeed to upload qa chat store {uid=}")
 
     def build_user_chain(self, uid: str, index: Index):
         if os.environ.get("OPENAI_API_TYPE", "") == "azure":
@@ -441,6 +445,7 @@ class EmbeddingContext(aiohttp.web.View):
             chain=build_chain(llm, index.store),
             index=index,
         )
+        logger.info(f"succeed to build user chain {uid=}")
 
     def load_datasets(self, uid: str, datasets: List[str], password: str) -> Index:
         """load datasets from s3"""
