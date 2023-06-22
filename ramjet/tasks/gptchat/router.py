@@ -23,7 +23,6 @@ from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
-
 from .auth import authenticate_by_appkey as authenticate
 from .base import logger
 from .embedding.embeddings import (
@@ -188,8 +187,8 @@ class PDFFiles(aiohttp.web.View):
         objs: List[str] = []
         for obj in s3cli.list_objects(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}",
-            recursive=True,
+            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/",
+            recursive=False,
         ):
             if obj.object_name.endswith(".store"):
                 objs.append(os.path.basename(obj.object_name.removesuffix(".store")))
@@ -395,6 +394,29 @@ class EmbeddingContext(aiohttp.web.View):
         return aiohttp.web.json_response(
             {"msg": "ok"},
         )
+
+    def save_user_chain(self, index: Index, uid: str, password:str):
+        """save user's embedding index to s3"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # encrypt and upload origin pdf file
+            fs = save_encrypt_store(
+                index=index,
+                dirpath=tmpdir,
+                name="qachat",
+                password=password,
+            )
+
+            logger.debug(f"try to upload embedding chat store {uid=}")
+            for fpath in fs:
+                objkey = quote(
+                    f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/{os.path.basename(fpath)}"
+                )
+                s3cli.fput_object(
+                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                    object_name=objkey,
+                    file_path=fpath,
+                )
+                logger.debug(f"upload {objkey} to s3")
 
     def build_user_chain(self, uid: str, index: Index):
         if os.environ.get("OPENAI_API_TYPE", "") == "azure":
