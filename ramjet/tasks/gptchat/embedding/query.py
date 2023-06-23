@@ -2,22 +2,16 @@ import os
 from collections import namedtuple
 from textwrap import dedent
 
-from ramjet import settings
-from langchain.chains import RetrievalQAWithSourcesChain
 from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from ramjet.engines import thread_executor
-import asyncio
-from langchain.vectorstores import FAISS
-from langchain.chains.question_answering import load_qa_chain
 
 from ..base import logger
 from .data import load_all_stores, prepare_data
-from .embeddings import new_store
+from .embeddings import  build_chain
 
 
 all_chains = {}
@@ -75,23 +69,6 @@ def setup():
 
         all_chains[project_name] = build_chain(llm=llm, store=store)
         logger.info(f"load chain for project: {project_name}")
-
-
-def build_chain(llm, store: FAISS):
-    def chain(query):
-        related_docs = store.similarity_search(
-            query=query["question"],
-            k=10,
-        )
-        chain = load_qa_chain(llm, chain_type="stuff")
-        response = chain.run(
-            input_documents=related_docs,
-            question=query["question"],
-        )
-        refs = [d.metadata["source"] for d in related_docs]
-        return response, refs
-
-    return chain
 
 
 def query(project_name: str, question: str) -> Response:

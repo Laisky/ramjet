@@ -1,28 +1,30 @@
+import tempfile
 import codecs
 import glob
 import hashlib
 import os
 import pickle
-import re
 import textwrap
 from collections import namedtuple
 from sys import path
-from typing import List
+from typing import List, Tuple, Dict
 
 import faiss
-import openai
 from Crypto.Cipher import AES
 from kipp.utils import setup_logger
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
 from langchain.vectorstores import FAISS
-from pymongo import MongoClient
+from langchain.chains.question_answering import load_qa_chain
 
 from ramjet.settings import prd
 
-Index = namedtuple("index", ["store", "scaned_files"])
-
 logger = setup_logger("security")
+UserChain = namedtuple("UserChain", ["chain", "index", "datasets"])
+
+Index = namedtuple("index", ["store", "scaned_files"])
+user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 
 
 def pretty_print(text: str) -> str:
@@ -60,6 +62,51 @@ N_BACTCH_FILES = 5
 
 def is_file_scaned(index: Index, fpath):
     return os.path.split(fpath)[1] in index.scaned_files
+
+
+def build_chain(llm, store: FAISS):
+    def chain(query):
+        related_docs = store.similarity_search(
+            query=query["question"],
+            k=10,
+        )
+        chain = load_qa_chain(llm, chain_type="stuff")
+        response = chain.run(
+            input_documents=related_docs,
+            question=query["question"],
+        )
+        refs = [d.metadata["source"] for d in related_docs]
+        return response, refs
+
+    return chain
+
+
+def build_user_chain(uid: str, index: Index, datasets: List[str]):
+    """build user's embedding index and save in memory"""
+    if os.environ.get("OPENAI_API_TYPE", "") == "azure":
+        llm = AzureChatOpenAI(
+            client=None,
+            deployment_name="gpt35",
+            # model_name="gpt-3.5-turbo",
+            temperature=0,
+            max_tokens=1000,
+            streaming=False,
+        )
+    else:
+        llm = ChatOpenAI(
+            client=None,
+            # model_name="gpt-3.5-turbo",
+            temperature=0,
+            max_tokens=1000,
+            streaming=False,
+        )
+
+    user_embeddings_chain[uid] = UserChain(
+        chain=build_chain(llm, index.store),
+        index=index,
+        datasets=datasets,
+    )
+    logger.info(f"succeed to build user chain {uid=}")
 
 
 def embedding_pdf(fpath: str, metadata_name: str) -> Index:
@@ -159,6 +206,47 @@ def derive_key(password):
         dklen=32,  # length of the derived key
     )
     return key
+
+
+def restore_user_chain(s3cli, uid: str, password: str):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # encrypt and upload origin pdf file
+        objkeys = [
+            quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.index"
+            ),
+            quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.store"
+            ),
+            quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/datasets.pkl"
+            ),
+        ]
+
+        try:
+            for objkey in objkeys:
+                s3cli.fget_object(
+                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                    object_name=objkey,
+                    file_path=os.path.join(tmpdir, os.path.basename(objkey)),
+                )
+        except Exception as e:
+            logger.debug(f"fail to restore user {uid=} chain from s3: {e}")
+            return
+
+        # read index file
+        index = load_encrypt_store(
+            dirpath=tmpdir,
+            name="qachat",
+            password=password,
+        )
+
+        # read datasets file
+        with open(os.path.join(tmpdir, "datasets.pkl"), "rb") as fp:
+            datasets = pickle.load(fp)
+
+    logger.info(f"succeed restore user {uid=} chain from s3")
+    build_user_chain(uid, index, datasets)
 
 
 def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:

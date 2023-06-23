@@ -6,19 +6,12 @@ import re
 import tempfile
 import threading
 import urllib.parse
-from collections import namedtuple
 from typing import Dict, List, Tuple, Set
 from urllib.parse import quote
 
 import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
-from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
-from langchain.prompts.chat import (
-    ChatPromptTemplate,
-    HumanMessagePromptTemplate,
-    SystemMessagePromptTemplate,
-)
 from minio import Minio
 
 from ramjet.engines import thread_executor
@@ -32,6 +25,9 @@ from .embedding.embeddings import (
     load_encrypt_store,
     new_store,
     save_encrypt_store,
+    restore_user_chain,
+    user_embeddings_chain,
+    build_user_chain,
 )
 from .embedding.query import build_chain, query, setup
 
@@ -194,6 +190,7 @@ class PDFFiles(aiohttp.web.View):
     async def get(self, uid):
         """list s3 files"""
         files: List[Dict] = []
+        password = self.request.headers.get("X-PDFCHAT-PASSWORD")
 
         # for test
         # files.append({"name": "test.pdf", "status": "processing", "progress": 75})
@@ -221,9 +218,19 @@ class PDFFiles(aiohttp.web.View):
                 ]
             )
 
-        return aiohttp.web.json_response({
-            "datasets": files,
-        })
+        if uid not in user_embeddings_chain:
+            restore_user_chain(s3cli, uid, password)
+
+        selected = []
+        if uid in user_embeddings_chain:
+            selected = user_embeddings_chain[uid].datasets
+
+        return aiohttp.web.json_response(
+            {
+                "datasets": files,
+                "selected": selected,
+            }
+        )
 
     @authenticate
     async def post(self, uid):
@@ -352,10 +359,6 @@ class PDFFiles(aiohttp.web.View):
         return objs
 
 
-UserChain = namedtuple("UserChain", ["chain", "index"])
-user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
-
-
 class EmbeddingContext(aiohttp.web.View):
     """build private knowledge base by consisit of embedding indices"""
 
@@ -370,9 +373,10 @@ class EmbeddingContext(aiohttp.web.View):
             password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
             if uid not in user_embeddings_chain:
                 logger.debug(f"try restore user chain from s3 for {uid=}")
-                await ioloop.run_in_executor(
-                    thread_executor, self.restore_user_chain, uid, password
+                index, datasets = await ioloop.run_in_executor(
+                    thread_executor, restore_user_chain, s3cli, uid, password
                 )
+                build_user_chain(uid, index, datasets)
         except Exception as e:
             logger.exception(f"failed to get context for {uid}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
@@ -387,35 +391,6 @@ class EmbeddingContext(aiohttp.web.View):
                 "url": refs,
             }
         )
-
-    def restore_user_chain(self, uid: str, password: str):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # encrypt and upload origin pdf file
-            index_objkey = quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.index"
-            )
-            obj_objkey = quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.store"
-            )
-
-            s3cli.fget_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=index_objkey,
-                file_path=os.path.join(tmpdir, "qachat.index"),
-            )
-            s3cli.fget_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=obj_objkey,
-                file_path=os.path.join(tmpdir, "qachat.store"),
-            )
-
-            index = load_encrypt_store(
-                dirpath=tmpdir,
-                name="qachat",
-                password=password,
-            )
-            self.build_user_chain(uid, index)
-            logger.info(f"succeed restore user {uid=} chain from s3")
 
     @uid_method_ratelimiter(concurrent=1)
     def query(self, uid: str, query: str) -> Tuple[str, List[str]]:
@@ -449,10 +424,12 @@ class EmbeddingContext(aiohttp.web.View):
 
     def _build_user_chatbot(self, uid: str, password: str, datasets: List[str]):
         index = self.load_datasets(uid, datasets, password)
-        self.build_user_chain(uid, index)
-        self.save_user_chain(index, uid, password)
+        build_user_chain(uid, index, datasets)
+        self.save_user_chain(index, uid, password, datasets)
 
-    def save_user_chain(self, index: Index, uid: str, password: str):
+    def save_user_chain(
+        self, index: Index, uid: str, password: str, datasets: List[str]
+    ):
         """save user's embedding index to s3"""
         with tempfile.TemporaryDirectory() as tmpdir:
             # encrypt and upload origin pdf file
@@ -462,6 +439,12 @@ class EmbeddingContext(aiohttp.web.View):
                 name="qachat",
                 password=password,
             )
+
+            # dump selected datasets
+            datasets_fname = os.path.join(tmpdir, "datasets.pkl")
+            fs.append(datasets_fname)
+            with open(datasets_fname, "wb") as datasets_fp:
+                pickle.dump(datasets, datasets_fp)
 
             logger.debug(f"try to upload embedding chat store {uid=}")
             for fpath in fs:
@@ -476,32 +459,6 @@ class EmbeddingContext(aiohttp.web.View):
                 logger.debug(f"upload {objkey} to s3")
 
         logger.info(f"succeed to upload qa chat store {uid=}")
-
-    def build_user_chain(self, uid: str, index: Index):
-        """build user's embedding index and save in memory"""
-        if os.environ.get("OPENAI_API_TYPE", "") == "azure":
-            llm = AzureChatOpenAI(
-                client=None,
-                deployment_name="gpt35",
-                # model_name="gpt-3.5-turbo",
-                temperature=0,
-                max_tokens=1000,
-                streaming=False,
-            )
-        else:
-            llm = ChatOpenAI(
-                client=None,
-                # model_name="gpt-3.5-turbo",
-                temperature=0,
-                max_tokens=1000,
-                streaming=False,
-            )
-
-        user_embeddings_chain[uid] = UserChain(
-            chain=build_chain(llm, index.store),
-            index=index,
-        )
-        logger.info(f"succeed to build user chain {uid=}")
 
     def load_datasets(self, uid: str, datasets: List[str], password: str) -> Index:
         """load datasets from s3"""
