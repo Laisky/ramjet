@@ -179,30 +179,49 @@ class EncryptedFiles(aiohttp.web.View):
 
 
 class PDFFiles(aiohttp.web.View):
-    """build private dataset by embedding pdf files"""
+    """build private dataset by embedding pdf files
+
+    Returns:
+        aiohttp.web.Response -- json response, contains file status
+        ::
+            [
+                {"name": "file1", "status": "done"},
+                {"name": "file2", "status": "processing", "progress": 75},
+            ]
+    """
 
     @authenticate
     async def get(self, uid):
         """list s3 files"""
-        objs: List[str] = []
+        files: List[Dict] = []
+
+        # for test
+        # files.append({"name": "test.pdf", "status": "processing", "progress": 75})
+
         for obj in s3cli.list_objects(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
             prefix=f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/",
             recursive=False,
         ):
             if obj.object_name.endswith(".store"):
-                objs.append(os.path.basename(obj.object_name.removesuffix(".store")))
+                files.append(
+                    {
+                        "name": os.path.basename(
+                            obj.object_name.removesuffix(".store")
+                        ),
+                        "status": "done",
+                    }
+                )
 
         with user_processing_files_lock:
-            processing_files = list(user_processing_files.get(uid, []))
+            files.extend(
+                [
+                    {"name": f, "status": "processing", "progress": 75}
+                    for f in user_processing_files.get(uid, [])
+                ]
+            )
 
-        return aiohttp.web.json_response(
-            {
-                "files": objs,
-                "processing_files": processing_files,
-                # "processing_files": ["test-1", "terrfrhlfkrehfkrhefhrelfhrelkfhkehrwlfhwlerkghlkrewhglhreglkhlrwekhglhwerlghrewhgkurhewlgkwhegst-2"],
-            }
-        )
+        return aiohttp.web.json_response(files)
 
     @authenticate
     async def post(self, uid):
