@@ -221,7 +221,9 @@ class PDFFiles(aiohttp.web.View):
                 ]
             )
 
-        return aiohttp.web.json_response(files)
+        return aiohttp.web.json_response({
+            "datasets": files,
+        })
 
     @authenticate
     async def post(self, uid):
