@@ -373,10 +373,9 @@ class EmbeddingContext(aiohttp.web.View):
             password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
             if uid not in user_embeddings_chain:
                 logger.debug(f"try restore user chain from s3 for {uid=}")
-                index, datasets = await ioloop.run_in_executor(
+                await ioloop.run_in_executor(
                     thread_executor, restore_user_chain, s3cli, uid, password
                 )
-                build_user_chain(uid, index, datasets)
         except Exception as e:
             logger.exception(f"failed to get context for {uid}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
