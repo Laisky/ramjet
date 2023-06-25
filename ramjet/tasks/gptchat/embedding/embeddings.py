@@ -58,6 +58,7 @@ text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
 markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
 
 N_BACTCH_FILES = 5
+N_NEAREST_CHUNKS = 5
 
 
 def is_file_scaned(index: Index, fpath):
@@ -68,7 +69,7 @@ def build_chain(llm, store: FAISS):
     def chain(query):
         related_docs = store.similarity_search(
             query=query["question"],
-            k=10,
+            k=N_NEAREST_CHUNKS,
         )
         chain = load_qa_chain(llm, chain_type="stuff")
         response = chain.run(
