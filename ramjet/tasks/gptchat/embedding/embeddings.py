@@ -98,8 +98,10 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
     else:
         model_name = user.chat_model or "gpt-3.5-turbo"
         max_tokens = 1000
+        n_chunks = N_NEAREST_CHUNKS
         if "16k" in model_name:
             max_tokens = 8000
+            n_chunks = max(n_chunks, 10)
 
         llm = ChatOpenAI(
             client=None,
@@ -109,7 +111,6 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
             streaming=False,
         )
 
-    n_chunks = user.embeddings_context_chunks or N_NEAREST_CHUNKS
     user_embeddings_chain[uid] = UserChain(
         chain=build_chain(llm, index.store, n_chunks),
         index=index,
@@ -120,8 +121,10 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
     )
 
 
-def embedding_pdf(fpath: str, metadata_name: str) -> Index:
+def embedding_pdf(fpath: str, metadata_name: str, max_chunks=150000) -> Index:
     """embedding pdf file
+
+    pricing: https://openai.com/pricing
 
     Args:
         fpath (str): file path
@@ -142,6 +145,8 @@ def embedding_pdf(fpath: str, metadata_name: str) -> Index:
         for ichunk, _ in enumerate(splits):
             # furl = prd.OPENAI_EMBEDDING_REF_URL_PREFIX.format(uid, password) + quote(fkey, safe="")
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
+
+    assert len(docs) < max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
     logger.info(f"succeed embedding {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
