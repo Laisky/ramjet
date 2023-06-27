@@ -41,17 +41,21 @@ def authenticate(func):
     return wrapper
 
 def authenticate_by_appkey(func):
-    """Decorator to authenticate a request"""
+    """Decorator to authenticate a request
+
+    will check if the appkey is in the list of valid appkeys,
+    and if it is, will return the user info as the first argument to the function
+    """
 
     @functools.wraps(func)
     async def wrapper(self, *args, **kwargs):
         apikey: str = self.request.headers.get("Authorization", "")
         apikey = apikey.removeprefix("Bearer ")
 
-        uid: str = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey, "")
-        if not uid:
+        userinfo: prd.UserPermission = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey, "")
+        if not userinfo:
             raise web.HTTPUnauthorized()
 
-        return await func(self, uid, *args, **kwargs)
+        return await func(self, userinfo, *args, **kwargs)
 
     return wrapper

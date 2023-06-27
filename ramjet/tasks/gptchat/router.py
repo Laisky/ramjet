@@ -52,9 +52,9 @@ s3cli: Minio = Minio(
 )
 
 
-def uid_ratelimiter(uid: str, concurrent=3) -> threading.Semaphore:
-    limit = prd.OPENAI_PRIVATE_EMBEDDINGS_USER_LIMIT.get(uid, concurrent)
-
+def uid_ratelimiter(user: prd.UserPermission, concurrent=3) -> threading.Semaphore:
+    uid = user.uid
+    limit = user.n_concurrent or concurrent
     sema = user_prcess_file_sema.get(uid)
     if not sema:
         with user_prcess_file_sema_lock:
@@ -78,11 +78,11 @@ def uid_method_ratelimiter(concurrent=3):
     """
 
     def decorator(func):
-        def wrapper(self, uid: str, *args, **kwargs):
-            sema = uid_ratelimiter(uid, concurrent)
+        def wrapper(self, user: prd.UserPermission, *args, **kwargs):
+            sema = uid_ratelimiter(user, concurrent)
 
             try:
-                return func(self, uid, *args, **kwargs)
+                return func(self, user, *args, **kwargs)
             finally:
                 sema.release()
 
@@ -110,7 +110,8 @@ class LandingPage(aiohttp.web.View):
 class Query(aiohttp.web.View):
     """query by pre-embedded pdf files"""
 
-    async def get(self):
+    @authenticate
+    async def get(self, user: prd.UserPermission):
         project = self.request.query.get("p")
         question = urllib.parse.unquote(self.request.query.get("q", ""))
 
@@ -121,13 +122,13 @@ class Query(aiohttp.web.View):
 
         ioloop = asyncio.get_running_loop()
         resp = await ioloop.run_in_executor(
-            thread_executor, self.query, "public", project, question
+            thread_executor, self.query, user, project, question
         )
 
         return aiohttp.web.json_response(resp._asdict())
 
     @uid_method_ratelimiter(10)
-    def query(self, uid: str, project: str, question: str):
+    def query(self, user: prd.UserPermission, project: str, question: str):
         return query(project, question)
 
 
@@ -187,8 +188,9 @@ class PDFFiles(aiohttp.web.View):
     """
 
     @authenticate
-    async def get(self, uid):
+    async def get(self, user: prd.UserPermission):
         """list s3 files"""
+        uid = user.uid
         files: List[Dict] = []
         password = self.request.headers.get("X-PDFCHAT-PASSWORD")
 
@@ -233,11 +235,12 @@ class PDFFiles(aiohttp.web.View):
         )
 
     @authenticate
-    async def post(self, uid):
+    async def post(self, user: prd.UserPermission):
         """Upload pdf file by form"""
+        uid = user.uid
         data = await self.request.post()
 
-        sema = uid_ratelimiter(uid, 3)
+        sema = uid_ratelimiter(user, 3)
         try:
             ioloop = asyncio.get_event_loop()
 
@@ -363,8 +366,9 @@ class EmbeddingContext(aiohttp.web.View):
     """build private knowledge base by consisit of embedding indices"""
 
     @authenticate
-    async def get(self, uid):
+    async def get(self, user: prd.UserPermission):
         """talk with user's private knowledge base"""
+        uid = user.uid
         ioloop = asyncio.get_event_loop()
         try:
             query = self.request.query.get("q", "").strip()
@@ -381,7 +385,7 @@ class EmbeddingContext(aiohttp.web.View):
             return aiohttp.web.json_response({"error": str(e)}, status=400)
 
         resp, refs = await ioloop.run_in_executor(
-            thread_executor, self.query, uid, query
+            thread_executor, self.query, user, query
         )
 
         return aiohttp.web.json_response(
@@ -392,14 +396,16 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     @uid_method_ratelimiter(concurrent=1)
-    def query(self, uid: str, query: str) -> Tuple[str, List[str]]:
+    def query(self, user: prd.UserPermission, query: str) -> Tuple[str, List[str]]:
+        uid = user.uid
         resp, refs = user_embeddings_chain[uid].chain({"question": query})
         return resp, list(set(refs))
 
     @authenticate
-    async def post(self, uid):
+    async def post(self, user: prd.UserPermission):
         """build context by selected datasets"""
         try:
+            uid = user.uid
             data = await self.request.json()
             datasets = data.get("datasets", [])
             assert type(datasets) == list, "datasets must be list"
