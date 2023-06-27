@@ -51,6 +51,7 @@ from urllib.parse import quote
 from langchain.document_loaders import PyPDFLoader
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+
 # from langchain.document_loaders import UnstructuredPDFLoader
 from langchain.vectorstores import FAISS
 
@@ -65,11 +66,11 @@ def is_file_scaned(index: Index, fpath):
     return os.path.split(fpath)[1] in index.scaned_files
 
 
-def build_chain(llm, store: FAISS):
+def build_chain(llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS):
     def chain(query):
         related_docs = store.similarity_search(
             query=query["question"],
-            k=N_NEAREST_CHUNKS,
+            k=nearest_k,
         )
         chain = load_qa_chain(llm, chain_type="stuff")
         response = chain.run(
@@ -82,8 +83,9 @@ def build_chain(llm, store: FAISS):
     return chain
 
 
-def build_user_chain(uid: str, index: Index, datasets: List[str]):
+def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]):
     """build user's embedding index and save in memory"""
+    uid = user.uid
     if os.environ.get("OPENAI_API_TYPE", "") == "azure":
         llm = AzureChatOpenAI(
             client=None,
@@ -94,20 +96,28 @@ def build_user_chain(uid: str, index: Index, datasets: List[str]):
             streaming=False,
         )
     else:
+        model_name = user.chat_model or "gpt-3.5-turbo"
+        max_tokens = 1000
+        if "16k" in model_name:
+            max_tokens = 8000
+
         llm = ChatOpenAI(
             client=None,
-            # model_name="gpt-3.5-turbo",
+            model_name=model_name,
             temperature=0,
-            max_tokens=1000,
+            max_tokens=max_tokens,
             streaming=False,
         )
 
+    n_chunks = user.embeddings_context_chunks or N_NEAREST_CHUNKS
     user_embeddings_chain[uid] = UserChain(
-        chain=build_chain(llm, index.store),
+        chain=build_chain(llm, index.store, n_chunks),
         index=index,
         datasets=datasets,
     )
-    logger.info(f"succeed to build user chain {uid=}")
+    logger.info(
+        f"succeed to build user chain {uid=}, {model_name=}, {max_tokens=}, {n_chunks=}"
+    )
 
 
 def embedding_pdf(fpath: str, metadata_name: str) -> Index:
@@ -209,7 +219,8 @@ def derive_key(password):
     return key
 
 
-def restore_user_chain(s3cli, uid: str, password: str):
+def restore_user_chain(s3cli, user: prd.UserPermission, password: str):
+    uid = user.uid
     with tempfile.TemporaryDirectory() as tmpdir:
         # encrypt and upload origin pdf file
         objkeys = [
@@ -247,7 +258,7 @@ def restore_user_chain(s3cli, uid: str, password: str):
             datasets = pickle.load(fp)
 
     logger.info(f"succeed restore user {uid=} chain from s3")
-    build_user_chain(uid, index, datasets)
+    build_user_chain(user, index, datasets)
 
 
 def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:

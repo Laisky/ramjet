@@ -127,7 +127,7 @@ class Query(aiohttp.web.View):
 
         return aiohttp.web.json_response(resp._asdict())
 
-    @uid_method_ratelimiter(10)
+    @uid_method_ratelimiter()
     def query(self, user: prd.UserPermission, project: str, question: str):
         return query(project, question)
 
@@ -221,7 +221,7 @@ class PDFFiles(aiohttp.web.View):
             )
 
         if uid not in user_embeddings_chain:
-            restore_user_chain(s3cli, uid, password)
+            restore_user_chain(s3cli, user, password)
 
         selected = []
         if uid in user_embeddings_chain:
@@ -378,7 +378,7 @@ class EmbeddingContext(aiohttp.web.View):
             if uid not in user_embeddings_chain:
                 logger.debug(f"try restore user chain from s3 for {uid=}")
                 await ioloop.run_in_executor(
-                    thread_executor, restore_user_chain, s3cli, uid, password
+                    thread_executor, restore_user_chain, s3cli, user, password
                 )
         except Exception as e:
             logger.exception(f"failed to get context for {uid}")
@@ -417,7 +417,7 @@ class EmbeddingContext(aiohttp.web.View):
 
             ioloop = asyncio.get_event_loop()
             await ioloop.run_in_executor(
-                thread_executor, self._build_user_chatbot, uid, password, datasets
+                thread_executor, self._build_user_chatbot, user, password, datasets
             )
         except Exception as e:
             logger.exception(f"failed to parse request body")
@@ -427,9 +427,10 @@ class EmbeddingContext(aiohttp.web.View):
             {"msg": "ok"},
         )
 
-    def _build_user_chatbot(self, uid: str, password: str, datasets: List[str]):
+    def _build_user_chatbot(self, user: prd.UserPermission, password: str, datasets: List[str]):
+        uid = user.uid
         index = self.load_datasets(uid, datasets, password)
-        build_user_chain(uid, index, datasets)
+        build_user_chain(user, index, datasets)
         self.save_user_chain(index, uid, password, datasets)
 
     def save_user_chain(
