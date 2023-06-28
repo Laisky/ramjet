@@ -121,7 +121,7 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
     )
 
 
-def embedding_pdf(fpath: str, metadata_name: str, max_chunks=150000) -> Index:
+def embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """embedding pdf file
 
     pricing: https://openai.com/pricing
@@ -308,7 +308,7 @@ def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:
     ]
 
 
-def load_encrypt_store(dirpath, name, password) -> Index:
+def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
     """
     Args:
         dirpath: dirpath to store index files
