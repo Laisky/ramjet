@@ -13,6 +13,7 @@ import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
 from minio import Minio
+from kipp.decorator import timer
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
@@ -258,6 +259,7 @@ class PDFFiles(aiohttp.web.View):
 
         return aiohttp.web.json_response({"status": "ok"})
 
+    @timer
     def process_file(self, uid, data) -> List[str]:
         dataset_name = data.get("file_key", "")
         assert type(dataset_name) == str, "file_key must be string"
@@ -272,6 +274,7 @@ class PDFFiles(aiohttp.web.View):
                 fset.add(dataset_name)
                 user_processing_files[uid] = fset
 
+            logger.info(f"process file {dataset_name=} for user {uid=}")
             return self._process_file(uid, data)
         finally:
             with user_processing_files_lock:

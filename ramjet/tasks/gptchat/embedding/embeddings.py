@@ -86,6 +86,9 @@ def build_chain(llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS):
 def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]):
     """build user's embedding index and save in memory"""
     uid = user.uid
+    n_chunks = N_NEAREST_CHUNKS
+    model_name = user.chat_model or "gpt-3.5-turbo"
+    max_tokens = 1000
     if os.environ.get("OPENAI_API_TYPE", "") == "azure":
         llm = AzureChatOpenAI(
             client=None,
@@ -96,16 +99,13 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
             streaming=False,
         )
     else:
-        model_name = user.chat_model or "gpt-3.5-turbo"
-        max_tokens = 1000
-        n_chunks = N_NEAREST_CHUNKS
         if "16k" in model_name:
             max_tokens = 8000
             n_chunks = max(n_chunks, 10)
 
         llm = ChatOpenAI(
             client=None,
-            model_name=model_name,
+            model=model_name,
             temperature=0,
             max_tokens=max_tokens,
             streaming=False,
