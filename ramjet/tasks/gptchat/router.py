@@ -94,6 +94,8 @@ def uid_method_ratelimiter(concurrent=3):
 
 def bind_handle(add_route):
     logger.info("bind gpt web handlers")
+
+    # thread_executor.submit(setup)
     setup()
 
     add_route("", LandingPage)
@@ -436,7 +438,9 @@ class EmbeddingContext(aiohttp.web.View):
             {"msg": "ok"},
         )
 
-    def _build_user_chatbot(self, user: prd.UserPermission, password: str, datasets: List[str]):
+    def _build_user_chatbot(
+        self, user: prd.UserPermission, password: str, datasets: List[str]
+    ):
         uid = user.uid
         index = self.load_datasets(uid, datasets, password)
         build_user_chain(user, index, datasets)

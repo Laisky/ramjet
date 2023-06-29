@@ -70,6 +70,8 @@ def setup():
         all_chains[project_name] = build_chain(llm=llm, store=store)
         logger.info(f"load chain for project: {project_name}")
 
+    logger.info("all chains have been setup")
+
 
 def query(project_name: str, question: str) -> Response:
     resp, refs = all_chains[project_name](
