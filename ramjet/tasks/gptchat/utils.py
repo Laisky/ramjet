@@ -52,10 +52,23 @@ def authenticate_by_appkey(func):
         apikey: str = self.request.headers.get("Authorization", "")
         apikey = apikey.removeprefix("Bearer ")
 
-        userinfo: prd.UserPermission = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey, "")
+        userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
         if not userinfo:
             raise web.HTTPUnauthorized()
 
         return await func(self, userinfo, *args, **kwargs)
+
+    return wrapper
+
+
+def recover(func):
+    """Decorator to recover from exceptions"""
+
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        try:
+            return await func(self, *args, **kwargs)
+        except Exception as e:
+            return web.HTTPBadRequest(text=str(e))
 
     return wrapper

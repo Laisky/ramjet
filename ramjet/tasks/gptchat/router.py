@@ -16,7 +16,7 @@ from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
-from .auth import authenticate_by_appkey as authenticate
+from .utils import authenticate_by_appkey as authenticate, recover
 from .base import logger
 from .embedding.embeddings import (
     Index,
@@ -110,6 +110,7 @@ class LandingPage(aiohttp.web.View):
 class Query(aiohttp.web.View):
     """query by pre-embedded pdf files"""
 
+    @recover
     @authenticate
     async def get(self, user: prd.UserPermission):
         project = self.request.query.get("p")
@@ -133,6 +134,7 @@ class Query(aiohttp.web.View):
 
 
 class EncryptedFiles(aiohttp.web.View):
+    @recover
     async def get(self):
         # https://uid:password@fikekey.pdf
         # get uid and password from request basic auth
@@ -187,12 +189,13 @@ class PDFFiles(aiohttp.web.View):
             ]
     """
 
+    @recover
     @authenticate
     async def get(self, user: prd.UserPermission):
         """list s3 files"""
         uid = user.uid
         files: List[Dict] = []
-        password = self.request.headers.get("X-PDFCHAT-PASSWORD")
+        password = self.request.headers.get("X-PDFCHAT-PASSWORD", "")
 
         # for test
         # files.append({"name": "test.pdf", "status": "processing", "progress": 75})
@@ -234,6 +237,7 @@ class PDFFiles(aiohttp.web.View):
             }
         )
 
+    @recover
     @authenticate
     async def post(self, user: prd.UserPermission):
         """Upload pdf file by form"""
@@ -365,6 +369,7 @@ class PDFFiles(aiohttp.web.View):
 class EmbeddingContext(aiohttp.web.View):
     """build private knowledge base by consisit of embedding indices"""
 
+    @recover
     @authenticate
     async def get(self, user: prd.UserPermission):
         """talk with user's private knowledge base"""
@@ -401,6 +406,7 @@ class EmbeddingContext(aiohttp.web.View):
         resp, refs = user_embeddings_chain[uid].chain({"question": query})
         return resp, list(set(refs))
 
+    @recover
     @authenticate
     async def post(self, user: prd.UserPermission):
         """build context by selected datasets"""

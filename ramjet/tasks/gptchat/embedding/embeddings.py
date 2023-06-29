@@ -240,16 +240,12 @@ def restore_user_chain(s3cli, user: prd.UserPermission, password: str):
             ),
         ]
 
-        try:
-            for objkey in objkeys:
-                s3cli.fget_object(
-                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                    object_name=objkey,
-                    file_path=os.path.join(tmpdir, os.path.basename(objkey)),
-                )
-        except Exception as e:
-            logger.debug(f"fail to restore user {uid=} chain from s3: {e}")
-            return
+        for objkey in objkeys:
+            s3cli.fget_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=objkey,
+                file_path=os.path.join(tmpdir, os.path.basename(objkey)),
+            )
 
         # read index file
         index = load_encrypt_store(
