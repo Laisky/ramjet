@@ -256,7 +256,7 @@ class PDFFiles(aiohttp.web.View):
 
             # do not wait task done
             ioloop.run_in_executor(
-                thread_executor, self.delete_files, user, data["datasets"]
+                thread_executor, self.delete_files, user, datasets
             )
         except Exception as e:
             logger.exception(f"failed to delete files {data.get('files', [])}")
