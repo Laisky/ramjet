@@ -242,6 +242,44 @@ class PDFFiles(aiohttp.web.View):
 
     @recover
     @authenticate
+    async def delete(self, user: prd.UserPermission):
+        """delete s3 files"""
+        data = await self.request.json()
+        datasets = data.get("datasets", [])
+        if not datasets:
+            return aiohttp.web.json_response({"error": "datasets is required"}, status=400)
+
+        assert isinstance(datasets, list), "datasets must be a array"
+
+        try:
+            ioloop = asyncio.get_event_loop()
+
+            # do not wait task done
+            ioloop.run_in_executor(
+                thread_executor, self.delete_files, user, data["datasets"]
+            )
+        except Exception as e:
+            logger.exception(f"failed to delete files {data.get('files', [])}")
+            return aiohttp.web.json_response({"error": str(e)}, status=400)
+
+        return aiohttp.web.json_response({"status": "ok"})
+
+    def delete_files(self, user: prd.UserPermission, dataset_names: List[str]):
+        uid = user.uid
+        for ext in ["store", "index", "pdf"]:
+            for dataset_name in dataset_names:
+                objkey = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.{ext}"
+                try:
+                    s3cli.remove_object(
+                        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                        object_name=objkey,
+                    )
+                    logger.info(f"deleted file on s3, {objkey=}")
+                except Exception as e:
+                    logger.exception(f"failed to delete file on s3, {objkey=}")
+
+    @recover
+    @authenticate
     async def post(self, user: prd.UserPermission):
         """Upload pdf file by form"""
         uid = user.uid
