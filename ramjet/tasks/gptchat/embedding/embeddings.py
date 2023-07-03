@@ -2,6 +2,7 @@ import tempfile
 import codecs
 import glob
 import hashlib
+import threading
 import os
 import pickle
 import textwrap
@@ -10,6 +11,7 @@ from sys import path
 from typing import List, Tuple, Dict
 
 import faiss
+from minio import Minio
 from Crypto.Cipher import AES
 from kipp.utils import setup_logger
 from langchain.embeddings import OpenAIEmbeddings
@@ -24,7 +26,8 @@ logger = setup_logger("security")
 UserChain = namedtuple("UserChain", ["chain", "index", "datasets"])
 
 Index = namedtuple("index", ["store", "scaned_files"])
-user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
+user_embeddings_chain_mu = threading.RLock()
+user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> botname -> UserChain
 
 
 def pretty_print(text: str) -> str:
@@ -111,11 +114,14 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
             streaming=False,
         )
 
-    user_embeddings_chain[uid] = UserChain(
-        chain=build_chain(llm, index.store, n_chunks),
-        index=index,
-        datasets=datasets,
-    )
+
+    with user_embeddings_chain_mu:
+        user_embeddings_chain[uid] = UserChain(
+            chain=build_chain(llm, index.store, n_chunks),
+            index=index,
+            datasets=datasets,
+        )
+
     logger.info(
         f"succeed to build user chain {uid=}, {model_name=}, {max_tokens=}, {n_chunks=}"
     )
@@ -224,19 +230,29 @@ def derive_key(password):
     return key
 
 
-def restore_user_chain(s3cli, user: prd.UserPermission, password: str):
+def restore_user_chain(s3cli: Minio, user: prd.UserPermission, password: str):
     uid = user.uid
+
+    # download current chatbot name
+    response = s3cli.get_object(
+        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+        object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+    )
+    chatbot_name = response.data.decode("utf-8")
+    response.close()
+    response.release_conn()
+
     with tempfile.TemporaryDirectory() as tmpdir:
         # encrypt and upload origin pdf file
         objkeys = [
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.index"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.index"
             ),
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/qachat.store"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.store"
             ),
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/datasets.pkl"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.pkl"
             ),
         ]
 
@@ -250,12 +266,12 @@ def restore_user_chain(s3cli, user: prd.UserPermission, password: str):
         # read index file
         index = load_encrypt_store(
             dirpath=tmpdir,
-            name="qachat",
+            name=chatbot_name,
             password=password,
         )
 
         # read datasets file
-        with open(os.path.join(tmpdir, "datasets.pkl"), "rb") as fp:
+        with open(os.path.join(tmpdir, f"{chatbot_name}.pkl"), "rb") as fp:
             datasets = pickle.load(fp)
 
     logger.info(f"succeed restore user {uid=} chain from s3")

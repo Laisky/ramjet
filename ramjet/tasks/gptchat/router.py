@@ -1,3 +1,4 @@
+import io
 import asyncio
 import base64
 import os
@@ -205,7 +206,7 @@ class PDFFiles(aiohttp.web.View):
 
         for obj in s3cli.list_objects(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/",
+            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/",
             recursive=False,
         ):
             if obj.object_name.endswith(".store"):
@@ -226,12 +227,15 @@ class PDFFiles(aiohttp.web.View):
                 ]
             )
 
-        if uid not in user_embeddings_chain:
-            restore_user_chain(s3cli, user, password)
-
         selected = []
-        if uid in user_embeddings_chain:
-            selected = user_embeddings_chain[uid].datasets
+        try:
+            if uid not in user_embeddings_chain:
+                restore_user_chain(s3cli, user, password)
+
+            if uid in user_embeddings_chain:
+                selected = user_embeddings_chain[uid].datasets
+        except Exception as err:
+            logger.debug(f"failed to restore user chain {uid}, {err=}")
 
         return aiohttp.web.json_response(
             {
@@ -247,7 +251,9 @@ class PDFFiles(aiohttp.web.View):
         data = await self.request.json()
         datasets = data.get("datasets", [])
         if not datasets:
-            return aiohttp.web.json_response({"error": "datasets is required"}, status=400)
+            return aiohttp.web.json_response(
+                {"error": "datasets is required"}, status=400
+            )
 
         assert isinstance(datasets, list), "datasets must be a array"
 
@@ -255,9 +261,7 @@ class PDFFiles(aiohttp.web.View):
             ioloop = asyncio.get_event_loop()
 
             # do not wait task done
-            ioloop.run_in_executor(
-                thread_executor, self.delete_files, user, datasets
-            )
+            ioloop.run_in_executor(thread_executor, self.delete_files, user, datasets)
         except Exception as e:
             logger.exception(f"failed to delete files {data.get('files', [])}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
@@ -268,7 +272,7 @@ class PDFFiles(aiohttp.web.View):
         uid = user.uid
         for ext in ["store", "index", "pdf"]:
             for dataset_name in dataset_names:
-                objkey = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.{ext}"
+                objkey = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}.{ext}"
                 try:
                     s3cli.remove_object(
                         bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
@@ -334,7 +338,7 @@ class PDFFiles(aiohttp.web.View):
 
         objs = []
         encrypted_file_key = (
-            f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset_name}.pdf"
+            f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}.pdf"
         )
 
         logger.info(f"process file {file.filename} for {uid}")
@@ -392,7 +396,7 @@ class PDFFiles(aiohttp.web.View):
             )
             for fpath in files:
                 objkey = quote(
-                    f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/"
+                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/"
                     + uid
                     + fpath.removeprefix(tmpdir)
                 )
@@ -453,52 +457,71 @@ class EmbeddingContext(aiohttp.web.View):
     @authenticate
     async def post(self, user: prd.UserPermission):
         """build context by selected datasets"""
-        try:
-            uid = user.uid
-            data = await self.request.json()
-            datasets = data.get("datasets", [])
-            assert type(datasets) == list, "datasets must be list"
-            assert datasets, "datasets is required"
+        data = await self.request.json()
+        datasets = data.get("datasets", [])
+        assert type(datasets) == list, "datasets must be list"
+        assert datasets, "datasets is required"
 
-            password = data.get("data_key", "")
-            assert type(password) == str, "data_key must be string"
-            assert password, "data_key is required"
+        chatbot_name = data.get("chatbot_name", "")
+        assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
 
-            ioloop = asyncio.get_event_loop()
-            await ioloop.run_in_executor(
-                thread_executor, self._build_user_chatbot, user, password, datasets
-            )
-        except Exception as e:
-            logger.exception(f"failed to parse request body")
-            return aiohttp.web.json_response({"error": str(e)}, status=400)
+        password = data.get("data_key", "")
+        assert type(password) == str, "data_key must be string"
+        assert password, "data_key is required"
+
+        ioloop = asyncio.get_event_loop()
+        await ioloop.run_in_executor(
+            thread_executor, self._build_user_chatbot, user, password, datasets
+        )
 
         return aiohttp.web.json_response(
             {"msg": "ok"},
         )
 
     def _build_user_chatbot(
-        self, user: prd.UserPermission, password: str, datasets: List[str]
+        self,
+        user: prd.UserPermission,
+        password: str,
+        datasets: List[str],
+        chatbot_name: str = "default",
     ):
         uid = user.uid
         index = self.load_datasets(uid, datasets, password)
         build_user_chain(user, index, datasets)
-        self.save_user_chain(index, uid, password, datasets)
+        self.save_user_chain(
+            index=index,
+            uid=uid,
+            password=password,
+            datasets=datasets,
+            chatbot_name=chatbot_name,
+        )
 
     def save_user_chain(
-        self, index: Index, uid: str, password: str, datasets: List[str]
+        self,
+        index: Index,
+        uid: str,
+        password: str,
+        datasets: List[str],
+        chatbot_name: str = "default",
     ):
-        """save user's embedding index to s3"""
+        """save user's embedding index to s3
+
+        will save three files:
+            - {chatbot_name}.index: embedding index
+            - {chatbot_name}.store: embedding store
+            - {chatbot_name}.pkl: selected datasets
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             # encrypt and upload origin pdf file
             fs = save_encrypt_store(
                 index=index,
                 dirpath=tmpdir,
-                name="qachat",
+                name=chatbot_name,
                 password=password,
             )
 
             # dump selected datasets
-            datasets_fname = os.path.join(tmpdir, "datasets.pkl")
+            datasets_fname = os.path.join(tmpdir, f"{chatbot_name}.pkl")
             fs.append(datasets_fname)
             with open(datasets_fname, "wb") as datasets_fp:
                 pickle.dump(datasets, datasets_fp)
@@ -506,7 +529,7 @@ class EmbeddingContext(aiohttp.web.View):
             logger.debug(f"try to upload embedding chat store {uid=}")
             for fpath in fs:
                 objkey = quote(
-                    f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/chatbot/default/{os.path.basename(fpath)}"
+                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{os.path.basename(fpath)}"
                 )
                 s3cli.fput_object(
                     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
@@ -515,14 +538,23 @@ class EmbeddingContext(aiohttp.web.View):
                 )
                 logger.debug(f"upload {objkey} to s3")
 
+        # save current
+        objkey = quote(f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT")
+        s3cli.put_object(
+            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            object_name=objkey,
+            data=io.BytesIO(chatbot_name.encode("utf-8")),
+            length=len(chatbot_name),
+        )
+
         logger.info(f"succeed to upload qa chat store {uid=}")
 
     def load_datasets(self, uid: str, datasets: List[str], password: str) -> Index:
         """load datasets from s3"""
         store = new_store()
         for dataset in datasets:
-            idx_key = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset}.index"
-            store_key = f"{prd.OPENAI_S3_EMBEDDINGS_prefix}/{uid}/{dataset}.store"
+            idx_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
+            store_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 idx_path = os.path.join(tmpdir, idx_key)

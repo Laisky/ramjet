@@ -2,9 +2,12 @@ import functools
 import time
 from typing import Mapping
 
-from aiohttp import web
 import jwt
+from aiohttp import web
+
 from ramjet.settings import prd
+
+from .base import logger
 
 
 async def verify_user(request) -> Mapping:
@@ -40,6 +43,7 @@ def authenticate(func):
 
     return wrapper
 
+
 def authenticate_by_appkey(func):
     """Decorator to authenticate a request
 
@@ -69,6 +73,7 @@ def recover(func):
         try:
             return await func(self, *args, **kwargs)
         except Exception as e:
+            logger.exception("handler error")
             return web.HTTPBadRequest(text=str(e))
 
     return wrapper
