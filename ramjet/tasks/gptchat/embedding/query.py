@@ -11,7 +11,7 @@ from langchain.prompts.chat import (
 
 from ..base import logger
 from .data import load_all_stores, prepare_data
-from .embeddings import  build_chain
+from .embeddings import build_chain, N_NEAREST_CHUNKS
 
 
 all_chains = {}
@@ -40,6 +40,7 @@ def setup():
     for project_name, store in load_all_stores().items():
         chain_type_kwargs = {"prompt": prompt}
 
+        n_chunk = N_NEAREST_CHUNKS
         if os.environ.get("OPENAI_API_TYPE", "") == "azure":
             llm = AzureChatOpenAI(
                 client=None,
@@ -50,11 +51,12 @@ def setup():
                 streaming=False,
             )
         else:
+            n_chunk = 10
             llm = ChatOpenAI(
                 client=None,
-                # model_name="gpt-3.5-turbo",
+                model="gpt-3.5-turbo-16k",
                 temperature=0,
-                max_tokens=1000,
+                max_tokens=8000,
                 streaming=False,
             )
 
@@ -67,7 +69,7 @@ def setup():
         #     reduce_k_below_max_tokens=True,
         # )
 
-        all_chains[project_name] = build_chain(llm=llm, store=store)
+        all_chains[project_name] = build_chain(llm=llm, store=store, nearest_k=n_chunk)
         logger.info(f"load chain for project: {project_name}")
 
     logger.info("all chains have been setup")
@@ -79,7 +81,4 @@ def query(project_name: str, question: str) -> Response:
         # return_only_outputs=True,
     )
     # return Response(question=question, text=resp["answer"], url=resp.get("sources", ""))
-    return Response(
-        question=question,
-        text=resp,
-        url=list(set(refs)))
+    return Response(question=question, text=resp, url=list(set(refs)))
