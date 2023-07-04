@@ -54,6 +54,19 @@ s3cli: Minio = Minio(
 )
 
 
+def bind_handle(add_route):
+    logger.info("bind gpt web handlers")
+
+    # thread_executor.submit(setup)
+    setup()
+
+    add_route("", LandingPage)
+    add_route("query", Query)
+    add_route("files", PDFFiles)
+    add_route("ctx/{op:.*}", EmbeddingContext)
+    add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
+
+
 def uid_ratelimiter(user: prd.UserPermission, concurrent=3) -> threading.Semaphore:
     uid = user.uid
     limit = user.n_concurrent or concurrent
@@ -91,19 +104,6 @@ def uid_method_ratelimiter(concurrent=3):
         return wrapper
 
     return decorator
-
-
-def bind_handle(add_route):
-    logger.info("bind gpt web handlers")
-
-    # thread_executor.submit(setup)
-    setup()
-
-    add_route("", LandingPage)
-    add_route("query", Query)
-    add_route("files", PDFFiles)
-    add_route("ctx", EmbeddingContext)
-    add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
 
 
 class LandingPage(aiohttp.web.View):
@@ -419,31 +419,68 @@ class EmbeddingContext(aiohttp.web.View):
     @recover
     @authenticate
     async def get(self, user: prd.UserPermission):
+        """
+        dispatch request to different handlers by url
+        """
+        op = self.request.match_info["op"]
+        ioloop = asyncio.get_event_loop()
+        if op == "chat":
+            return await ioloop.run_in_executor(
+                thread_executor, self.chatbot_query, user
+            )
+        elif op == "list":
+            return await ioloop.run_in_executor(
+                thread_executor, self.list_chatbots, user
+            )
+
+    def chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
         """talk with user's private knowledge base"""
         uid = user.uid
-        ioloop = asyncio.get_event_loop()
-        try:
-            query = self.request.query.get("q", "").strip()
-            assert query, "q is required"
+        query = self.request.query.get("q", "").strip()
+        assert query, "q is required"
 
-            password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
-            if uid not in user_embeddings_chain:
-                logger.debug(f"try restore user chain from s3 for {uid=}")
-                await ioloop.run_in_executor(
-                    thread_executor, restore_user_chain, s3cli, user, password
-                )
-        except Exception as e:
-            logger.exception(f"failed to get context for {uid}")
-            return aiohttp.web.json_response({"error": str(e)}, status=400)
+        password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
+        assert password, "X-PDFCHAT-PASSWORD is required"
 
-        resp, refs = await ioloop.run_in_executor(
-            thread_executor, self.query, user, query
-        )
+        if uid not in user_embeddings_chain:
+            logger.debug(f"try restore user chain from s3 for {uid=}")
+            restore_user_chain(s3cli, user, password)
 
+        resp, refs = self.query(user, query)
         return aiohttp.web.json_response(
             {
                 "text": resp,
                 "url": refs,
+            }
+        )
+
+    def list_chatbots(self, user: prd.UserPermission) -> aiohttp.web.Response:
+        chatbot_names = []
+        for obj in s3cli.list_objects(
+            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/",
+            recursive=False,
+        ):
+            if not obj.object_name.endswith(".store"):
+                continue
+
+            chatbot_names.append(
+                os.path.basename(obj.object_name).removesuffix(".store")
+            )
+
+        # get current
+        resp = s3cli.get_object(
+            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
+        )
+        current_chatbot = resp.data.decode("utf-8")
+        resp.close()
+        resp.release_conn()
+
+        return aiohttp.web.json_response(
+            {
+                "current": current_chatbot,
+                "chatbots": chatbot_names,
             }
         )
 

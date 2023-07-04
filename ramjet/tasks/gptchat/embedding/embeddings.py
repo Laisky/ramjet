@@ -35,12 +35,6 @@ def pretty_print(text: str) -> str:
     return textwrap.fill(text, width=60, subsequent_indent="    ")
 
 
-# =============================
-# 定义文件路径
-# =============================
-
-index_dirpath = prd.OPENAI_INDEX_DIR
-
 # ==============================================================
 # prepare pdf documents docs.index & docs.store
 #
@@ -66,10 +60,23 @@ N_NEAREST_CHUNKS = 5
 
 
 def is_file_scaned(index: Index, fpath):
+    """
+    check if a file is already scaned by the index, if so, skip it
+    """
     return os.path.split(fpath)[1] in index.scaned_files
 
 
 def build_chain(llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS):
+    """
+    build a chain for a given store
+
+    Args:
+        llm: langchain chat model
+        store: vector store
+        nearest_k: number of nearest chunks to search,
+            these chunks will be used as context for the chat model
+    """
+
     def chain(query):
         related_docs = store.similarity_search(
             query=query["question"],
@@ -113,7 +120,6 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
             max_tokens=max_tokens,
             streaming=False,
         )
-
 
     with user_embeddings_chain_mu:
         user_embeddings_chain[uid] = UserChain(
@@ -160,6 +166,9 @@ def embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
 
 def embedding_markdowns(index: Index, fpaths, url, replace_by_url):
+    """
+    embedding markdown files
+    """
     i = 0
     docs = []
     metadatas = []
@@ -193,6 +202,12 @@ def embedding_markdowns(index: Index, fpaths, url, replace_by_url):
 
 
 def new_store() -> Index:
+    """
+    new FAISS store
+
+    Returns:
+        Index: FAISS index
+    """
     if os.environ.get("OPENAI_API_TYPE") == "azure":
         azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
             "embeddings"
@@ -220,6 +235,9 @@ def new_store() -> Index:
 
 
 def derive_key(password):
+    """
+    derive aes key in 32 bytes from password
+    """
     key = hashlib.pbkdf2_hmac(
         "sha256",
         bytes(password, "utf-8"),
@@ -230,17 +248,30 @@ def derive_key(password):
     return key
 
 
-def restore_user_chain(s3cli: Minio, user: prd.UserPermission, password: str):
+def restore_user_chain(
+    s3cli: Minio, user: prd.UserPermission, password: str, chatbot_name: str = ""
+):
+    """
+    load and restore user chain from s3
+
+    Args:
+        s3cli (Minio): s3 client
+        user (prd.UserPermission): user
+        password (str): password
+        chatbot_name (str, optional): chatbot name. Defaults to "".
+            If empty, download __CURRENT chatbot name from s3.
+    """
     uid = user.uid
 
-    # download current chatbot name
-    response = s3cli.get_object(
-        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-        object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
-    )
-    chatbot_name = response.data.decode("utf-8")
-    response.close()
-    response.release_conn()
+    if chatbot_name == "":
+        # download current chatbot name
+        response = s3cli.get_object(
+            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+        )
+        chatbot_name = response.data.decode("utf-8")
+        response.close()
+        response.release_conn()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # encrypt and upload origin pdf file
