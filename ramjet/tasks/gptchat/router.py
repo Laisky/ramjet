@@ -1,38 +1,39 @@
-import io
 import asyncio
 import base64
+import io
 import os
 import pickle
 import re
 import tempfile
 import threading
 import urllib.parse
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Set, Tuple
 from urllib.parse import quote
 
 import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
-from minio import Minio
 from kipp.decorator import timer
+from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
-from .utils import authenticate_by_appkey as authenticate, recover
+
 from .base import logger
 from .embedding.embeddings import (
     Index,
+    build_user_chain,
     derive_key,
     embedding_pdf,
     load_encrypt_store,
     new_store,
-    save_encrypt_store,
     restore_user_chain,
+    save_encrypt_store,
     user_embeddings_chain,
-    build_user_chain,
 )
 from .embedding.query import build_chain, query, setup
-
+from .utils import authenticate_by_appkey as authenticate
+from .utils import recover
 
 # limit concurrent process files by uid
 user_prcess_file_sema_lock = threading.RLock()
@@ -432,6 +433,8 @@ class EmbeddingContext(aiohttp.web.View):
             return await ioloop.run_in_executor(
                 thread_executor, self.list_chatbots, user
             )
+        else:
+            raise Exception(f"unknown op {op}")
 
     def chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
         """talk with user's private knowledge base"""
@@ -493,8 +496,50 @@ class EmbeddingContext(aiohttp.web.View):
     @recover
     @authenticate
     async def post(self, user: prd.UserPermission):
-        """build context by selected datasets"""
         data = await self.request.json()
+
+        ioloop = asyncio.get_event_loop()
+        op = self.request.match_info["op"]
+        if op == "/build":
+            return await ioloop.run_in_executor(
+                thread_executor,
+                self.build_chatbot,
+                user,
+                data,
+            )
+        elif op == "/active":
+            return await ioloop.run_in_executor(
+                thread_executor,
+                self.active_chatbot,
+                user,
+                data,
+            )
+        else:
+            raise NotImplementedError(f"unknown op {op}")
+
+    def active_chatbot(
+        self,
+        user: prd.UserPermission,
+        data: Dict,
+    ) -> aiohttp.web.Response:
+        """active existed chatbot by name"""
+        password = data.get("data_key", "")
+        assert type(password) == str, "data_key must be string"
+        assert password, "data_key is required"
+
+        chatbot_name = data.get("chatbot_name", "")
+        assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
+
+        restore_user_chain(s3cli, user, password, chatbot_name)
+
+        return aiohttp.web.json_response(
+            {"msg": "ok"},
+        )
+
+    def build_chatbot(
+        self, user: prd.UserPermission, data: Dict
+    ) -> aiohttp.web.Response:
+        """build context by selected datasets"""
         datasets = data.get("datasets", [])
         assert type(datasets) == list, "datasets must be list"
         assert datasets, "datasets is required"
@@ -506,13 +551,11 @@ class EmbeddingContext(aiohttp.web.View):
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
 
-        ioloop = asyncio.get_event_loop()
-        await ioloop.run_in_executor(
-            thread_executor, self._build_user_chatbot, user, password, datasets
+        self._build_user_chatbot(
+            user=user, password=password, datasets=datasets, chatbot_name=chatbot_name
         )
-
         return aiohttp.web.json_response(
-            {"msg": "ok"},
+            {"msg": f"{chatbot_name} build ok"},
         )
 
     def _build_user_chatbot(
