@@ -63,7 +63,7 @@ def bind_handle(add_route):
     add_route("", LandingPage)
     add_route("query", Query)
     add_route("files", PDFFiles)
-    add_route("ctx/{op:.*}", EmbeddingContext)
+    add_route("ctx{op:(/.*)?}", EmbeddingContext)
     add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
 
 
@@ -424,11 +424,11 @@ class EmbeddingContext(aiohttp.web.View):
         """
         op = self.request.match_info["op"]
         ioloop = asyncio.get_event_loop()
-        if op == "chat":
+        if op == "/chat":
             return await ioloop.run_in_executor(
                 thread_executor, self.chatbot_query, user
             )
-        elif op == "list":
+        elif op == "/list":
             return await ioloop.run_in_executor(
                 thread_executor, self.list_chatbots, user
             )
