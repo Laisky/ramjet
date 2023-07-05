@@ -21,13 +21,15 @@ from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
 
 from ramjet.settings import prd
+from ..base import logger
 
-logger = setup_logger("security")
 UserChain = namedtuple("UserChain", ["chain", "index", "datasets"])
 
 Index = namedtuple("index", ["store", "scaned_files"])
 user_embeddings_chain_mu = threading.RLock()
-user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> botname -> UserChain
+user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
+user_shared_chain_mu = threading.RLock()
+user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
 
 def pretty_print(text: str) -> str:
@@ -93,7 +95,9 @@ def build_chain(llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS):
     return chain
 
 
-def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]):
+def build_user_chain(
+    user: prd.UserPermission, index: Index, datasets: List[str]
+) -> UserChain:
     """build user's embedding index and save in memory"""
     uid = user.uid
     n_chunks = N_NEAREST_CHUNKS
@@ -121,15 +125,13 @@ def build_user_chain(user: prd.UserPermission, index: Index, datasets: List[str]
             streaming=False,
         )
 
-    with user_embeddings_chain_mu:
-        user_embeddings_chain[uid] = UserChain(
-            chain=build_chain(llm, index.store, n_chunks),
-            index=index,
-            datasets=datasets,
-        )
-
     logger.info(
         f"succeed to build user chain {uid=}, {model_name=}, {max_tokens=}, {n_chunks=}"
+    )
+    return UserChain(
+        chain=build_chain(llm, index.store, n_chunks),
+        index=index,
+        datasets=datasets,
     )
 
 
@@ -248,20 +250,29 @@ def derive_key(password):
     return key
 
 
-def restore_user_chain(
-    s3cli: Minio, user: prd.UserPermission, password: str, chatbot_name: str = ""
-):
+def download_chatbot_index(
+    dirpath: str,
+    s3cli: Minio,
+    user: prd.UserPermission,
+    chatbot_name: str = "",
+    password: str = "",
+) -> Tuple[Index, List[str]]:
     """
-    load and restore user chain from s3
+    download chatbot index from s3
 
     Args:
         s3cli (Minio): s3 client
         user (prd.UserPermission): user
-        password (str): password
         chatbot_name (str, optional): chatbot name. Defaults to "".
             If empty, download __CURRENT chatbot name from s3.
+        password (str, optional): password. Defaults to "".
+            if empty, download shared chatbot.
+
+    Returns:
+        Tuple[Index, List[str]]: index, datasets
     """
     uid = user.uid
+    logger.debug(f"call download_chatbot_index {uid=}, {dirpath=}, {chatbot_name=}")
 
     if chatbot_name == "":
         # download current chatbot name
@@ -273,8 +284,7 @@ def restore_user_chain(
         response.close()
         response.release_conn()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # encrypt and upload origin pdf file
+    if password:
         objkeys = [
             quote(
                 f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.index"
@@ -286,30 +296,91 @@ def restore_user_chain(
                 f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.pkl"
             ),
         ]
+    else:
+        objkeys = [
+            quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{chatbot_name}.index"
+            ),
+            quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{chatbot_name}.store"
+            ),
+            quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{chatbot_name}.pkl"
+            ),
+        ]
 
-        for objkey in objkeys:
-            s3cli.fget_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=objkey,
-                file_path=os.path.join(tmpdir, os.path.basename(objkey)),
-            )
+    for objkey in objkeys:
+        s3cli.fget_object(
+            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            object_name=objkey,
+            file_path=os.path.join(dirpath, os.path.basename(objkey)),
+        )
 
-        # read index file
+    # read index file
+    if password:
         index = load_encrypt_store(
-            dirpath=tmpdir,
+            dirpath=dirpath,
             name=chatbot_name,
             password=password,
         )
+    else:
+        index = load_plaintext_store(
+            dirpath=dirpath,
+            name=chatbot_name,
+        )
 
-        # read datasets file
-        with open(os.path.join(tmpdir, f"{chatbot_name}.pkl"), "rb") as fp:
-            datasets = pickle.load(fp)
+    # read datasets file
+    with open(os.path.join(dirpath, f"{chatbot_name}.pkl"), "rb") as fp:
+        datasets = pickle.load(fp)
+
+    return index, datasets
+
+
+def restore_user_chain(
+    s3cli: Minio, user: prd.UserPermission, password: str = "", chatbot_name: str = ""
+):
+    """
+    load and restore user chain from s3
+
+    Args:
+        s3cli (Minio): s3 client
+        user (prd.UserPermission): user
+        password (str): password.
+            if empty, build chain from shared datasets
+        chatbot_name (str, optional): chatbot name. Defaults to "".
+            If empty, download __CURRENT chatbot name from s3.
+    """
+    uid = user.uid
+    with tempfile.TemporaryDirectory() as tmpdir:
+        index, datasets = download_chatbot_index(
+            s3cli=s3cli,
+            user=user,
+            dirpath=tmpdir,
+            chatbot_name=chatbot_name,
+            password=password,
+        )
 
     logger.info(f"succeed restore user {uid=} chain from s3")
-    build_user_chain(user, index, datasets)
+    chain = build_user_chain(user, index, datasets)
+
+    if password:
+        logger.info(f"load encrypted user {uid=} chain {chatbot_name=}")
+        with user_embeddings_chain_mu:
+            user_embeddings_chain[uid] = chain
+    else:
+        logger.info(f"load shared user {uid=} chain {chatbot_name=}")
+        with user_shared_chain_mu:
+            user_shared_chain[uid + chatbot_name] = chain
 
 
-def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:
+def save_encrypt_store(
+    s3cli: Minio,
+    user: prd.UserPermission,
+    index: Index,
+    name: str,
+    password: str,
+    datasets: List[str] = [],
+):
     """save encrypted store
 
     Args:
@@ -317,38 +388,132 @@ def save_encrypt_store(index: Index, dirpath, name, password) -> List[str]:
         dirpath (str): dirpath
         name (str): name of file, without ext
         password (str): password
+        datasets (List[str]): datasets, if empty, save as user's datasets,
+            if not empty, save as user's chatbot.
 
     Returns:
         List[str]: saved filepaths
     """
     key = derive_key(password)
     store_index = index.store.index
+    uid = user.uid
 
-    # do not encrypt index
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # do not encrypt index
+        fpath_prefix = os.path.join(tmpdir, name)
+        logger.debug(f"save index to {fpath_prefix}.index")
+        faiss.write_index(store_index, f"{fpath_prefix}.index")
+        index.store.index = None
+
+        with open(f"{fpath_prefix}.store", "wb") as f:
+            cipher = AES.new(key, AES.MODE_EAX)
+            ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.store))
+            [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
+        index.store.index = store_index
+
+        fs = [
+            f"{fpath_prefix}.index",
+            f"{fpath_prefix}.store",
+        ]
+
+        if datasets:
+            # save user built chatbot, dump selected datasets
+            datasets_fname = os.path.join(tmpdir, f"{name}.pkl")
+            fs.append(datasets_fname)
+            with open(datasets_fname, "wb") as datasets_fp:
+                pickle.dump(datasets, datasets_fp)
+
+        logger.debug(f"try to upload embedding chat store {uid=}")
+        for fpath in fs:
+            if datasets:
+                objkey = quote(
+                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{os.path.basename(fpath)}"
+                )
+            else:
+                objkey = quote(
+                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{os.path.basename(fpath)}"
+                )
+
+            s3cli.fput_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=objkey,
+                file_path=fpath,
+            )
+            logger.debug(f"upload {objkey} to s3")
+
+
+def save_plaintext_store(
+    s3cli: Minio, user: prd.UserPermission, index: Index, name: str, datasets: List[str]
+):
+    """save plaintext store
+
+    Args:
+        index (Index): index
+        name (str): name of file, without ext
+        datasets (List[str]): datasets, if empty, save as user's datasets,
+            if not empty, save as user's chatbot.
+    """
+
+    uid = user.uid
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # do not encrypt index
+        fpath_prefix = os.path.join(tmpdir, name)
+        logger.debug(f"save index to {fpath_prefix}.index")
+        faiss.write_index(index.store.index, f"{fpath_prefix}.index")
+
+        idx = index.store.index
+        index.store.index = None
+        with open(f"{fpath_prefix}.store", "wb") as f:
+            pickle.dump(index.store, f)
+        index.store.index = idx
+
+        fs = [
+            f"{fpath_prefix}.index",
+            f"{fpath_prefix}.store",
+        ]
+
+        # save user built chatbot, dump selected datasets
+        datasets_fname = os.path.join(tmpdir, f"{name}.pkl")
+        fs.append(datasets_fname)
+        with open(datasets_fname, "wb") as datasets_fp:
+            pickle.dump(datasets, datasets_fp)
+
+        logger.debug(f"try to upload embedding chat store {uid=}")
+        for fpath in fs:
+            objkey = quote(
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{os.path.basename(fpath)}"
+            )
+
+            s3cli.fput_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=objkey,
+                file_path=fpath,
+            )
+            logger.info(f"upload plaintext {objkey} to s3")
+
+
+def load_plaintext_store(dirpath: str, name: str) -> Index:
+    """
+    Args:
+        dirpath: dirpath to store index files
+        name: project/file name
+    """
     fpath_prefix = os.path.join(dirpath, name)
-    logger.debug(f"save index to {fpath_prefix}.index")
-    faiss.write_index(store_index, f"{fpath_prefix}.index")
-    index.store.index = None
+    with open(f"{fpath_prefix}.store", "rb") as f:
+        store = pickle.load(f)
 
-    with open(f"{fpath_prefix}.store", "wb") as f:
-        cipher = AES.new(key, AES.MODE_EAX)
-        ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.store))
-        [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
-    index.store.index = store_index
+    # index not encrypted
+    index = faiss.read_index(f"{os.path.join(dirpath, name)}.index")
+    store.index = index
 
-    # with open(f"{fpath_prefix}.scanedfile", "wb") as f:
-    #     cipher = AES.new(key, AES.MODE_EAX)
-    #     ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.scaned_files))
-    #     [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
+    # with open(f"{fpath_prefix}.scanedfile", "rb") as f:
+    #     index.scaned_files = pickle.load(f)
 
-    # test
-    load_encrypt_store(dirpath, name, password)
-
-    return [
-        f"{fpath_prefix}.index",
-        f"{fpath_prefix}.store",
-        # f"{fpath_prefix}.scanedfile",
-    ]
+    return Index(
+        store=store,
+        scaned_files=set([]),
+    )
 
 
 def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:

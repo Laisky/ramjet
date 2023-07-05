@@ -30,9 +30,18 @@ from .embedding.embeddings import (
     restore_user_chain,
     save_encrypt_store,
     user_embeddings_chain,
+    user_embeddings_chain_mu,
+    user_shared_chain_mu,
+    user_shared_chain,
+    save_plaintext_store,
+    download_chatbot_index,
 )
 from .embedding.query import build_chain, query, setup
-from .utils import authenticate_by_appkey as authenticate
+from .utils import (
+    authenticate_by_appkey as authenticate,
+    authenticate_by_appkey_sync as authenticate_sync,
+    get_user_by_uid,
+)
 from .utils import recover
 
 # limit concurrent process files by uid
@@ -69,6 +78,7 @@ def bind_handle(add_route):
 
 
 def uid_ratelimiter(user: prd.UserPermission, concurrent=3) -> threading.Semaphore:
+    logger.debug(f"uid_ratelimiter: {user.uid=}")
     uid = user.uid
     limit = user.n_concurrent or concurrent
     sema = user_prcess_file_sema.get(uid)
@@ -295,7 +305,7 @@ class PDFFiles(aiohttp.web.View):
             ioloop = asyncio.get_event_loop()
 
             # do not wait task done
-            ioloop.run_in_executor(thread_executor, self.process_file, uid, data)
+            ioloop.run_in_executor(thread_executor, self.process_file, user, data)
         except Exception as e:
             logger.exception(f"failed to process file {data.get('file', '')}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
@@ -305,7 +315,7 @@ class PDFFiles(aiohttp.web.View):
         return aiohttp.web.json_response({"status": "ok"})
 
     @timer
-    def process_file(self, uid, data) -> List[str]:
+    def process_file(self, user: prd.UserPermission, data) -> List[str]:
         dataset_name = data.get("file_key", "")
         assert type(dataset_name) == str, "file_key must be string"
         assert dataset_name, "file_key is required"
@@ -313,6 +323,7 @@ class PDFFiles(aiohttp.web.View):
             dataset_name
         ), "file_key should only contain [a-zA-Z0-9_-]"
 
+        uid = user.uid
         try:
             with user_processing_files_lock:
                 fset = user_processing_files.get(uid, set())
@@ -320,12 +331,12 @@ class PDFFiles(aiohttp.web.View):
                 user_processing_files[uid] = fset
 
             logger.info(f"process file {dataset_name=} for user {uid=}")
-            return self._process_file(uid, data)
+            return self._process_file(user, data)
         finally:
             with user_processing_files_lock:
                 user_processing_files[uid].remove(dataset_name)
 
-    def _process_file(self, uid, data) -> List[str]:
+    def _process_file(self, user: prd.UserPermission, data: Dict) -> List[str]:
         """process user uploaded file by openai embeddings,
         then encrypt and upload to s3
         """
@@ -337,6 +348,7 @@ class PDFFiles(aiohttp.web.View):
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
 
+        uid = user.uid
         objs = []
         encrypted_file_key = (
             f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}.pdf"
@@ -389,27 +401,13 @@ class PDFFiles(aiohttp.web.View):
             )
 
             # encrypt and upload index
-            files = save_encrypt_store(
-                index,
-                dirpath=tmpdir,
+            save_encrypt_store(
+                s3cli=s3cli,
+                user=user,
+                index=index,
                 name=dataset_name,
                 password=password,
             )
-            for fpath in files:
-                objkey = quote(
-                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/"
-                    + uid
-                    + fpath.removeprefix(tmpdir)
-                )
-                logger.debug(f"try upload {objkey} to s3")
-                objs.append(objkey)
-                with open(fpath, "rb") as encrypted_fp:
-                    s3cli.fput_object(
-                        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                        object_name=objkey,
-                        file_path=fpath,
-                    )
-                logger.info(f"succeed upload {objkey} to s3")
 
         return objs
 
@@ -418,24 +416,58 @@ class EmbeddingContext(aiohttp.web.View):
     """build private knowledge base by consisit of embedding indices"""
 
     @recover
-    @authenticate
-    async def get(self, user: prd.UserPermission):
+    # @authenticate
+    async def get(self):
         """
         dispatch request to different handlers by url
         """
         op = self.request.match_info["op"]
         ioloop = asyncio.get_event_loop()
         if op == "/chat":
-            return await ioloop.run_in_executor(
-                thread_executor, self.chatbot_query, user
-            )
+            return await ioloop.run_in_executor(thread_executor, self.chatbot_query)
         elif op == "/list":
+            return await ioloop.run_in_executor(thread_executor, self.list_chatbots)
+        elif op == "/share":
             return await ioloop.run_in_executor(
-                thread_executor, self.list_chatbots, user
+                thread_executor, self.share_chatbot_query
             )
         else:
             raise Exception(f"unknown op {op}")
 
+    def share_chatbot_query(self) -> aiohttp.web.Response:
+        """talk with somebody shared private knowledge base"""
+        # get uid and chatbot_name from query args
+        uid = self.request.query.get("uid", "")
+        assert re.match(r"^[a-zA-Z0-9\-_]+$", uid), "uid is required"
+        user = get_user_by_uid(uid)
+
+        chatbot_name = self.request.query.get("chatbot_name", "")
+        assert re.match(r"^[a-zA-Z0-9\-_]+$", chatbot_name), "chatbot_name is required"
+
+        query = self.request.query.get("q", "").strip()
+        assert query, "q is required"
+
+        if uid not in user_shared_chain:
+            logger.debug(f"try restore user shared chain from s3 for {uid=}")
+            restore_user_chain(s3cli=s3cli, user=user, chatbot_name=chatbot_name)
+
+        sema = uid_ratelimiter(user=user, concurrent=user.n_concurrent)
+        try:
+            resp, refs = user_shared_chain[uid + chatbot_name].chain(
+                {"question": query}
+            )
+            refs = list(set(refs))
+        finally:
+            sema.release()
+
+        return aiohttp.web.json_response(
+            {
+                "text": resp,
+                "url": refs,
+            }
+        )
+
+    @authenticate_sync
     def chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
         """talk with user's private knowledge base"""
         uid = user.uid
@@ -449,7 +481,13 @@ class EmbeddingContext(aiohttp.web.View):
             logger.debug(f"try restore user chain from s3 for {uid=}")
             restore_user_chain(s3cli, user, password)
 
-        resp, refs = self.query(user, query)
+        sema = uid_ratelimiter(user=user, concurrent=user.n_concurrent)
+        try:
+            resp, refs = user_embeddings_chain[uid].chain({"question": query})
+            refs = list(set(refs))
+        finally:
+            sema.release()
+
         return aiohttp.web.json_response(
             {
                 "text": resp,
@@ -457,6 +495,7 @@ class EmbeddingContext(aiohttp.web.View):
             }
         )
 
+    @authenticate_sync
     def list_chatbots(self, user: prd.UserPermission) -> aiohttp.web.Response:
         chatbot_names = []
         for obj in s3cli.list_objects(
@@ -487,12 +526,6 @@ class EmbeddingContext(aiohttp.web.View):
             }
         )
 
-    @uid_method_ratelimiter(concurrent=1)
-    def query(self, user: prd.UserPermission, query: str) -> Tuple[str, List[str]]:
-        uid = user.uid
-        resp, refs = user_embeddings_chain[uid].chain({"question": query})
-        return resp, list(set(refs))
-
     @recover
     @authenticate
     async def post(self, user: prd.UserPermission):
@@ -500,6 +533,7 @@ class EmbeddingContext(aiohttp.web.View):
 
         ioloop = asyncio.get_event_loop()
         op = self.request.match_info["op"]
+        logger.debug(f"post to EmbeddingContext with {op=}")
         if op == "/build":
             return await ioloop.run_in_executor(
                 thread_executor,
@@ -514,8 +548,54 @@ class EmbeddingContext(aiohttp.web.View):
                 user,
                 data,
             )
+        elif op == "/share":
+            return await ioloop.run_in_executor(
+                thread_executor,
+                self.share_chatbot,
+                user,
+                data,
+            )
         else:
             raise NotImplementedError(f"unknown op {op}")
+
+    def share_chatbot(
+        self, user: prd.UserPermission, data: Dict
+    ) -> aiohttp.web.Response:
+        """
+        share chatbot to other users
+
+        will decrypt user's embeddings store and save it in plain text
+        """
+        password = data.get("data_key", "")
+        assert type(password) == str, "data_key must be string"
+        assert password, "data_key is required"
+
+        chatbot_name = data.get("chatbot_name", "")
+        assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            index, datasets = download_chatbot_index(
+                s3cli=s3cli,
+                dirpath=tmpdir,
+                user=user,
+                chatbot_name=chatbot_name,
+                password=password,
+            )
+            save_plaintext_store(
+                s3cli=s3cli,
+                user=user,
+                index=index,
+                datasets=datasets,
+                name=chatbot_name,
+            )
+
+        logger.info(f"succeed share {user.uid}'s chatbot {chatbot_name}")
+        return aiohttp.web.json_response(
+            {
+                "uid": user.uid,
+                "chatbot_name": chatbot_name,
+            }
+        )
 
     def active_chatbot(
         self,
@@ -539,7 +619,7 @@ class EmbeddingContext(aiohttp.web.View):
     def build_chatbot(
         self, user: prd.UserPermission, data: Dict
     ) -> aiohttp.web.Response:
-        """build context by selected datasets"""
+        """build chatbot by selected datasets"""
         datasets = data.get("datasets", [])
         assert type(datasets) == list, "datasets must be list"
         assert datasets, "datasets is required"
@@ -567,67 +647,46 @@ class EmbeddingContext(aiohttp.web.View):
     ):
         uid = user.uid
         index = self.load_datasets(uid, datasets, password)
-        build_user_chain(user, index, datasets)
-        self.save_user_chain(
+        chain = build_user_chain(user, index, datasets)
+        with user_embeddings_chain_mu:
+            user_embeddings_chain[uid] = chain
+
+        save_encrypt_store(
+            s3cli=s3cli,
+            user=user,
             index=index,
-            uid=uid,
+            name=chatbot_name,
             password=password,
             datasets=datasets,
-            chatbot_name=chatbot_name,
         )
 
-    def save_user_chain(
-        self,
-        index: Index,
-        uid: str,
-        password: str,
-        datasets: List[str],
-        chatbot_name: str = "default",
-    ):
-        """save user's embedding index to s3
+    # def save_user_chain(
+    #     self,
+    #     index: Index,
+    #     user: prd.UserPermission,
+    #     password: str,
+    #     datasets: List[str],
+    #     chatbot_name: str = "default",
+    # ):
+    #     """save user's embedding index to s3
 
-        will save three files:
-            - {chatbot_name}.index: embedding index
-            - {chatbot_name}.store: embedding store
-            - {chatbot_name}.pkl: selected datasets
-        """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # encrypt and upload origin pdf file
-            fs = save_encrypt_store(
-                index=index,
-                dirpath=tmpdir,
-                name=chatbot_name,
-                password=password,
-            )
+    #     will save three files:
+    #         - {chatbot_name}.index: embedding index
+    #         - {chatbot_name}.store: embedding store
+    #         - {chatbot_name}.pkl: selected datasets
+    #     """
+    #     with tempfile.TemporaryDirectory() as tmpdir:
+    #         # encrypt and upload origin pdf file
+    #         fs = save_encrypt_store(
+    #             s3cli=s3cli,
+    #             user=user,
+    #             index=index,
+    #             chatbot_name=chatbot_name,
+    #             password=password,
+    #             datasets=datasets,
+    #         )
 
-            # dump selected datasets
-            datasets_fname = os.path.join(tmpdir, f"{chatbot_name}.pkl")
-            fs.append(datasets_fname)
-            with open(datasets_fname, "wb") as datasets_fp:
-                pickle.dump(datasets, datasets_fp)
-
-            logger.debug(f"try to upload embedding chat store {uid=}")
-            for fpath in fs:
-                objkey = quote(
-                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{os.path.basename(fpath)}"
-                )
-                s3cli.fput_object(
-                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                    object_name=objkey,
-                    file_path=fpath,
-                )
-                logger.debug(f"upload {objkey} to s3")
-
-        # save current
-        objkey = quote(f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT")
-        s3cli.put_object(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            object_name=objkey,
-            data=io.BytesIO(chatbot_name.encode("utf-8")),
-            length=len(chatbot_name),
-        )
-
-        logger.info(f"succeed to upload qa chat store {uid=}")
+    #     logger.info(f"succeed to upload qa chat store {uid=}")
 
     def load_datasets(self, uid: str, datasets: List[str], password: str) -> Index:
         """load datasets from s3"""

@@ -64,6 +64,26 @@ def authenticate_by_appkey(func):
 
     return wrapper
 
+def authenticate_by_appkey_sync(func):
+    """Decorator to authenticate a request
+
+    will check if the appkey is in the list of valid appkeys,
+    and if it is, will return the user info as the first argument to the function
+    """
+
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        apikey: str = self.request.headers.get("Authorization", "")
+        apikey = apikey.removeprefix("Bearer ")
+
+        userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
+        if not userinfo:
+            raise web.HTTPUnauthorized()
+
+        return func(self, userinfo, *args, **kwargs)
+
+    return wrapper
+
 
 def recover(func):
     """Decorator to recover from exceptions"""
@@ -77,3 +97,18 @@ def recover(func):
             return web.HTTPBadRequest(text=str(e))
 
     return wrapper
+
+def get_user_by_uid(uid:str) -> prd.UserPermission:
+    """Get user by uid
+
+    Args:
+        uid (str): uid of user
+
+    Returns:
+        prd.UserPermission: user info
+    """
+    for user in prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.values():
+        if user.uid== uid:
+            return user
+
+    raise web.HTTPUnauthorized(text=f"User {uid=} not found")
