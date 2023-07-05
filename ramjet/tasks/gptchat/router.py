@@ -35,6 +35,7 @@ from .embedding.embeddings import (
     user_shared_chain,
     save_plaintext_store,
     download_chatbot_index,
+    UserChain,
 )
 from .embedding.query import build_chain, query, setup
 from .utils import (
@@ -240,11 +241,15 @@ class PDFFiles(aiohttp.web.View):
 
         selected = []
         try:
-            if uid not in user_embeddings_chain:
+            with user_embeddings_chain_mu:
+                need_restore = uid not in user_embeddings_chain
+
+            if need_restore:
                 restore_user_chain(s3cli, user, password)
 
-            if uid in user_embeddings_chain:
-                selected = user_embeddings_chain[uid].datasets
+            with user_embeddings_chain_mu:
+                if uid in user_embeddings_chain:
+                    selected = user_embeddings_chain[uid].datasets
         except Exception as err:
             logger.debug(f"failed to restore user chain {uid}, {err=}")
 
@@ -447,15 +452,19 @@ class EmbeddingContext(aiohttp.web.View):
         query = self.request.query.get("q", "").strip()
         assert query, "q is required"
 
-        if uid not in user_shared_chain:
+        with user_shared_chain_mu:
+            need_restore =  uid not in user_shared_chain
+
+        if need_restore:
             logger.debug(f"try restore user shared chain from s3 for {uid=}")
             restore_user_chain(s3cli=s3cli, user=user, chatbot_name=chatbot_name)
 
+        with user_shared_chain_mu:
+            chatbot = user_shared_chain[uid + chatbot_name]
+
         sema = uid_ratelimiter(user=user, concurrent=user.n_concurrent)
         try:
-            resp, refs = user_shared_chain[uid + chatbot_name].chain(
-                {"question": query}
-            )
+            resp, refs = chatbot.chain({"question": query})
             refs = list(set(refs))
         finally:
             sema.release()
@@ -477,13 +486,20 @@ class EmbeddingContext(aiohttp.web.View):
         password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
         assert password, "X-PDFCHAT-PASSWORD is required"
 
-        if uid not in user_embeddings_chain:
+        with user_embeddings_chain_mu:
+            need_restore = uid not in user_embeddings_chain
+
+        if need_restore:
             logger.debug(f"try restore user chain from s3 for {uid=}")
             restore_user_chain(s3cli, user, password)
 
+
+        with user_embeddings_chain_mu:
+            chatbot = user_embeddings_chain[uid]
+
         sema = uid_ratelimiter(user=user, concurrent=user.n_concurrent)
         try:
-            resp, refs = user_embeddings_chain[uid].chain({"question": query})
+            resp, refs = chatbot.chain({"question": query})
             refs = list(set(refs))
         finally:
             sema.release()
