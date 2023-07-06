@@ -1,24 +1,27 @@
-import tempfile
 import codecs
 import glob
 import hashlib
-import threading
 import os
 import pickle
+import tempfile
 import textwrap
+import threading
 from collections import namedtuple
 from sys import path
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple, Callable
+from urllib.parse import quote
 
 import faiss
-from minio import Minio
 from Crypto.Cipher import AES
 from kipp.utils import setup_logger
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
-from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
-from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
+from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
+from langchain.document_loaders import PyPDFLoader
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+from langchain.vectorstores import FAISS
+from minio import Minio
 
 from ramjet.settings import prd
 from ..base import logger
@@ -31,29 +34,6 @@ user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 user_shared_chain_mu = threading.RLock()
 user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
-
-def pretty_print(text: str) -> str:
-    text = text.strip()
-    return textwrap.fill(text, width=60, subsequent_indent="    ")
-
-
-# ==============================================================
-# prepare pdf documents docs.index & docs.store
-#
-# https://python.langchain.com/en/latest/modules/indexes/document_loaders/examples/pdf.html#retain-elements
-#
-# 通用的函数定义
-# ==============================================================
-
-from urllib.parse import quote
-
-from langchain.document_loaders import PyPDFLoader
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
-
-# from langchain.document_loaders import UnstructuredPDFLoader
-from langchain.vectorstores import FAISS
-
 text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
 markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
 
@@ -61,14 +41,23 @@ N_BACTCH_FILES = 5
 N_NEAREST_CHUNKS = 5
 
 
-def is_file_scaned(index: Index, fpath):
+def is_file_scaned(index: Index, fpath: str) -> bool:
     """
     check if a file is already scaned by the index, if so, skip it
+
+    Args:
+        index (Index): index
+        fpath (str): file path
+
+    Returns:
+        bool: True if the file is already scaned
     """
     return os.path.split(fpath)[1] in index.scaned_files
 
 
-def build_chain(llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS):
+def build_chain(
+    llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS
+) -> Callable[[Dict], Tuple[str, List[str]]]:
     """
     build a chain for a given store
 
@@ -167,9 +156,18 @@ def embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     return index
 
 
-def embedding_markdowns(index: Index, fpaths, url, replace_by_url):
+def embedding_markdowns(index: Index, fpaths, url, replace_by_url) -> int:
     """
     embedding markdown files
+
+    Args:
+        index (Index): index
+        fpaths (List[str]): file paths
+        url (str): url prefix
+        replace_by_url (str): replace local path by public url
+
+    Returns:
+        int: number of files embedded
     """
     i = 0
     docs = []
@@ -236,7 +234,7 @@ def new_store() -> Index:
     )
 
 
-def derive_key(password):
+def derive_key(password: str) -> bytes:
     """
     derive aes key in 32 bytes from password
     """
@@ -338,7 +336,7 @@ def download_chatbot_index(
 
 def restore_user_chain(
     s3cli: Minio, user: prd.UserPermission, password: str = "", chatbot_name: str = ""
-):
+) -> None:
     """
     load and restore user chain from s3
 
@@ -380,7 +378,7 @@ def save_encrypt_store(
     name: str,
     password: str,
     datasets: List[str] = [],
-):
+) -> None:
     """save encrypted store
 
     Args:
@@ -444,7 +442,7 @@ def save_encrypt_store(
 
 def save_plaintext_store(
     s3cli: Minio, user: prd.UserPermission, index: Index, name: str, datasets: List[str]
-):
+) -> None:
     """save plaintext store
 
     Args:
