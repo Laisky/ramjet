@@ -329,6 +329,7 @@ class PDFFiles(aiohttp.web.View):
         ), "file_key should only contain [a-zA-Z0-9_-]"
 
         uid = user.uid
+        logger.debug(f"process file {dataset_name=} for user {uid=}")
         try:
             with user_processing_files_lock:
                 fset = user_processing_files.get(uid, set())
