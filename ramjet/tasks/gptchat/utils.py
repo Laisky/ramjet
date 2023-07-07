@@ -127,4 +127,9 @@ def get_user_by_uid(uid: str) -> prd.UserPermission:
         if user.uid == uid:
             return user
 
-    raise web.HTTPUnauthorized(text=f"User {uid=} not found")
+    logger.debug(f"uid {uid=} not found, using default user")
+    return prd.UserPermission(
+        uid=uid,
+        n_concurrent=2,
+        chat_model="",
+    )
