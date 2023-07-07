@@ -24,7 +24,7 @@ class ImageWaterMarkSignView(web.View):
         watermark = self.request.rel_url.query["text"]
 
         hasher = md5()
-        hasher.update(img_remote_url.encode("utf8"))
+        hasher.update(img_remote_url.encode("utf-8"))
         key = hasher.hexdigest()
 
         imgdata = await tencent_cloud.fetch_and_sign_image(
@@ -84,7 +84,7 @@ class TencentCloud:
             logger.info(f"uploaded image {img_url=}")
             img_tmp_url = f"{TENCENT_CLOUD_WATERMARK_BUCKET_URL}/{key}"
 
-            watermark = urlsafe_b64encode(watermark.encode("utf8")).decode("utf8")
+            watermark = urlsafe_b64encode(watermark.encode("utf-8")).decode("utf-8")
             resp = await self._client.get(
                 f"{img_tmp_url}?watermark/3/type/3/text/{watermark}"
             )

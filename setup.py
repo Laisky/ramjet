@@ -36,7 +36,7 @@ def update_readme_version(version):
 version = ramjet.__version__
 update_readme_version(version)
 
-with codecs.open("README.md", "r", "utf8") as f:
+with codecs.open("README.md", "r", "utf-8") as f:
     long_description = f.read()
 
 

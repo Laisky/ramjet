@@ -27,11 +27,11 @@ CST = pytz.timezone("Asia/Shanghai")
 
 
 def obj2str(obj):
-    return binascii.b2a_base64(pickle.dumps(obj)).decode("utf8")
+    return binascii.b2a_base64(pickle.dumps(obj)).decode("utf-8")
 
 
 def str2obj(string):
-    return pickle.loads(binascii.a2b_base64(string.encode("utf8")))
+    return pickle.loads(binascii.a2b_base64(string.encode("utf-8")))
 
 
 def format_dt(dt):

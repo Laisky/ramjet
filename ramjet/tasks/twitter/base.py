@@ -59,7 +59,7 @@ def get_s3_key(media_entity: Dict[str, Any], fname: str = "") -> str:
 
 
 def get_md5_hierachy_dir(fname: str) -> str:
-    hashed = md5(fname.encode("utf8")).hexdigest()
+    hashed = md5(fname.encode("utf-8")).hexdigest()
     c1, c2 = hashed[:2], hashed[2:4]
     return os.path.join(c1, c2, fname)
 

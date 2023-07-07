@@ -44,7 +44,7 @@ class UploadFileView(aiohttp.web.View):
                     # zipfile 会用 cp437 对待 non-ascii 文件名，需要手动转码
                     try:
                         new_fpath = os.path.join(
-                            extract_dir, fname.encode("cp437").decode("utf8")
+                            extract_dir, fname.encode("cp437").decode("utf-8")
                         )
                     except:
                         new_fpath = os.path.join(

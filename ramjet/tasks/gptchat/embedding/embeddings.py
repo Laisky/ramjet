@@ -177,7 +177,7 @@ def embedding_markdowns(index: Index, fpaths, url, replace_by_url) -> int:
         if is_file_scaned(index, fpath):
             continue
 
-        with codecs.open(fpath, "rb", "utf8") as fp:
+        with codecs.open(fpath, "rb", "utf-8") as fp:
             docus = markdown_splitter.create_documents([fp.read()])
             for ichunk, docu in enumerate(docus):
                 docs.append(docu.page_content)

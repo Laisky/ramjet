@@ -1,3 +1,4 @@
+import hashlib
 import functools
 import time
 from typing import Mapping
@@ -44,6 +45,25 @@ def authenticate(func):
     return wrapper
 
 
+def get_user_by_appkey(apikey: str) -> prd.UserPermission:
+    if apikey.startswith("sk-"):
+        uid = hashlib.sha256(apikey.encode("utf-8")).hexdigest()[:16]
+        logger.debug(f"user's own openai token, {uid=}")
+        userinfo = prd.UserPermission(
+            uid=uid,
+            n_concurrent=100,
+            chat_model="gpt-3.5-turbo-16k",
+        )
+    else:
+        userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
+        if not userinfo:
+            raise web.HTTPUnauthorized()
+
+        logger.debug(f"openai private embedding api key, {userinfo.uid=}")
+
+    return userinfo
+
+
 def authenticate_by_appkey(func):
     """Decorator to authenticate a request
 
@@ -56,13 +76,11 @@ def authenticate_by_appkey(func):
         apikey: str = self.request.headers.get("Authorization", "")
         apikey = apikey.removeprefix("Bearer ")
 
-        userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
-        if not userinfo:
-            raise web.HTTPUnauthorized()
-
+        userinfo = get_user_by_appkey(apikey)
         return await func(self, userinfo, *args, **kwargs)
 
     return wrapper
+
 
 def authenticate_by_appkey_sync(func):
     """Decorator to authenticate a request
@@ -76,10 +94,7 @@ def authenticate_by_appkey_sync(func):
         apikey: str = self.request.headers.get("Authorization", "")
         apikey = apikey.removeprefix("Bearer ")
 
-        userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
-        if not userinfo:
-            raise web.HTTPUnauthorized()
-
+        userinfo = get_user_by_appkey(apikey)
         return func(self, userinfo, *args, **kwargs)
 
     return wrapper
@@ -98,7 +113,8 @@ def recover(func):
 
     return wrapper
 
-def get_user_by_uid(uid:str) -> prd.UserPermission:
+
+def get_user_by_uid(uid: str) -> prd.UserPermission:
     """Get user by uid
 
     Args:
@@ -108,7 +124,7 @@ def get_user_by_uid(uid:str) -> prd.UserPermission:
         prd.UserPermission: user info
     """
     for user in prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.values():
-        if user.uid== uid:
+        if user.uid == uid:
             return user
 
     raise web.HTTPUnauthorized(text=f"User {uid=} not found")

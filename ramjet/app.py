@@ -21,7 +21,7 @@ class PageNotFound(web.View):
 
 
 def setup_web_handlers(app):
-    key = hashlib.md5(SECRET_KEY.encode("utf8")).hexdigest().encode("utf8")
+    key = hashlib.md5(SECRET_KEY.encode("utf-8")).hexdigest().encode("utf-8")
     setup(app, EncryptedCookieStorage(key))
     web.view("/404.html", PageNotFound)
 

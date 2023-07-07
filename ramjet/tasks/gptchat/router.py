@@ -528,13 +528,16 @@ class EmbeddingContext(aiohttp.web.View):
             )
 
         # get current
-        resp = s3cli.get_object(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
-        )
-        current_chatbot = resp.data.decode("utf-8")
-        resp.close()
-        resp.release_conn()
+        try:
+            resp = s3cli.get_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
+            )
+            current_chatbot = resp.data.decode("utf-8")
+            resp.close()
+            resp.release_conn()
+        except Exception:
+            current_chatbot = ""
 
         return aiohttp.web.json_response(
             {
@@ -677,33 +680,13 @@ class EmbeddingContext(aiohttp.web.View):
             datasets=datasets,
         )
 
-    # def save_user_chain(
-    #     self,
-    #     index: Index,
-    #     user: prd.UserPermission,
-    #     password: str,
-    #     datasets: List[str],
-    #     chatbot_name: str = "default",
-    # ):
-    #     """save user's embedding index to s3
-
-    #     will save three files:
-    #         - {chatbot_name}.index: embedding index
-    #         - {chatbot_name}.store: embedding store
-    #         - {chatbot_name}.pkl: selected datasets
-    #     """
-    #     with tempfile.TemporaryDirectory() as tmpdir:
-    #         # encrypt and upload origin pdf file
-    #         fs = save_encrypt_store(
-    #             s3cli=s3cli,
-    #             user=user,
-    #             index=index,
-    #             chatbot_name=chatbot_name,
-    #             password=password,
-    #             datasets=datasets,
-    #         )
-
-    #     logger.info(f"succeed to upload qa chat store {uid=}")
+        # save current chatbot
+        s3cli.put_object(
+            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+            data=io.BytesIO(chatbot_name.encode("utf-8")),
+            length=len(chatbot_name.encode("utf-8")),
+        )
 
     def load_datasets(self, uid: str, datasets: List[str], password: str) -> Index:
         """load datasets from s3"""
