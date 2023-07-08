@@ -22,7 +22,7 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
 from langchain.vectorstores import FAISS
 from minio import Minio
-from langchain.document_loaders import Docx2txtLoader, UnstructuredPowerPointLoader
+from langchain.document_loaders import Docx2txtLoader, UnstructuredPowerPointLoader, UnstructuredWordDocumentLoader
 
 from ramjet.settings import prd
 from ..base import logger
@@ -241,7 +241,15 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
-    loader = Docx2txtLoader(fpath)
+
+    fileext = os.path.splitext(fpath)[1].lower()
+    if fileext == ".docx":
+        loader = Docx2txtLoader(fpath)
+    elif fileext == ".doc":
+        loader = UnstructuredWordDocumentLoader(fpath)
+    else:
+        raise ValueError(f"unsupported file type {fileext}")
+
     for page, data in enumerate(loader.load_and_split()):
         splits = text_splitter.split_text(data.page_content)
         docs.extend(splits)
