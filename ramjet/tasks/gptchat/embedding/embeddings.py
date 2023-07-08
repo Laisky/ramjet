@@ -139,6 +139,31 @@ def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         raise ValueError(f"unsupported file type {file_ext}")
 
 
+PDF_EOF_MARKER = b"%%EOF"
+
+
+def reset_eof_of_pdf(fpath: str) -> None:
+    """
+    reset the EOF marker of a pdf file.
+    fix `EOF marker not found`. see https://github.com/py-pdf/pypdf/issues/480
+
+    will overwrite the original file.
+
+    Args:
+        fpath (str): file path
+    """
+    with open(fpath, "rb") as f:
+        content = f.read()
+
+    # replace the EOF marker to the end of the file
+    if PDF_EOF_MARKER in content:
+        content = content.replace(PDF_EOF_MARKER, b"")
+
+    content = content + PDF_EOF_MARKER
+    with open(fpath, "wb") as f:
+        f.write(content)
+
+
 def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """embedding pdf file
 
@@ -152,10 +177,13 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         Index: index
     """
     logger.info(f"call embedding_pdf {fpath=}, {metadata_name=}")
+
+    reset_eof_of_pdf(fpath)
+    loader = PyPDFLoader(fpath)
+
     index = new_store()
     docs = []
     metadatas = []
-    loader = PyPDFLoader(fpath)
     for page, data in enumerate(loader.load_and_split()):
         splits = text_splitter.split_text(data.page_content)
         docs.extend(splits)
