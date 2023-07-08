@@ -409,8 +409,7 @@ class UploadedFiles(aiohttp.web.View):
                 with open(encrypted_file_path, "wb") as encrypted_fp:
                     key = derive_key(password)
                     cipher = AES.new(key, AES.MODE_EAX)
-                    content = src_fp.read()
-                    ciphertext, tag = cipher.encrypt_and_digest(content)
+                    ciphertext, tag = cipher.encrypt_and_digest(src_fp.read())
                     [encrypted_fp.write(x) for x in (cipher.nonce, tag, ciphertext)]
 
             objs.append(encrypted_file_key)
