@@ -2,7 +2,6 @@ import asyncio
 import base64
 import io
 import os
-import pickle
 import re
 import tempfile
 import threading
@@ -24,7 +23,7 @@ from .embedding.embeddings import (
     Index,
     build_user_chain,
     derive_key,
-    embedding_pdf,
+    embedding_file,
     load_encrypt_store,
     new_store,
     restore_user_chain,
@@ -73,7 +72,7 @@ def bind_handle(add_route):
 
     add_route("", LandingPage)
     add_route("query", Query)
-    add_route("files", PDFFiles)
+    add_route("files", UploadedFiles)
     add_route("ctx{op:(/.*)?}", EmbeddingContext)
     add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
 
@@ -189,12 +188,29 @@ class EncryptedFiles(aiohttp.web.View):
                     response.headers["WWW-Authenticate"] = 'Basic realm="My Realm"'
                     return response
 
+        file_ext = os.path.splitext(filename)[1].lower()
+        if file_ext == ".pdf":
+            content_type = "application/pdf"
+        elif file_ext == ".doc" or file_ext == ".docx":
+            content_type = "application/msword"
+        elif file_ext == ".xls" or file_ext == ".xlsx":
+            content_type = "application/vnd.ms-excel"
+        elif file_ext == ".ppt" or file_ext == ".pptx":
+            content_type = "application/vnd.ms-powerpoint"
+        elif file_ext == ".md":
+            content_type = "text/markdown"
+        else:
+            content_type = "application/octet-stream"
+
+        # Add charset to headers
+        headers = {"Content-Type": content_type + "; charset=utf-8"}
+
         # return decrypted pdf file
-        return aiohttp.web.Response(body=data, content_type="application/pdf")
+        return aiohttp.web.Response(body=data, headers=headers)
 
 
-class PDFFiles(aiohttp.web.View):
-    """build private dataset by embedding pdf files
+class UploadedFiles(aiohttp.web.View):
+    """build private dataset by embedding files
 
     Returns:
         aiohttp.web.Response -- json response, contains file status
@@ -354,10 +370,12 @@ class PDFFiles(aiohttp.web.View):
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
 
+        file_ext = os.path.splitext(file.filename)[1]
+
         uid = user.uid
         objs = []
         encrypted_file_key = (
-            f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}.pdf"
+            f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}{file_ext}"
         )
 
         logger.info(f"process file {file.filename} for {uid}")
@@ -381,18 +399,17 @@ class PDFFiles(aiohttp.web.View):
                     fp.write(chunk)
 
             metadata_name = f"{prd.OPENAI_EMBEDDING_REF_URL_PREFIX}{encrypted_file_key}"
-            index = embedding_pdf(fp.name, metadata_name)
+            file_ext = os.path.splitext(fp.name)[1]
+            index = embedding_file(fp.name, metadata_name)
 
             # encrypt and upload origin pdf file
-            encrypted_file_path = os.path.join(tmpdir, dataset_name + ".pdf")
+            encrypted_file_path = os.path.join(tmpdir, dataset_name + file_ext)
             logger.debug(f"try to upload {encrypted_file_path}")
             with open(source_fpath, "rb") as src_fp:
                 with open(encrypted_file_path, "wb") as encrypted_fp:
                     key = derive_key(password)
                     cipher = AES.new(key, AES.MODE_EAX)
-                    ciphertext, tag = cipher.encrypt_and_digest(
-                        pickle.dumps(src_fp.read())
-                    )
+                    ciphertext, tag = cipher.encrypt_and_digest(src_fp.read())
                     [encrypted_fp.write(x) for x in (cipher.nonce, tag, ciphertext)]
                     encrypted_fp.flush()
 
@@ -454,7 +471,7 @@ class EmbeddingContext(aiohttp.web.View):
         assert query, "q is required"
 
         with user_shared_chain_mu:
-            need_restore =  uid not in user_shared_chain
+            need_restore = uid not in user_shared_chain
 
         if need_restore:
             logger.debug(f"try restore user shared chain from s3 for {uid=}")
@@ -493,7 +510,6 @@ class EmbeddingContext(aiohttp.web.View):
         if need_restore:
             logger.debug(f"try restore user chain from s3 for {uid=}")
             restore_user_chain(s3cli, user, password)
-
 
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]

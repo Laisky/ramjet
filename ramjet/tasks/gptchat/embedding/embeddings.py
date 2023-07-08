@@ -22,6 +22,7 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
 from langchain.vectorstores import FAISS
 from minio import Minio
+from langchain.document_loaders import Docx2txtLoader, UnstructuredPowerPointLoader
 
 from ramjet.settings import prd
 from ..base import logger
@@ -124,14 +125,28 @@ def build_user_chain(
     )
 
 
-def embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    file_ext = os.path.splitext(fpath)[1].lower()
+    if file_ext == ".pdf":
+        return _embedding_pdf(fpath, metadata_name, max_chunks)
+    elif file_ext == ".md":
+        return _embedding_markdown(fpath, metadata_name, max_chunks)
+    elif file_ext == ".docx" or file_ext == ".doc":
+        return _embedding_word(fpath, metadata_name, max_chunks)
+    elif file_ext == ".pptx" or file_ext == ".ppt":
+        return _embedding_ppt(fpath, metadata_name, max_chunks)
+    else:
+        raise ValueError(f"unsupported file type {file_ext}")
+
+
+def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """embedding pdf file
 
     pricing: https://openai.com/pricing
 
     Args:
         fpath (str): file path
-        fkey (str): file key
+        metadata_name (str): file key
 
     Returns:
         Index: index
@@ -146,59 +161,91 @@ def embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         docs.extend(splits)
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for ichunk, _ in enumerate(splits):
-            # furl = prd.OPENAI_EMBEDDING_REF_URL_PREFIX.format(uid, password) + quote(fkey, safe="")
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
-    assert len(docs) < max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    logger.info(f"succeed embedding {fpath} with {len(docs)} chunks")
+    logger.info(f"succeed embedding pdf {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
 
-def embedding_markdowns(index: Index, fpaths, url, replace_by_url) -> int:
-    """
-    embedding markdown files
+def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    """embedding markdown file
 
     Args:
-        index (Index): index
-        fpaths (List[str]): file paths
-        url (str): url prefix
-        replace_by_url (str): replace local path by public url
+        fpath (str): file path
+        metadata_name (str): file key
 
     Returns:
-        int: number of files embedded
+        Index: index
     """
-    i = 0
+    logger.info(f"call embedding_markdown {fpath=}, {metadata_name=}")
+    index = new_store()
     docs = []
     metadatas = []
-    for fpath in fpaths:
-        fname = os.path.split(fpath)[1]
-        if is_file_scaned(index, fpath):
-            continue
+    with codecs.open(fpath, "rb", "utf-8") as fp:
+        docus = markdown_splitter.create_documents([fp.read()])
+        for ichunk, docu in enumerate(docus):
+            docs.append(docu.page_content)
 
-        with codecs.open(fpath, "rb", "utf-8") as fp:
-            docus = markdown_splitter.create_documents([fp.read()])
-            for ichunk, docu in enumerate(docus):
-                docs.append(docu.page_content)
-                title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
-                if url:
-                    fnameurl = quote(fpath.removeprefix(replace_by_url), safe="")
-                    furl = url + fnameurl
-                    metadatas.append({"source": f"{furl}#{title}"})
-                else:
-                    metadatas.append({"source": f"{fname}#{title}"})
+            title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
+            metadatas.append({"source": f"{metadata_name}#{title}"})
 
-        index.scaned_files.add(fname)
-        print(f"scaned {fpath}")
-        i += 1
-        if i > N_BACTCH_FILES:
-            break
+    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    if i != 0:
-        index.store.add_texts(docs, metadatas=metadatas)
+    logger.info(f"succeed embedding markdown {fpath} with {len(docs)} chunks")
+    index.store.add_texts(docs, metadatas=metadatas)
+    return index
 
-    return i
+
+def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    """embedding word file
+
+    Args:
+        fpath (str): file path
+        metadata_name (str): file key
+
+    Returns:
+        Index: index
+    """
+    logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
+    index = new_store()
+    docs = []
+    metadatas = []
+    loader = Docx2txtLoader(fpath)
+    for page, data in enumerate(loader.load_and_split()):
+        splits = text_splitter.split_text(data.page_content)
+        docs.extend(splits)
+        logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
+        for ichunk, _ in enumerate(splits):
+            metadatas.append({"source": f"{metadata_name}#page={page+1}"})
+
+    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+
+    logger.info(f"succeed embedding word {fpath} with {len(docs)} chunks")
+    index.store.add_texts(docs, metadatas=metadatas)
+    return index
+
+
+def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
+    index = new_store()
+    docs = []
+    metadatas = []
+    loader = UnstructuredPowerPointLoader(fpath)
+    for page, data in enumerate(loader.load_and_split()):
+        splits = text_splitter.split_text(data.page_content)
+        docs.extend(splits)
+        logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
+        for ichunk, _ in enumerate(splits):
+            metadatas.append({"source": f"{metadata_name}#page={page+1}"})
+
+    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+
+    logger.info(f"succeed embedding powerpoint {fpath} with {len(docs)} chunks")
+    index.store.add_texts(docs, metadatas=metadatas)
+    return index
 
 
 def new_store() -> Index:
