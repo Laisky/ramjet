@@ -380,8 +380,8 @@ class UploadedFiles(aiohttp.web.View):
 
         logger.info(f"process file {file.filename} for {uid}")
         with tempfile.TemporaryDirectory() as tmpdir:
-            # copy uploaded file to temp dir
-            source_fpath = os.path.join(tmpdir, file.filename)
+            # copy origin uploaded file to temp dir
+            source_fpath = os.path.join(tmpdir, f"_source_{dataset_name}{file_ext}")
             with open(source_fpath, "wb") as fp:
                 total_size = 0
                 chunk_size = 1024 * 1024  # 1MB
@@ -409,16 +409,16 @@ class UploadedFiles(aiohttp.web.View):
                 with open(encrypted_file_path, "wb") as encrypted_fp:
                     key = derive_key(password)
                     cipher = AES.new(key, AES.MODE_EAX)
-                    ciphertext, tag = cipher.encrypt_and_digest(src_fp.read())
+                    content = src_fp.read()
+                    ciphertext, tag = cipher.encrypt_and_digest(content)
                     [encrypted_fp.write(x) for x in (cipher.nonce, tag, ciphertext)]
-                    encrypted_fp.flush()
 
-                    objs.append(encrypted_file_key)
-                    s3cli.fput_object(
-                        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                        object_name=encrypted_file_key,
-                        file_path=encrypted_file_path,
-                    )
+            objs.append(encrypted_file_key)
+            s3cli.fput_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=encrypted_file_key,
+                file_path=encrypted_file_path,
+            )
             logger.info(
                 f"succeed upload encrypted source file {encrypted_file_key} to s3"
             )
