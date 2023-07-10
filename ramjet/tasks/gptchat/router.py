@@ -81,7 +81,13 @@ def uid_ratelimiter(user: prd.UserPermission, concurrent=3) -> threading.Semapho
     logger.debug(f"uid_ratelimiter: {user.uid=}")
     uid = user.uid
     limit = user.n_concurrent or concurrent
-    sema = user_prcess_file_sema.get(uid)
+
+    if user.is_free:
+        # all free users share the same semaphore
+        sema = user_prcess_file_sema.get("public")
+    else:
+        sema = user_prcess_file_sema.get(uid)
+
     if not sema:
         with user_prcess_file_sema_lock:
             sema = user_prcess_file_sema.get(uid)
