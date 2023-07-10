@@ -479,7 +479,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_shared_chain_mu:
             chatbot = user_shared_chain[uid + chatbot_name]
 
-        sema = uid_ratelimiter(user=user, concurrent=user.n_concurrent)
+        sema = uid_ratelimiter(user=user)
         try:
             resp, refs = chatbot.chain({"question": query})
             refs = list(set(refs))
@@ -513,7 +513,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]
 
-        sema = uid_ratelimiter(user=user, concurrent=user.n_concurrent)
+        sema = uid_ratelimiter(user=user)
         try:
             resp, refs = chatbot.chain({"question": query})
             refs = list(set(refs))

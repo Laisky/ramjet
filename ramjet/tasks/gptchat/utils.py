@@ -54,6 +54,14 @@ def get_user_by_appkey(apikey: str) -> prd.UserPermission:
             n_concurrent=100,
             chat_model="gpt-3.5-turbo-16k",
         )
+    elif apikey.startswith("FREETIER-"):
+        uid = hashlib.sha256(apikey.encode("utf-8")).hexdigest()[:16]
+        logger.debug(f"free tier openai token, {uid=}")
+        userinfo = prd.UserPermission(
+            uid=uid,
+            n_concurrent=0,
+            chat_model="",
+        )
     else:
         userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
         if not userinfo:
@@ -130,6 +138,6 @@ def get_user_by_uid(uid: str) -> prd.UserPermission:
     logger.debug(f"uid {uid=} not found, using default user")
     return prd.UserPermission(
         uid=uid,
-        n_concurrent=2,
+        n_concurrent=0,
         chat_model="",
     )
