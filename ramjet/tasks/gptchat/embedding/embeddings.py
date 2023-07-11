@@ -1,20 +1,16 @@
+import re
 import codecs
-import glob
 import hashlib
 import os
 import pickle
 import tempfile
-import textwrap
 import threading
 from collections import namedtuple
-from sys import path
 from typing import Dict, List, Tuple, Callable
 from urllib.parse import quote
 
 import faiss
 from Crypto.Cipher import AES
-from kipp.utils import setup_logger
-from langchain.chains.question_answering import load_qa_chain
 from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
 from langchain.document_loaders import PyPDFLoader
 from langchain.embeddings import OpenAIEmbeddings
@@ -22,7 +18,18 @@ from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
 from langchain.vectorstores import FAISS
 from minio import Minio
-from langchain.document_loaders import Docx2txtLoader, UnstructuredPowerPointLoader, UnstructuredWordDocumentLoader
+from langchain.document_loaders import (
+    Docx2txtLoader,
+    UnstructuredPowerPointLoader,
+    UnstructuredWordDocumentLoader,
+)
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
 
 from ramjet.settings import prd
 from ..base import logger
@@ -58,7 +65,7 @@ def is_file_scaned(index: Index, fpath: str) -> bool:
 
 def build_chain(
     llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS
-) -> Callable[[Dict], Tuple[str, List[str]]]:
+) -> Callable[[str], Tuple[str, List[str]]]:
     """
     build a chain for a given store
 
@@ -69,18 +76,69 @@ def build_chain(
             these chunks will be used as context for the chat model
     """
 
-    def chain(query):
+    system_template = """Use the following pieces of context to answer the users question.
+    If you don't know the answer, or you think more information is needed to provide a better answer,
+    just say in this strict format: "I need more informations about: [list keywords that will be used to search more informations]" to ask more informations,
+    don't try to make up an answer.
+    ----------------
+    context: {summaries}"""
+    messages = [
+        SystemMessagePromptTemplate.from_template(system_template),
+        HumanMessagePromptTemplate.from_template("{question}"),
+    ]
+    prompt = ChatPromptTemplate.from_messages(messages)
+    query_chain = LLMChain(llm=llm, prompt=prompt)
+
+    def query_for_more_info(query: str) -> Tuple[str, List[str]]:
+        """query more information from embeddings store
+
+        Args:
+            query (str): query
+
+        Returns:
+            Tuple[str, List[str]]: context and references
+        """
         related_docs = store.similarity_search(
-            query=query["question"],
+            query=query,
             k=nearest_k,
         )
-        chain = load_qa_chain(llm, chain_type="stuff")
-        response = chain.run(
-            input_documents=related_docs,
-            question=query["question"],
-        )
+
+        ctx = "; ".join([d.page_content for d in related_docs])
         refs = [d.metadata["source"] for d in related_docs]
-        return response, refs
+
+        return ctx, refs
+
+    def chain(query: str) -> Tuple[str, List[str]]:
+        n = 0
+        last_sub_query = ""
+        regexp = re.compile(r'I need more information about "([^"]+)"')
+        all_refs = []
+        ctx, refs = query_for_more_info(query)
+        resp = ""
+        while n < 3:
+            n += 1
+            all_refs.extend(refs)
+            resp = query_chain.run(
+                {
+                    "summaries": ctx,
+                    "question": query,
+                }
+            )
+            matched = regexp.findall(resp)
+            if len(matched) == 0:
+                break
+
+            # load more context by new sub_query
+            sub_query = matched[0]
+            if sub_query == last_sub_query:
+                break
+            last_sub_query = sub_query
+
+            logger.debug(f"require more informations about: {sub_query}")
+            new_ctx, refs = query_for_more_info(sub_query)
+            ctx += f"; {new_ctx}"
+
+        return resp, refs
 
     return chain
 

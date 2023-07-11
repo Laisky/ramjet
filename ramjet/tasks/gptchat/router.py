@@ -6,8 +6,7 @@ import re
 import tempfile
 import threading
 import urllib.parse
-from typing import Dict, List, Set, Tuple
-from urllib.parse import quote
+from typing import Dict, List, Set
 
 import aiohttp.web
 from aiohttp.web_request import FileField

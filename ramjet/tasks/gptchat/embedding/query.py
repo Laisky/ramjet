@@ -56,7 +56,7 @@ def setup():
                 client=None,
                 model="gpt-3.5-turbo-16k",
                 temperature=0,
-                max_tokens=8000,
+                max_tokens=4000,
                 streaming=False,
             )
 
@@ -76,9 +76,6 @@ def setup():
 
 
 def query(project_name: str, question: str) -> Response:
-    resp, refs = all_chains[project_name](
-        {"question": question},
-        # return_only_outputs=True,
-    )
+    resp, refs = all_chains[project_name](question)
     # return Response(question=question, text=resp["answer"], url=resp.get("sources", ""))
     return Response(question=question, text=resp, url=list(set(refs)))
