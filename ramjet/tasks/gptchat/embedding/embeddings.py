@@ -6,7 +6,7 @@ import pickle
 import tempfile
 import threading
 from collections import namedtuple
-from typing import Dict, List, Tuple, Callable
+from typing import Dict, List, Tuple, Callable, NamedTuple, Set
 from urllib.parse import quote
 
 import faiss
@@ -34,9 +34,22 @@ from langchain.chains import LLMChain
 from ramjet.settings import prd
 from ..base import logger
 
-UserChain = namedtuple("UserChain", ["chain", "index", "datasets"])
 
-Index = namedtuple("index", ["store", "scaned_files"])
+class Index(NamedTuple):
+    """embeddings index"""
+
+    store: FAISS
+    scaned_files: Set[str]
+
+
+class UserChain(NamedTuple):
+    """user chatbot"""
+
+    index: Index
+    datasets: List[str]
+    chain: Callable[[str], Tuple[str, List[str]]]
+
+
 user_embeddings_chain_mu = threading.RLock()
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 user_shared_chain_mu = threading.RLock()
@@ -98,6 +111,7 @@ def build_chain(
         Returns:
             Tuple[str, List[str]]: context and references
         """
+        logger.debug(f"query for more info: {query}")
         related_docs = store.similarity_search(
             query=query,
             k=nearest_k,
@@ -138,7 +152,8 @@ def build_chain(
             new_ctx, refs = query_for_more_info(sub_query)
             ctx += f"; {new_ctx}"
 
-        return resp, refs
+        all_refs = filter(lambda x: x != "hello", all_refs)
+        return resp, all_refs
 
     return chain
 
@@ -395,7 +410,7 @@ def download_chatbot_index(
     user: prd.UserPermission,
     chatbot_name: str = "",
     password: str = "",
-) -> Tuple[Index, List[str]]:
+) -> Tuple[str, Index, List[str]]:
     """
     download chatbot index from s3
 
@@ -408,7 +423,7 @@ def download_chatbot_index(
             if empty, download shared chatbot.
 
     Returns:
-        Tuple[Index, List[str]]: index, datasets
+        Tuple[str, Index, List[str]]: chatbot_name, index, datasets
     """
     uid = user.uid
     logger.debug(f"call download_chatbot_index {uid=}, {dirpath=}, {chatbot_name=}")
@@ -420,6 +435,7 @@ def download_chatbot_index(
             object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
         )
         chatbot_name = response.data.decode("utf-8")
+        logger.debug(f"download current chatbot name {chatbot_name=}")
         response.close()
         response.release_conn()
 
@@ -472,7 +488,7 @@ def download_chatbot_index(
     with open(os.path.join(dirpath, f"{chatbot_name}.pkl"), "rb") as fp:
         datasets = pickle.load(fp)
 
-    return index, datasets
+    return chatbot_name, index, datasets
 
 
 def restore_user_chain(
@@ -491,7 +507,7 @@ def restore_user_chain(
     """
     uid = user.uid
     with tempfile.TemporaryDirectory() as tmpdir:
-        index, datasets = download_chatbot_index(
+        chatbot_name, index, datasets = download_chatbot_index(
             s3cli=s3cli,
             user=user,
             dirpath=tmpdir,
@@ -503,11 +519,11 @@ def restore_user_chain(
     chain = build_user_chain(user, index, datasets)
 
     if password:
-        logger.info(f"load encrypted user {uid=} chain {chatbot_name=}")
+        logger.info(f"load encrypted user chain, {uid=}, {chatbot_name=}")
         with user_embeddings_chain_mu:
             user_embeddings_chain[uid] = chain
     else:
-        logger.info(f"load shared user {uid=} chain {chatbot_name=}")
+        logger.info(f"load shared user chain, {uid=}, {chatbot_name=}")
         with user_shared_chain_mu:
             user_shared_chain[uid + chatbot_name] = chain
 

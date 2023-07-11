@@ -486,7 +486,7 @@ class EmbeddingContext(aiohttp.web.View):
 
         sema = uid_ratelimiter(user=user)
         try:
-            resp, refs = chatbot.chain({"question": query})
+            resp, refs = chatbot.chain(query)
             refs = list(set(refs))
         finally:
             sema.release()
@@ -520,7 +520,7 @@ class EmbeddingContext(aiohttp.web.View):
 
         sema = uid_ratelimiter(user=user)
         try:
-            resp, refs = chatbot.chain({"question": query})
+            resp, refs = chatbot.chain(query)
             refs = list(set(refs))
         finally:
             sema.release()
@@ -614,7 +614,7 @@ class EmbeddingContext(aiohttp.web.View):
         assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            index, datasets = download_chatbot_index(
+            _, index, datasets = download_chatbot_index(
                 s3cli=s3cli,
                 dirpath=tmpdir,
                 user=user,
