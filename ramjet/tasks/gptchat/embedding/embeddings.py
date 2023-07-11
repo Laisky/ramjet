@@ -152,7 +152,7 @@ def build_chain(
             new_ctx, refs = query_for_more_info(sub_query)
             ctx += f"; {new_ctx}"
 
-        all_refs = filter(lambda x: x != "hello", all_refs)
+        all_refs = [r for r in all_refs if r != "hello"]
         return resp, all_refs
 
     return chain
