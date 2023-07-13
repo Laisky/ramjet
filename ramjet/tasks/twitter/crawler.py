@@ -9,14 +9,29 @@ import requests
 import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
-from ramjet.settings import (ACCESS_TOKEN, ACCESS_TOKEN_SECRET, CONSUMER_KEY,
-                             CONSUMER_SECRET, S3_BUCKET, S3_KEY, S3_REGION,
-                             S3_SECRET, S3_SERVER, TWITTER_IMAGE_DIR)
+from ramjet.settings import (
+    ACCESS_TOKEN,
+    ACCESS_TOKEN_SECRET,
+    CONSUMER_KEY,
+    CONSUMER_SECRET,
+    S3_BUCKET,
+    S3_KEY,
+    S3_REGION,
+    S3_SECRET,
+    S3_SERVER,
+    TWITTER_IMAGE_DIR,
+)
 from ramjet.utils import get_db
 from tweepy import API, OAuthHandler
 
-from .base import (gen_related_tweets, get_image_filepath, get_s3_key, logger,
-                   replace_media_urls, parse_tweet_text)
+from .base import (
+    gen_related_tweets,
+    get_image_filepath,
+    get_s3_key,
+    logger,
+    replace_media_urls,
+    parse_tweet_text,
+)
 from .s3 import connect_s3, is_file_exists, upload_file_in_mem
 
 lock = RLock()
@@ -56,8 +71,7 @@ class FetchView(web.View):
 
 
 class TwitterAPI:
-
-    __api: API = None
+    __api: Union[None, API] = None
     __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     _current_user_id: int
     __s3cli = None
@@ -173,7 +187,7 @@ class TwitterAPI:
     def db(self):
         return get_db()["twitter"]
 
-    def parse_tweet(self, tweet:Dict[str, Any]) -> Dict[str, Any]:
+    def parse_tweet(self, tweet: Dict[str, Any]) -> Dict[str, Any]:
         logger.debug("parse_tweet")
         return parse_tweet_text(tweet)
 
@@ -188,7 +202,6 @@ class TwitterAPI:
         return docu and docu["id"]
 
     def save_tweet(self, tweet: Dict[str, Any]):
-
         if self.col.find_one({"id_str": tweet["id_str"]}, projection=["_id"]):
             return
 
@@ -232,9 +245,7 @@ class TwitterAPI:
             if is_file_exists(self.__s3cli, len(r.content), S3_BUCKET, fkey):
                 return [media_url]
 
-            upload_file_in_mem(
-                self.__s3cli, r.content, S3_BUCKET, fkey
-            )
+            upload_file_in_mem(self.__s3cli, r.content, S3_BUCKET, fkey)
 
             logger.info(f"processed image {tweet['id']} -> {fkey}")
             return [media_url]
@@ -265,9 +276,7 @@ class TwitterAPI:
             if is_file_exists(self.__s3cli, len(r.content), S3_BUCKET, fkey):
                 return [media_url]
 
-            upload_file_in_mem(
-                self.__s3cli, r.content, S3_BUCKET, fkey
-            )
+            upload_file_in_mem(self.__s3cli, r.content, S3_BUCKET, fkey)
 
             logger.info(f"processed video {tweet['id']} -> {fkey}")
 
@@ -354,8 +363,8 @@ class TwitterAPI:
         count = 0
         try:
             for u in self.g_load_user():
+                logger.info(f"fetch tweets for user {u['username']}")
                 try:
-                    logger.info(f"fetch tweets for user {u['username']}")
                     self._current_user_id = u["id"]
                     self.set_api(u["access_token"], u["access_token_secret"])
 
