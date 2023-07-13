@@ -1,6 +1,5 @@
 import json
 import time
-from pathlib import Path
 from threading import RLock
 from typing import Any, Dict, List, Union
 
@@ -10,23 +9,22 @@ import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (
-    ACCESS_TOKEN,
-    ACCESS_TOKEN_SECRET,
-    CONSUMER_KEY,
-    CONSUMER_SECRET,
+    TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_TOKEN_SECRET,
+    TWITTER_CONSUMER_KEY,
+    TWITTER_CONSUMER_SECRET,
     S3_BUCKET,
     S3_KEY,
     S3_REGION,
     S3_SECRET,
     S3_SERVER,
-    TWITTER_IMAGE_DIR,
 )
-from ramjet.utils import get_db
+from ramjet.utils import get_db, recover
 from tweepy import API, OAuthHandler
+import tweepy.errors
 
 from .base import (
     gen_related_tweets,
-    get_image_filepath,
     get_s3_key,
     logger,
     replace_media_urls,
@@ -50,12 +48,14 @@ def bind_task():
 
 
 class FetchView(web.View):
+    @recover
     async def get(self):
         tweet_id = self.request.match_info["tweet_id"]
         return web.Response(
             text=f"fetch specific tweet id {tweet_id}",
         )
 
+    @recover
     async def post(self):
         tweet_id = str((await self.request.post())["tweet_id"])
         tweet_id = tweet_id.strip("/")
@@ -71,8 +71,6 @@ class FetchView(web.View):
 
 
 class TwitterAPI:
-    __api: Union[None, API] = None
-    __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
     _current_user_id: int
     __s3cli = None
 
@@ -85,26 +83,16 @@ class TwitterAPI:
         )
 
     @property
-    def api(self):
-        logger.debug("get api")
-        if self.__api:
-            return self.__api
+    def api(self) -> tweepy.Client:
+        return self._cli
 
-        return self.set_api()
-
-    def set_api(
-        self, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
-    ):
-        self.__auth.set_access_token(access_token, access_token_secret)
-        self.__api = API(
-            self.__auth, wait_on_rate_limit=True, parser=tweepy.parsers.JSONParser()
-        )
-        return self.__api
+    def set_api(self,bearer_token: str):
+        self._cli = tweepy.Client(bearer_token=bearer_token)
 
     def _save_replies(self, tweet: Dict[str, Any]):
         logger.debug(f"_save_replies for {tweet['id']}")
         try:
-            for new_tweet in self.__api.search_tweets(
+            for new_tweet in self.api.search_tweets(
                 q=f"to:{tweet['user']['screen_name']}",
                 since_id=tweet["id"],
                 tweet_mode="extended",
@@ -363,10 +351,14 @@ class TwitterAPI:
         count = 0
         try:
             for u in self.g_load_user():
+                if "bearer_token" not in u:
+                    logger.info(f"user do not enable api v2, {u['username']}")
+                    continue
+
                 logger.info(f"fetch tweets for user {u['username']}")
                 try:
                     self._current_user_id = u["id"]
-                    self.set_api(u["access_token"], u["access_token_secret"])
+                    self.set_api(u["bearer_token"])
 
                     last_id = self.get_last_tweet_id() or 1
                     for count, status in enumerate(self.g_load_tweets(last_id)):

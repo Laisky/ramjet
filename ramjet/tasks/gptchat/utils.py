@@ -110,20 +110,6 @@ def authenticate_by_appkey_sync(func):
     return wrapper
 
 
-def recover(func):
-    """Decorator to recover from exceptions"""
-
-    @functools.wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        try:
-            return await func(self, *args, **kwargs)
-        except Exception as e:
-            logger.exception("handler error")
-            return web.HTTPBadRequest(text=str(e))
-
-    return wrapper
-
-
 def get_user_by_uid(uid: str) -> prd.UserPermission:
     """Get user by uid
 

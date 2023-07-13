@@ -16,6 +16,7 @@ from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
+from ramjet.utils import recover
 
 from .base import logger
 from .embedding.embeddings import (
@@ -41,7 +42,6 @@ from .utils import (
     authenticate_by_appkey_sync as authenticate_sync,
     get_user_by_uid,
 )
-from .utils import recover
 
 # limit concurrent process files by uid
 user_prcess_file_sema_lock = threading.RLock()

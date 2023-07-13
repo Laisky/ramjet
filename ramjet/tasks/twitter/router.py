@@ -5,6 +5,7 @@ from .base import logger
 from .crawler import FetchView
 from .display import SearchStatus, Status
 from .login import LoginHandle, OAuthHandle
+from ramjet.utils import recover
 
 
 def bind_handle(add_route):
@@ -18,6 +19,7 @@ def bind_handle(add_route):
 
 
 class Index(aiohttp.web.View):
+    @recover
     @aiohttp_jinja2.template("twitter/index.html")
     async def get(self):
         return

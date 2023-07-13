@@ -1,7 +1,8 @@
 import aiohttp
+import aiohttp.web
 import aiohttp_jinja2
 from aiographql.client import GraphQLRequest
-from ramjet.utils import get_conn, get_gq_cli
+from ramjet.utils import get_conn, get_gq_cli, recover
 
 
 class BaseDisplay(aiohttp.web.View):
@@ -22,6 +23,7 @@ class BaseDisplay(aiohttp.web.View):
 
 
 class Status(BaseDisplay):
+    @recover
     @aiohttp_jinja2.template("twitter/tweet.html")
     async def get(self):
         tweet_id = self.request.match_info["tweet_id"]
@@ -87,10 +89,12 @@ class Status(BaseDisplay):
 
 
 class SearchStatus(BaseDisplay):
+    @recover
     @aiohttp_jinja2.template("twitter/search.html")
     async def get(self):
         return
 
+    @recover
     @aiohttp_jinja2.template("twitter/search.html")
     async def post(self):
         search_text = (await self.request.post())["text"]
