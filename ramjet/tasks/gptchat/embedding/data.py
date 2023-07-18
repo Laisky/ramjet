@@ -1,7 +1,5 @@
 import os
 import pickle
-import tempfile
-import requests
 import aiohttp
 import asyncio
 from typing import Dict
@@ -37,13 +35,16 @@ def load_all_stores() -> Dict[str, FAISS]:
         )
 
     for project_name in prd.OPENAI_EMBEDDING_QA:
-        fname = os.path.join(prd.OPENAI_INDEX_DIR, project_name)
-        with open(fname+".store", "rb") as f:
-            store = pickle.load(f)
+        try:
+            fname = os.path.join(prd.OPENAI_INDEX_DIR, project_name)
+            with open(fname+".store", "rb") as f:
+                store = pickle.load(f)
 
-        store.embedding_function = embedding_model.embed_query
-        store.index = faiss.read_index(fname+".index")
-        stores[project_name] = store
+            store.embedding_function = embedding_model.embed_query
+            store.index = faiss.read_index(fname+".index")
+            stores[project_name] = store
+        except Exception:
+            logger .exception(f"cannot load embedding index for {project_name=}")
 
     return stores
 

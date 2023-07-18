@@ -112,6 +112,11 @@ def build_chain(
             Tuple[str, List[str]]: context and references
         """
         logger.debug(f"query for more info: {query}")
+
+        # fix stupid compatability issue in langchain faiss
+        if not getattr(store, "_normalize_L2", None):
+            store._normalize_L2 = False
+
         related_docs = store.similarity_search(
             query=query,
             k=nearest_k,
@@ -228,10 +233,11 @@ def reset_eof_of_pdf(fpath: str) -> None:
     with open(fpath, "rb") as f:
         content = f.read()
 
-    # replace the EOF marker to the end of the file
     if PDF_EOF_MARKER in content:
-        content = content.replace(PDF_EOF_MARKER, b"")
+        # content = content.replace(PDF_EOF_MARKER, b"")
+        return
 
+    # replace the EOF marker to the end of the file
     content = content + PDF_EOF_MARKER
     with open(fpath, "wb") as f:
         f.write(content)
