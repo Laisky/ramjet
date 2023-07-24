@@ -130,7 +130,7 @@ def build_chain(
     def chain(query: str) -> Tuple[str, List[str]]:
         n = 0
         last_sub_query = ""
-        regexp = re.compile(r'I need more information about "([^"]+)"')
+        regexp = re.compile(r'I need more information about: .*')
         all_refs = []
         ctx, refs = query_for_more_info(query)
         resp = ""
