@@ -291,13 +291,29 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
     index = new_store()
     docs = []
     metadatas = []
-    with codecs.open(fpath, "rb", "utf-8") as fp:
-        docus = markdown_splitter.create_documents([fp.read()])
-        for ichunk, docu in enumerate(docus):
-            docs.append(docu.page_content)
+    docus: List[markdown_splitter.Document] = None
+    err: Exception
+    for charset in ["utf-8", "gbk", "gb2312"]:
+        try:
+            fp =  codecs.open(fpath, "rb", charset)
+            docus = markdown_splitter.create_documents([fp.read()])
+            fp.close()
+            break
+        except UnicodeDecodeError as e:
+            err = e
+            continue
+        except Exception:
+            raise
 
-            title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
-            metadatas.append({"source": f"{metadata_name}#{title}"})
+
+    if not docus:
+        raise err
+
+    for ichunk, docu in enumerate(docus):
+        docs.append(docu.page_content)
+
+        title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
+        metadatas.append({"source": f"{metadata_name}#{title}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
