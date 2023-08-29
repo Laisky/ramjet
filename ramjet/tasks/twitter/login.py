@@ -18,14 +18,14 @@ import aiohttp_jinja2
 import tweepy
 from aiohttp import web
 from aiohttp_session import get_session
-from ramjet.settings import CONSUMER_KEY, CONSUMER_SECRET
+from ramjet.settings import TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET
 from ramjet.utils import generate_token, get_conn, obj2str, str2obj, utcnow
 
 from .base import logger
 
 
 def get_auth():
-    return tweepy.OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
+    return tweepy.OAuthHandler(TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET)
 
 
 class LoginHandle(web.View):

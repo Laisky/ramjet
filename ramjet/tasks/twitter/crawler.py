@@ -10,10 +10,10 @@ import tweepy
 from aiohttp import web
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (
-    ACCESS_TOKEN,
-    ACCESS_TOKEN_SECRET,
-    CONSUMER_KEY,
-    CONSUMER_SECRET,
+    TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_TOKEN_SECRET,
+    TWITTER_CONSUMER_KEY,
+    TWITTER_CONSUMER_SECRET,
     S3_BUCKET,
     S3_KEY,
     S3_REGION,
@@ -72,7 +72,7 @@ class FetchView(web.View):
 
 class TwitterAPI:
     __api: Union[None, API] = None
-    __auth = OAuthHandler(CONSUMER_KEY, CONSUMER_SECRET)
+    __auth = OAuthHandler(TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET)
     _current_user_id: int
     __s3cli = None
 
@@ -93,7 +93,9 @@ class TwitterAPI:
         return self.set_api()
 
     def set_api(
-        self, access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
+        self,
+        access_token=TWITTER_ACCESS_TOKEN,
+        access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
     ):
         self.__auth.set_access_token(access_token, access_token_secret)
         self.__api = API(
