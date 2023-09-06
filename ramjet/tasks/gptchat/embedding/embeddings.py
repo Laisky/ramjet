@@ -22,6 +22,7 @@ from langchain.document_loaders import (
     Docx2txtLoader,
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
+    BSHTMLLoader,
 )
 from langchain.prompts.chat import (
     ChatPromptTemplate,
@@ -122,7 +123,7 @@ def build_chain(
             k=nearest_k,
         )
 
-        ctx = "; ".join([d.page_content for d in related_docs])
+        ctx = "; ".join([d.page_content for d in related_docs if d.page_content])
         refs = [d.metadata["source"] for d in related_docs]
 
         return ctx, refs
@@ -130,7 +131,7 @@ def build_chain(
     def chain(query: str) -> Tuple[str, List[str]]:
         n = 0
         last_sub_query = ""
-        regexp = re.compile(r'I need more information about: .*')
+        regexp = re.compile(r"I need more information about: .*")
         all_refs = []
         ctx, refs = query_for_more_info(query)
         resp = ""
@@ -213,6 +214,8 @@ def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         return _embedding_word(fpath, metadata_name, max_chunks)
     elif file_ext == ".pptx" or file_ext == ".ppt":
         return _embedding_ppt(fpath, metadata_name, max_chunks)
+    elif file_ext == ".html":
+        return _embedding_html(fpath, metadata_name, max_chunks)
     else:
         raise ValueError(f"unsupported file type {file_ext}")
 
@@ -295,7 +298,7 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
     err: Exception
     for charset in ["utf-8", "gbk", "gb2312"]:
         try:
-            fp =  codecs.open(fpath, "rb", charset)
+            fp = codecs.open(fpath, "rb", charset)
             docus = markdown_splitter.create_documents([fp.read()])
             fp.close()
             break
@@ -304,7 +307,6 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
             continue
         except Exception:
             raise
-
 
     if not docus:
         raise err
@@ -379,6 +381,36 @@ def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     return index
 
 
+def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    """embedding html file
+
+    Args:
+        fpath (str): file path
+        metadata_name (str): file key
+
+    Returns:
+        Index: index
+    """
+    logger.info(f"call embeddings_html {fpath=}, {metadata_name=}")
+    index = new_store()
+    docs = []
+    metadatas = []
+
+    loader = BSHTMLLoader(fpath, get_text_separator=",")
+    page_data = loader.load()[0]
+    splits = text_splitter.split_text(page_data.page_content)
+    docs.extend(splits)
+    logger.debug(f"embedding {fpath} page with {len(splits)} chunks")
+    for ichunk, _ in enumerate(splits):
+        metadatas.append({"source": f"{metadata_name}#chunk={ichunk+1}"})
+
+    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+
+    logger.info(f"succeed embedding powerpoint {fpath} with {len(docs)} chunks")
+    index.store.add_texts(docs, metadatas=metadatas)
+    return index
+
+
 def new_store() -> Index:
     """
     new FAISS store
@@ -404,7 +436,7 @@ def new_store() -> Index:
         )
 
     store = FAISS.from_texts(
-        ["world"], embedding_model, metadatas=[{"source": "hello"}]
+        [""], embedding_model, metadatas=[{"source": ""}]
     )
     return Index(
         store=store,

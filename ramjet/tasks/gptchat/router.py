@@ -70,7 +70,7 @@ def bind_handle(add_route):
     setup()
 
     add_route("", LandingPage)
-    add_route("query", Query)
+    add_route("query{op:(/.*)?}", Query)
     add_route("files", UploadedFiles)
     add_route("ctx{op:(/.*)?}", EmbeddingContext)
     add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
@@ -151,6 +151,38 @@ class Query(aiohttp.web.View):
     @uid_method_ratelimiter()
     def query(self, user: prd.UserPermission, project: str, question: str):
         return query(project, question)
+
+    @recover
+    async def post(self):
+        op = self.request.match_info["op"]
+        if op == "/chunks":
+            return await self._search_embedding_chunk()
+        else:
+            return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
+
+    async def _search_embedding_chunk(self):
+        data = await self.request.json()
+        print(list(data.items()))
+        content = data.get("content")
+        assert content, "content is required"
+        query = data.get("query")
+        assert query, "query is required"
+        ext = data.get("ext")
+        assert ext, "ext is required, like '.html'"
+        logger.debug(f"search embedding chunk, {query=}, {ext=}")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fpath = os.path.join(tmpdir, f"content{ext}")
+            with open(fpath, "w") as fp:
+                fp.write(content)
+
+            idx = embedding_file(fpath, "query")
+            refs = idx.store.similarity_search(query, k=5)
+            return aiohttp.web.json_response(
+                {
+                    "results": '\n'.join([ref.page_content for ref in refs if ref.page_content]),
+                }
+            )
 
 
 class EncryptedFiles(aiohttp.web.View):
