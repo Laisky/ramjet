@@ -8,8 +8,9 @@ import tempfile
 import threading
 import urllib.parse
 from typing import Dict, List, Set
-from functools import lru_cache
 
+from cachetools import cached, LRUCache
+from cachetools.keys import hashkey
 import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
@@ -180,7 +181,7 @@ class Query(aiohttp.web.View):
         )
 
 
-@lru_cache()
+@cached(cache=LRUCache(maxsize=128), key=lambda content, query, ext: hashkey(query))
 def _search_embedding_chunk_worker(content: str, query: str, ext: str):
     logger.debug(f"search embedding chunk, {query=}, {ext=}")
     start_at = time.time()
