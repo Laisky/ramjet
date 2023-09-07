@@ -8,6 +8,7 @@ import tempfile
 import threading
 import urllib.parse
 from typing import Dict, List, Set
+from functools import lru_cache
 
 from cachetools import cached, LRUCache
 from cachetools.keys import hashkey
@@ -181,28 +182,33 @@ class Query(aiohttp.web.View):
         )
 
 
-@cached(cache=LRUCache(maxsize=128), key=lambda content, query, ext: hashkey(query))
-def _search_embedding_chunk_worker(content: str, query: str, ext: str):
-    logger.debug(f"search embedding chunk, {query=}, {ext=}")
-    start_at = time.time()
-
+@lru_cache()
+def _make_embedding_chunk(content: str, ext: str) -> Index:
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
         with open(fpath, "w") as fp:
             fp.write(content)
 
         idx = embedding_file(fpath, "query")
-        logger.debug(f"similarity search in embedding chunk...")
-        refs = idx.store.similarity_search(query, k=5)
-        results = "\n".join([ref.page_content for ref in refs if ref.page_content])
-        logger.info(
-            f"return similarity search results, length={len(results)}, cost={time.time() - start_at:.2f}s"
-        )
-        return aiohttp.web.json_response(
-            {
-                "results": results,
-            }
-        )
+        return idx
+
+
+def _search_embedding_chunk_worker(content: str, query: str, ext: str):
+    logger.debug(f"search embedding chunk, {query=}, {ext=}")
+    start_at = time.time()
+
+    idx = _make_embedding_chunk(content, ext)
+    logger.debug(f"similarity search in embedding chunk...")
+    refs = idx.store.similarity_search(query, k=5)
+    results = "\n".join([ref.page_content for ref in refs if ref.page_content])
+    logger.info(
+        f"return similarity search results, length={len(results)}, cost={time.time() - start_at:.2f}s"
+    )
+    return aiohttp.web.json_response(
+        {
+            "results": results,
+        }
+    )
 
 
 class EncryptedFiles(aiohttp.web.View):
