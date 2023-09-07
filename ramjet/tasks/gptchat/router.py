@@ -1,4 +1,5 @@
 import asyncio
+import time
 import base64
 import io
 import os
@@ -168,6 +169,7 @@ class Query(aiohttp.web.View):
 
 
 def _search_embedding_chunk_worker(data: Dict[str, str]):
+    start_at = time.time()
     content = data.get("content")
     assert content, "content is required"
     query = data.get("query")
@@ -182,9 +184,12 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
             fp.write(content)
 
         idx = embedding_file(fpath, "query")
+        logger.debug(f"similarity search in embedding chunk...")
         refs = idx.store.similarity_search(query, k=5)
         results = "\n".join([ref.page_content for ref in refs if ref.page_content])
-        logger.debug(f"return similarity search results, length={len(results)}")
+        logger.info(
+            f"return similarity search results, length={len(results)}, cost={time.time() - start_at:.2f}s"
+        )
         return aiohttp.web.json_response(
             {
                 "results": results,

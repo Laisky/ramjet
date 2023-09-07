@@ -1,6 +1,7 @@
 import re
 import codecs
 import hashlib
+import time
 import os
 import pickle
 import tempfile
@@ -33,6 +34,7 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
 from ramjet.settings import prd
+from ramjet.engines import thread_executor
 from ..base import logger
 
 
@@ -207,19 +209,23 @@ def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
     this function is thread/process safe
     """
+    start_at = time.time()
     file_ext = os.path.splitext(fpath)[1].lower()
     if file_ext == ".pdf":
-        return _embedding_pdf(fpath, metadata_name, max_chunks)
+        idx = _embedding_pdf(fpath, metadata_name, max_chunks)
     elif file_ext == ".md":
-        return _embedding_markdown(fpath, metadata_name, max_chunks)
+        idx = _embedding_markdown(fpath, metadata_name, max_chunks)
     elif file_ext == ".docx" or file_ext == ".doc":
-        return _embedding_word(fpath, metadata_name, max_chunks)
+        idx = _embedding_word(fpath, metadata_name, max_chunks)
     elif file_ext == ".pptx" or file_ext == ".ppt":
-        return _embedding_ppt(fpath, metadata_name, max_chunks)
+        idx = _embedding_ppt(fpath, metadata_name, max_chunks)
     elif file_ext == ".html":
-        return _embedding_html(fpath, metadata_name, max_chunks)
+        idx = _embedding_html(fpath, metadata_name, max_chunks)
     else:
         raise ValueError(f"unsupported file type {file_ext}")
+
+    logger.info(f"embedding {fpath} done, cost {time.time() - start_at:.2f}s")
+    return idx
 
 
 PDF_EOF_MARKER = b"%%EOF"
@@ -278,7 +284,6 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    logger.info(f"succeed embedding pdf {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -323,7 +328,6 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    logger.info(f"succeed embedding markdown {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -361,7 +365,6 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    logger.info(f"succeed embedding word {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -382,7 +385,6 @@ def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    logger.info(f"succeed embedding powerpoint {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -398,23 +400,26 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         Index: index
     """
     logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
-    index = new_store()
-    docs = []
-    metadatas = []
 
     text_splitter = CharacterTextSplitter(chunk_size=200, separator="\n")
     loader = BSHTMLLoader(fpath, get_text_separator=",")
     page_data = loader.load()[0]
     splits = text_splitter.split_text(page_data.page_content)
-    docs.extend(splits)
-    logger.debug(f"embedding {fpath} page with {len(splits)} chunks")
+    assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
+
+    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(splits)} chunks")
+    index = new_store()
+    futures = []
     for ichunk, _ in enumerate(splits):
-        metadatas.append({"source": f"{metadata_name}#chunk={ichunk+1}"})
+        metadata = {"source": f"{metadata_name}#chunk={ichunk+1}"}
+        f = thread_executor.submit(
+            index.store.add_texts, splits[ichunk : ichunk + 1], [metadata]
+        )
+        futures.append(f)
 
-    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+    for f in futures:
+        f.result()
 
-    logger.info(f"succeed embedding html {fpath} with {len(docs)} chunks")
-    index.store.add_texts(docs, metadatas=metadatas)
     return index
 
 

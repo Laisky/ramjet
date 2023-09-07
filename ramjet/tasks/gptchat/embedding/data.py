@@ -43,8 +43,8 @@ def load_all_stores() -> Dict[str, FAISS]:
             store.embedding_function = embedding_model.embed_query
             store.index = faiss.read_index(fname+".index")
             stores[project_name] = store
-        except Exception:
-            logger .exception(f"cannot load embedding index for {project_name=}")
+        except Exception as err:
+            logger.warn(f"cannot load embedding index for {project_name=}, {err=}")
 
     return stores
 

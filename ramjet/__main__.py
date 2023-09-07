@@ -73,14 +73,14 @@ def main():
         from ramjet.tasks import setup_tasks
 
         app = web.Application(
-            client_max_size=100 * 1024 ** 3,  # 100MB
+            client_max_size=100 * 1024**3,  # 100MB
         )
         app.router.add_get("/health", health)
         setup_tasks(app)
         setup_template(app)
         setup_web_handlers(app)
         logger.info(f"start web server {opt.HOST}:{opt.PORT}")
-        web.run_app(app, host=opt.HOST, port=opt.PORT)
+        web.run_app(app, host=opt.HOST, port=opt.PORT, keepalive_timeout=300)
     except Exception:
         logger.exception("ramjet got error:")
         # opt.email_sender.send_email(

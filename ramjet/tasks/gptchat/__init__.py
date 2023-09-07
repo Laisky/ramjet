@@ -1,5 +1,6 @@
 import os
 
+import openai
 from ramjet.settings import prd
 from .router import bind_handle
 from .base import logger
@@ -16,3 +17,4 @@ if prd.OPENAI_TYPE == "azure":
     azure_gpt_deploymentid = "gpt35"
 elif prd.OPENAI_TYPE == "openai":
     os.environ["OPENAI_API_KEY"] = prd.OPENAI_TOKEN
+    os.environ["OPENAI_API_BASE"] = prd.OPENAI_API + "/v1"
