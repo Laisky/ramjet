@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import time
 import base64
 import io
@@ -166,24 +167,17 @@ class Query(aiohttp.web.View):
 
     async def _search_embedding_chunk(self):
         data = dict(await self.request.json())
-        content = data.get("content")
-        assert content, "content is required"
-        query = data.get("query")
-        assert query, "query is required"
-        ext = data.get("ext")
-        assert ext, "ext is required, like '.html'"
-
         return await asyncio.get_event_loop().run_in_executor(
             process_executor,
             _search_embedding_chunk_worker,
-            content,
-            query,
-            ext,
+            data,
         )
 
 
-@lru_cache()
-def _make_embedding_chunk(content: str, ext: str) -> Index:
+@cached(
+    cache=LRUCache(maxsize=128), key=lambda cache_key, content, ext: hashkey(cache_key)
+)
+def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
         with open(fpath, "w") as fp:
@@ -193,11 +187,21 @@ def _make_embedding_chunk(content: str, ext: str) -> Index:
         return idx
 
 
-def _search_embedding_chunk_worker(content: str, query: str, ext: str):
+def _search_embedding_chunk_worker(data: Dict[str, str]):
+    content = data.get("content")
+    assert content, "content is required"
+    query = data.get("query")
+    assert query, "query is required"
+    ext = data.get("ext")
+    assert ext, "ext is required, like '.html'"
+    cache_key = (
+        data.get("cache_key") or hashlib.sha1(content.encode("utf-8")).hexdigest()
+    )
+
     logger.debug(f"search embedding chunk, {query=}, {ext=}")
     start_at = time.time()
 
-    idx = _make_embedding_chunk(content, ext)
+    idx = _make_embedding_chunk(cache_key, content, ext)
     logger.debug(f"similarity search in embedding chunk...")
     refs = idx.store.similarity_search(query, k=5)
     results = "\n".join([ref.page_content for ref in refs if ref.page_content])
