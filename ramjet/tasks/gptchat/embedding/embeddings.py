@@ -56,8 +56,6 @@ user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 user_shared_chain_mu = threading.RLock()
 user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
-text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
-markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
 
 N_BACTCH_FILES = 5
 N_NEAREST_CHUNKS = 5
@@ -205,6 +203,10 @@ def build_user_chain(
 
 
 def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    """read and parse file content, then embedding it to FAISS index
+
+    this function is thread/process safe
+    """
     file_ext = os.path.splitext(fpath)[1].lower()
     if file_ext == ".pdf":
         return _embedding_pdf(fpath, metadata_name, max_chunks)
@@ -266,6 +268,7 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
+    text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
     for page, data in enumerate(loader.load_and_split()):
         splits = text_splitter.split_text(data.page_content)
         docs.extend(splits)
@@ -291,6 +294,7 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
         Index: index
     """
     logger.info(f"call embedding_markdown {fpath=}, {metadata_name=}")
+    markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
     index = new_store()
     docs = []
     metadatas = []
@@ -338,6 +342,7 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
+    text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
 
     fileext = os.path.splitext(fpath)[1].lower()
     if fileext == ".docx":
@@ -363,6 +368,7 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
 def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
+    text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
     index = new_store()
     docs = []
     metadatas = []
@@ -396,6 +402,7 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     docs = []
     metadatas = []
 
+    text_splitter = CharacterTextSplitter(chunk_size=200, separator="\n")
     loader = BSHTMLLoader(fpath, get_text_separator=",")
     page_data = loader.load()[0]
     splits = text_splitter.split_text(page_data.page_content)
@@ -435,9 +442,7 @@ def new_store() -> Index:
             model="text-embedding-ada-002",
         )
 
-    store = FAISS.from_texts(
-        [""], embedding_model, metadatas=[{"source": ""}]
-    )
+    store = FAISS.from_texts([""], embedding_model, metadatas=[{"source": ""}])
     return Index(
         store=store,
         scaned_files=set([]),

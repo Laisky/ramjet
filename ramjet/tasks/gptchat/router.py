@@ -14,7 +14,7 @@ from Crypto.Cipher import AES
 from kipp.decorator import timer
 from minio import Minio
 
-from ramjet.engines import thread_executor
+from ramjet.engines import thread_executor, process_executor
 from ramjet.settings import prd
 
 from .base import logger
@@ -161,28 +161,35 @@ class Query(aiohttp.web.View):
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
 
     async def _search_embedding_chunk(self):
-        data = await self.request.json()
-        print(list(data.items()))
-        content = data.get("content")
-        assert content, "content is required"
-        query = data.get("query")
-        assert query, "query is required"
-        ext = data.get("ext")
-        assert ext, "ext is required, like '.html'"
-        logger.debug(f"search embedding chunk, {query=}, {ext=}")
+        data = dict(await self.request.json())
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            fpath = os.path.join(tmpdir, f"content{ext}")
-            with open(fpath, "w") as fp:
-                fp.write(content)
+        return await asyncio.get_event_loop().run_in_executor(
+            process_executor, _search_embedding_chunk_worker, data
+        )
 
-            idx = embedding_file(fpath, "query")
-            refs = idx.store.similarity_search(query, k=5)
-            return aiohttp.web.json_response(
-                {
-                    "results": '\n'.join([ref.page_content for ref in refs if ref.page_content]),
-                }
-            )
+def _search_embedding_chunk_worker(data: Dict[str, str]):
+    content = data.get("content")
+    assert content, "content is required"
+    query = data.get("query")
+    assert query, "query is required"
+    ext = data.get("ext")
+    assert ext, "ext is required, like '.html'"
+    logger.debug(f"search embedding chunk, {query=}, {ext=}")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fpath = os.path.join(tmpdir, f"content{ext}")
+        with open(fpath, "w") as fp:
+            fp.write(content)
+
+        idx = embedding_file(fpath, "query")
+        refs = idx.store.similarity_search(query, k=5)
+        return aiohttp.web.json_response(
+            {
+                "results": "\n".join(
+                    [ref.page_content for ref in refs if ref.page_content]
+                ),
+            }
+        )
 
 
 class EncryptedFiles(aiohttp.web.View):
@@ -437,7 +444,11 @@ class UploadedFiles(aiohttp.web.View):
 
             metadata_name = f"{prd.OPENAI_EMBEDDING_REF_URL_PREFIX}{encrypted_file_key}"
             file_ext = os.path.splitext(fp.name)[1]
-            index = embedding_file(fp.name, metadata_name)
+
+            # index = embedding_file(fp.name, metadata_name)
+            index = process_executor.submit(
+                embedding_file, fp.name, metadata_name
+            ).result()
 
             # encrypt and upload origin pdf file
             encrypted_file_path = os.path.join(tmpdir, dataset_name + file_ext)

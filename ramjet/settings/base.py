@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import tempfile
+import multiprocessing
 
 # server
 HOST = "0.0.0.0"
@@ -15,8 +16,8 @@ MAIL_FROM_ADDR = ""
 MAIL_TO_ADDRS = ""
 
 # worker
-N_THREAD_WORKER = 8
-N_PROCESS_WORKER = 2
+N_PROCESS_WORKER = multiprocessing.cpu_count()
+N_THREAD_WORKER = N_PROCESS_WORKER * 10
 
 # common
 CWD = pathlib.PurePath(__file__).parents[1]
