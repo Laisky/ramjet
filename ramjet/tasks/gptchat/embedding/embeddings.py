@@ -397,7 +397,7 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     Returns:
         Index: index
     """
-    logger.info(f"call embeddings_html {fpath=}, {metadata_name=}")
+    logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
     index = new_store()
     docs = []
     metadatas = []
@@ -413,7 +413,7 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
-    logger.info(f"succeed embedding powerpoint {fpath} with {len(docs)} chunks")
+    logger.info(f"succeed embedding html {fpath} with {len(docs)} chunks")
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 

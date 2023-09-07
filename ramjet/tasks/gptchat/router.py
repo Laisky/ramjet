@@ -162,7 +162,6 @@ class Query(aiohttp.web.View):
 
     async def _search_embedding_chunk(self):
         data = dict(await self.request.json())
-
         return await asyncio.get_event_loop().run_in_executor(
             process_executor, _search_embedding_chunk_worker, data
         )
