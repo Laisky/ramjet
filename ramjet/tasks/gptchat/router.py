@@ -166,6 +166,7 @@ class Query(aiohttp.web.View):
             process_executor, _search_embedding_chunk_worker, data
         )
 
+
 def _search_embedding_chunk_worker(data: Dict[str, str]):
     content = data.get("content")
     assert content, "content is required"
@@ -182,11 +183,11 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
 
         idx = embedding_file(fpath, "query")
         refs = idx.store.similarity_search(query, k=5)
+        results = "\n".join([ref.page_content for ref in refs if ref.page_content])
+        logger.debug(f"return similarity search results, length={len(results)}")
         return aiohttp.web.json_response(
             {
-                "results": "\n".join(
-                    [ref.page_content for ref in refs if ref.page_content]
-                ),
+                "results": results,
             }
         )
 
