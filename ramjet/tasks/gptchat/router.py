@@ -8,6 +8,7 @@ import tempfile
 import threading
 import urllib.parse
 from typing import Dict, List, Set
+from functools import lru_cache
 
 import aiohttp.web
 from aiohttp.web_request import FileField
@@ -168,6 +169,7 @@ class Query(aiohttp.web.View):
         )
 
 
+@lru_cache()
 def _search_embedding_chunk_worker(data: Dict[str, str]):
     start_at = time.time()
     content = data.get("content")
