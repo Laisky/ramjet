@@ -164,21 +164,26 @@ class Query(aiohttp.web.View):
 
     async def _search_embedding_chunk(self):
         data = dict(await self.request.json())
+        content = data.get("content")
+        assert content, "content is required"
+        query = data.get("query")
+        assert query, "query is required"
+        ext = data.get("ext")
+        assert ext, "ext is required, like '.html'"
+
         return await asyncio.get_event_loop().run_in_executor(
-            process_executor, _search_embedding_chunk_worker, data
+            process_executor,
+            _search_embedding_chunk_worker,
+            content,
+            query,
+            ext,
         )
 
 
 @lru_cache()
-def _search_embedding_chunk_worker(data: Dict[str, str]):
-    start_at = time.time()
-    content = data.get("content")
-    assert content, "content is required"
-    query = data.get("query")
-    assert query, "query is required"
-    ext = data.get("ext")
-    assert ext, "ext is required, like '.html'"
+def _search_embedding_chunk_worker(content: str, query: str, ext: str):
     logger.debug(f"search embedding chunk, {query=}, {ext=}")
+    start_at = time.time()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
