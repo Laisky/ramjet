@@ -401,7 +401,7 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """
     logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
 
-    text_splitter = CharacterTextSplitter(chunk_size=200, separator="\n")
+    text_splitter = CharacterTextSplitter(chunk_size=300, separator="\n")
     loader = BSHTMLLoader(fpath, get_text_separator=",")
     page_data = loader.load()[0]
     splits = text_splitter.split_text(page_data.page_content)
