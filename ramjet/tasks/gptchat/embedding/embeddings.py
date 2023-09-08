@@ -1,42 +1,40 @@
-import re
 import codecs
 import hashlib
-import threading
-import time
 import os
 import pickle
+import re
 import tempfile
-from collections import namedtuple
-from typing import Dict, List, Tuple, Callable, NamedTuple, Set
+import threading
+import time
+from typing import Callable, Dict, List, NamedTuple, Set, Tuple
 from urllib.parse import quote
-from concurrent.futures import ThreadPoolExecutor
 
 import faiss
 from Crypto.Cipher import AES
+from langchain.chains import LLMChain
 from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
-from langchain.document_loaders import PyPDFLoader
+from langchain.document_loaders import (
+    BSHTMLLoader,
+    Docx2txtLoader,
+    PyPDFLoader,
+    UnstructuredPowerPointLoader,
+    UnstructuredWordDocumentLoader,
+)
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    SystemMessagePromptTemplate,
+)
 from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
 from langchain.vectorstores import FAISS
 from minio import Minio
-from langchain.document_loaders import (
-    Docx2txtLoader,
-    UnstructuredPowerPointLoader,
-    UnstructuredWordDocumentLoader,
-    BSHTMLLoader,
-)
-from langchain.prompts.chat import (
-    ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-)
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 
-from ramjet.settings import prd
-from ..base import logger
 from ramjet.engines import thread_executor
+from ramjet.settings import prd
+
+from ..base import logger
 
 
 class Index(NamedTuple):
@@ -89,6 +87,9 @@ def build_chain(
         store: vector store
         nearest_k: number of nearest chunks to search,
             these chunks will be used as context for the chat model
+
+    Returns:
+        Callable[[str], Tuple[str, List[str]]]: a chain function
     """
 
     system_template = """Use the following pieces of context to answer the users question.
@@ -130,6 +131,14 @@ def build_chain(
         return ctx, refs
 
     def chain(query: str) -> Tuple[str, List[str]]:
+        """chain function
+
+        Args:
+            query (str): query
+
+        Returns:
+            Tuple[str, List[str]]: response and references
+        """
         n = 0
         last_sub_query = ""
         regexp = re.compile(r"I need more information about: .*")
@@ -168,7 +177,16 @@ def build_chain(
 def build_user_chain(
     user: prd.UserPermission, index: Index, datasets: List[str]
 ) -> UserChain:
-    """build user's embedding index and save in memory"""
+    """build user's embedding index and save in memory
+
+    Args:
+        user (prd.UserPermission): user
+        index (Index): index
+        datasets (List[str]): datasets
+
+    Returns:
+        UserChain: user chain
+    """
     uid = user.uid
     n_chunks = N_NEAREST_CHUNKS
     model_name = user.chat_model or "gpt-3.5-turbo"
@@ -217,9 +235,9 @@ def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     elif file_ext == ".md":
         idx = _embedding_markdown(fpath, metadata_name, max_chunks)
     elif file_ext == ".docx" or file_ext == ".doc":
-        idx = _embedding_word(fpath, metadata_name, max_chunks)
+        idx = _embedding_msword(fpath, metadata_name, max_chunks)
     elif file_ext == ".pptx" or file_ext == ".ppt":
-        idx = _embedding_ppt(fpath, metadata_name, max_chunks)
+        idx = _embedding_msppt(fpath, metadata_name, max_chunks)
     elif file_ext == ".html":
         idx = _embedding_html(fpath, metadata_name, max_chunks)
     else:
@@ -286,7 +304,6 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -325,17 +342,15 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
 
     for ichunk, docu in enumerate(docus):
         docs.append(docu.page_content)
-
         title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
         metadatas.append({"source": f"{metadata_name}#{title}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
 
-def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_msword(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """embedding word file
 
     Args:
@@ -369,12 +384,12 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
 
-def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_msppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+    """embedding office powerpoint file"""
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
     text_splitter = CharacterTextSplitter(
         chunk_size=500, chunk_overlap=30, separator="\n"
@@ -391,7 +406,6 @@ def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-
     index.store.add_texts(docs, metadatas=metadatas)
     return index
 
@@ -416,25 +430,36 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     splits = text_splitter.split_text(page_data.page_content)
     assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
 
+    def _embeddings_worker(texts: List[str], metadatas: List[str]) -> FAISS:
+        index = new_store()
+        index.store.add_texts(texts, metadatas=metadatas)
+        return index.store
+
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(splits)} chunks")
-    index = new_store()
     futures = []
-    for ichunk, _ in enumerate(splits):
-        metadata = {"source": f"{metadata_name}#chunk={ichunk+1}"}
+    start_at = 0
+    n_batch = 5
+    while True:
+        if start_at >= len(splits):
+            break
+
+        end_at = min(start_at + n_batch, len(splits))
         f = thread_executor.submit(
-            index.store.add_texts,
-            texts=splits[ichunk : ichunk + 1],
-            metadatas=[metadata],
+            _embeddings_worker,
+            texts=splits[start_at:end_at],
+            metadatas=[""] * (end_at - start_at),
         )
         futures.append(f)
+        start_at = end_at
 
+    index = new_store()
     for f in futures:
-        f.result()
+        index.store.merge_from(f.result())
 
     return index
 
 
-def new_store() -> Index:
+def new_store(apikey: str = None) -> Index:
     """
     new FAISS store
 
@@ -448,12 +473,14 @@ def new_store() -> Index:
         azure_gpt_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
 
         embedding_model = OpenAIEmbeddings(
+            openai_api_key=apikey,
             client=None,
             model="text-embedding-ada-002",
             deployment=azure_embeddings_deploymentid,
         )
     else:
         embedding_model = OpenAIEmbeddings(
+            openai_api_key=apikey,
             client=None,
             model="text-embedding-ada-002",
         )
