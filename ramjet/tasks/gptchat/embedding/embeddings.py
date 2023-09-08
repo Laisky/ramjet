@@ -1,11 +1,11 @@
 import re
 import codecs
 import hashlib
+import threading
 import time
 import os
 import pickle
 import tempfile
-import threading
 from collections import namedtuple
 from typing import Dict, List, Tuple, Callable, NamedTuple, Set
 from urllib.parse import quote
@@ -35,9 +35,8 @@ from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
 from ramjet.settings import prd
-from ramjet.settings import N_THREAD_WORKER
 from ..base import logger
-
+from ramjet.engines import thread_executor
 
 class Index(NamedTuple):
     """embeddings index"""
@@ -411,7 +410,6 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(splits)} chunks")
     index = new_store()
     futures = []
-    thread_executor =ThreadPoolExecutor(max_workers=N_THREAD_WORKER)
     for ichunk, _ in enumerate(splits):
         metadata = {"source": f"{metadata_name}#chunk={ichunk+1}"}
         f = thread_executor.submit(

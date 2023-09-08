@@ -19,7 +19,7 @@ from Crypto.Cipher import AES
 from kipp.decorator import timer
 from minio import Minio
 
-from ramjet.engines import thread_executor, process_executor
+from ramjet.engines import thread_executor
 from ramjet.settings import prd
 from ramjet.utils import Cache
 
@@ -169,7 +169,7 @@ class Query(aiohttp.web.View):
     async def _search_embedding_chunk(self):
         data = dict(await self.request.json())
         return await asyncio.get_event_loop().run_in_executor(
-            process_executor,
+            thread_executor,
             _search_embedding_chunk_worker,
             data,
         )
@@ -488,7 +488,7 @@ class UploadedFiles(aiohttp.web.View):
             file_ext = os.path.splitext(fp.name)[1]
 
             # index = embedding_file(fp.name, metadata_name)
-            index = process_executor.submit(
+            index = thread_executor.submit(
                 embedding_file, fp.name, metadata_name
             ).result()
 

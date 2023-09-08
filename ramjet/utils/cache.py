@@ -1,8 +1,7 @@
 import time
 from typing import Any
 from dataclasses import dataclass
-from multiprocessing import Lock
-from threading import Thread
+from threading import Thread, RLock
 
 from .log import logger
 
@@ -16,7 +15,7 @@ logger = logger.getChild("cache")
 
 class Cache:
     def __init__(self):
-        self.cache_lock = Lock()
+        self.cache_lock = RLock()
         self.cache_store = dict()
         self.__closed = False
         self._cleaner = Thread(target=self._cache_cleaner, daemon=True).start()
