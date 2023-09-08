@@ -8,7 +8,7 @@ import re
 import tempfile
 import threading
 import urllib.parse
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
 from functools import lru_cache
 
 from cachetools import cached, LRUCache
@@ -178,13 +178,20 @@ class Query(aiohttp.web.View):
 _embedding_chunk_cache = Cache()
 
 
-def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
+def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Tuple[Index, bool]:
+    """
+    Args:
+        cache_key (str): cache key
+        content (str): html content
+        ext (str): file ext, like '.html'
+
+    Returns:
+        Tuple[Index, bool]: (index, is_cached)
+    """
     idx = _embedding_chunk_cache.get_cache(cache_key)
     if idx:
-        logger.debug(f"hit embedding chunk cache, {cache_key=}")
-        return idx
+        return idx, True
 
-    logger.debug(f"make embedding chunk, {cache_key=}")
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
         with open(fpath, "w") as fp:
@@ -194,7 +201,7 @@ def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
         _embedding_chunk_cache.save_cache(
             cache_key, idx, expire_at=time.time() + 3600 * 24
         )
-        return idx
+        return idx, False
 
 
 def _search_embedding_chunk_worker(data: Dict[str, str]):
@@ -211,7 +218,7 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
 
-    idx = _make_embedding_chunk(cache_key, content, ext)
+    idx, cached = _make_embedding_chunk(cache_key, content, ext)
     logger.debug(f"similarity search in embedding chunk...")
     refs = idx.store.similarity_search(query, k=5)
     results = "\n".join([ref.page_content for ref in refs if ref.page_content])
@@ -221,6 +228,8 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
     return aiohttp.web.json_response(
         {
             "results": results,
+            "cache_key": cache_key,
+            "cached": cached,
         }
     )
 

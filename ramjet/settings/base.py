@@ -17,7 +17,8 @@ MAIL_TO_ADDRS = ""
 
 # worker
 N_PROCESS_WORKER = multiprocessing.cpu_count()
-N_THREAD_WORKER = N_PROCESS_WORKER * 10
+N_THREAD_WORKER = 10
+print(f"Using {N_PROCESS_WORKER} process workers and {N_THREAD_WORKER} thread workers")
 
 # common
 CWD = pathlib.PurePath(__file__).parents[1]
