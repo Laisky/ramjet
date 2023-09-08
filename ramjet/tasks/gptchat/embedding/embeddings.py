@@ -38,6 +38,7 @@ from ramjet.settings import prd
 from ..base import logger
 from ramjet.engines import thread_executor
 
+
 class Index(NamedTuple):
     """embeddings index"""
 
@@ -274,7 +275,9 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
-    text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
+    text_splitter = CharacterTextSplitter(
+        chunk_size=500, chunk_overlap=30, separator="\n"
+    )
     for page, data in enumerate(loader.load_and_split()):
         splits = text_splitter.split_text(data.page_content)
         docs.extend(splits)
@@ -346,7 +349,9 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
-    text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
+    text_splitter = CharacterTextSplitter(
+        chunk_size=500, chunk_overlap=30, separator="\n"
+    )
 
     fileext = os.path.splitext(fpath)[1].lower()
     if fileext == ".docx":
@@ -371,7 +376,9 @@ def _embedding_word(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
 def _embedding_ppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
-    text_splitter = CharacterTextSplitter(chunk_size=500, separator="\n")
+    text_splitter = CharacterTextSplitter(
+        chunk_size=500, chunk_overlap=30, separator="\n"
+    )
     index = new_store()
     docs = []
     metadatas = []
@@ -401,7 +408,9 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """
     logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
 
-    text_splitter = CharacterTextSplitter(chunk_size=300, separator="\n")
+    text_splitter = CharacterTextSplitter(
+        chunk_size=300, chunk_overlap=30, separator="\n"
+    )
     loader = BSHTMLLoader(fpath, get_text_separator=",")
     page_data = loader.load()[0]
     splits = text_splitter.split_text(page_data.page_content)
@@ -413,7 +422,9 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     for ichunk, _ in enumerate(splits):
         metadata = {"source": f"{metadata_name}#chunk={ichunk+1}"}
         f = thread_executor.submit(
-            index.store.add_texts, splits[ichunk : ichunk + 1], [metadata]
+            index.store.add_texts,
+            texts=splits[ichunk : ichunk + 1],
+            metadatas=[metadata],
         )
         futures.append(f)
 
