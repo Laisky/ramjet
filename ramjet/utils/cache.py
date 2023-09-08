@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from multiprocessing import Lock
 from threading import Thread
 
-
 @dataclass
 class CacheItem:
     key: str

@@ -45,7 +45,8 @@ from .embedding.query import build_chain, query, setup
 from .utils import (
     authenticate_by_appkey as authenticate,
     authenticate_by_appkey_sync as authenticate_sync,
-    get_user_by_uid,recover,
+    get_user_by_uid,
+    recover,
 )
 
 # limit concurrent process files by uid
@@ -173,7 +174,9 @@ class Query(aiohttp.web.View):
             data,
         )
 
+
 _embedding_chunk_cache = Cache()
+
 
 def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
     idx = _embedding_chunk_cache.get_cache(cache_key)
@@ -188,7 +191,9 @@ def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
             fp.write(content)
 
         idx = embedding_file(fpath, "query")
-        _embedding_chunk_cache.save_cache(cache_key, idx, expire_at=time.time()+3600*24)
+        _embedding_chunk_cache.save_cache(
+            cache_key, idx, expire_at=time.time() + 3600 * 24
+        )
         return idx
 
 
@@ -199,9 +204,9 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
     assert query, "query is required"
     ext = data.get("ext")
     assert ext, "ext is required, like '.html'"
-    cache_key = (
-        data.get("cache_key") or hashlib.sha1(content.encode("utf-8")).hexdigest()
-    )
+    cache_key = data.get("cache_key") or content.encode("utf-8")
+    assert type(cache_key) == str, "cache_key must be string"
+    cache_key = hashlib.sha1(cache_key).hexdigest()
 
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
