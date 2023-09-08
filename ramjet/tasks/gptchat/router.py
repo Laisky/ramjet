@@ -206,7 +206,7 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
     assert ext, "ext is required, like '.html'"
     cache_key = data.get("cache_key") or content.encode("utf-8")
     assert type(cache_key) == str, "cache_key must be string"
-    cache_key = hashlib.sha1(cache_key).hexdigest()
+    cache_key = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
 
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
