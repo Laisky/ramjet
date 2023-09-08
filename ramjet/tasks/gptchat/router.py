@@ -188,7 +188,7 @@ def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
             fp.write(content)
 
         idx = embedding_file(fpath, "query")
-        _embedding_chunk_cache.save_cache(cache_key, idx)
+        _embedding_chunk_cache.save_cache(cache_key, idx, expire_at=time.time()+3600*24)
         return idx
 
 
