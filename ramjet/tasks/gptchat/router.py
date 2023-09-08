@@ -21,6 +21,7 @@ from minio import Minio
 
 from ramjet.engines import thread_executor, process_executor
 from ramjet.settings import prd
+from ramjet.utils import Cache
 
 from .base import logger
 from .embedding.embeddings import (
@@ -44,9 +45,8 @@ from .embedding.query import build_chain, query, setup
 from .utils import (
     authenticate_by_appkey as authenticate,
     authenticate_by_appkey_sync as authenticate_sync,
-    get_user_by_uid,
+    get_user_by_uid,recover,
 )
-from .utils import recover
 
 # limit concurrent process files by uid
 user_prcess_file_sema_lock = threading.RLock()
@@ -173,17 +173,22 @@ class Query(aiohttp.web.View):
             data,
         )
 
+_embedding_chunk_cache = Cache()
 
-@cached(
-    cache=LRUCache(maxsize=128), key=lambda cache_key, content, ext: hashkey(cache_key)
-)
 def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Index:
+    idx = _embedding_chunk_cache.get_cache(cache_key)
+    if idx:
+        logger.debug(f"hit embedding chunk cache, {cache_key=}")
+        return idx
+
+    logger.debug(f"make embedding chunk, {cache_key=}")
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
         with open(fpath, "w") as fp:
             fp.write(content)
 
         idx = embedding_file(fpath, "query")
+        _embedding_chunk_cache.save_cache(cache_key, idx)
         return idx
 
 
@@ -198,7 +203,7 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
         data.get("cache_key") or hashlib.sha1(content.encode("utf-8")).hexdigest()
     )
 
-    logger.debug(f"search embedding chunk, {query=}, {ext=}")
+    logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
 
     idx = _make_embedding_chunk(cache_key, content, ext)

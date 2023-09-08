@@ -21,6 +21,7 @@ from .encrypt import (generate_passwd, generate_token, validate_passwd,
                       validate_token)
 from .jinja import TemplateRendering, debug_wrapper
 from .mail import send_alert
+from .cache import Cache
 
 UTC = pytz.timezone("utc")
 CST = pytz.timezone("Asia/Shanghai")
