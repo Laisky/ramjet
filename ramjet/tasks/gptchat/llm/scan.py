@@ -21,7 +21,7 @@ from langchain.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from langchain.schema.document import Document
-from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter,TokenTextSplitter
 
 from ramjet.engines import thread_executor
 
@@ -37,8 +37,11 @@ def summary_content(b64content: str, ext: str, apikey: str = None) -> str:
     Returns:
         The summary of the document.
     """
-    text_splitter = CharacterTextSplitter(
-        chunk_size=500, chunk_overlap=30, separator="\n"
+    # text_splitter = CharacterTextSplitter(
+    #     chunk_size=500, chunk_overlap=30, separator="\n"
+    # )
+    text_splitter = TokenTextSplitter(
+        chunk_size=3000, chunk_overlap=30,
     )
 
     # write to file
@@ -59,7 +62,7 @@ def summary_content(b64content: str, ext: str, apikey: str = None) -> str:
             loader = PyPDFLoader(tmpfile)
             docus = loader.load_and_split(text_splitter=text_splitter)
         elif ext == ".html":
-            loader = BSHTMLLoader(tmpfile, get_text_separator=",")
+            loader = BSHTMLLoader(tmpfile)
             docus = loader.load_and_split(text_splitter=text_splitter)
         elif ext == ".md":
             docus = MarkdownTextSplitter(
@@ -138,6 +141,8 @@ def summary_docu(docu: Document, apikey: str = None) -> str:
         max_tokens=500,
         streaming=False,
     )
+
+
     query = dedent(
         f"""
         Write a concise summary of the following content between "@>>>>>" and "@<<<<<",
