@@ -141,7 +141,7 @@ def summary_docu(docu: Document, apikey: str = None) -> str:
     query = dedent(
         f"""
         Write a concise summary of the following content between "@>>>>>" and "@<<<<<",
-        just response the summary text in a single line, this line could be long if necessary,
+        just response the summary text in a single short line, just contains necessary key informations,
         do not contains any other words:
 
         @>>>>>
