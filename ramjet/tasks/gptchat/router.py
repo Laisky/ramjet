@@ -180,12 +180,15 @@ class Query(aiohttp.web.View):
 _embedding_chunk_cache = Cache()
 
 
-def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Tuple[Index, bool]:
+def _make_embedding_chunk(
+    cache_key: str, content: str, ext: str, apikey: str = None
+) -> Tuple[Index, bool]:
     """
     Args:
         cache_key (str): cache key
         content (str): base64 encoded content
         ext (str): file ext, like '.html'
+        apikey(str, option): apikey for openai api
 
     Returns:
         Tuple[Index, bool]: (index, is_cached)
@@ -216,6 +219,7 @@ def _embedding_chunk_worker(data: Dict[str, str]):
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
     apikey = data.get("apikey")  # optional
+    logger.debug(f"provide apikey in request {apikey is not None}")
 
     task_type = classificate_query_type(query)
     if task_type == "search":
@@ -275,7 +279,7 @@ def _query_to_summary(
 
 
 def _chunk_search(
-    cache_key: str, query: str, b64content: str, ext: str
+    cache_key: str, query: str, b64content: str, ext: str, apikey: str = None
 ) -> aiohttp.web.Response:
     """search in embedding chunk
 

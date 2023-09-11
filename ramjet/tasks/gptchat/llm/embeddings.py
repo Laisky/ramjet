@@ -227,23 +227,59 @@ def build_user_chain(
     )
 
 
-def embedding_file(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def embedding_file(
+    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+) -> Index:
     """read and parse file content, then embedding it to FAISS index
 
-    this function is thread/process safe
+    this function is thread safe
+
+    Args:
+        fpath (str): file path
+        metadata_name (str): file key
+        max_chunks (int, optional): max chunks. Defaults to 1500.
+        apikey (str, optional): openai api key. Defaults to None.
+
+    Returns:
+        Index: index
     """
     start_at = time.time()
     file_ext = os.path.splitext(fpath)[1].lower()
     if file_ext == ".pdf":
-        idx = _embedding_pdf(fpath, metadata_name, max_chunks)
+        idx = _embedding_pdf(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            apikey=apikey,
+        )
     elif file_ext == ".md":
-        idx = _embedding_markdown(fpath, metadata_name, max_chunks)
+        idx = _embedding_markdown(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            apikey=apikey,
+        )
     elif file_ext == ".docx" or file_ext == ".doc":
-        idx = _embedding_msword(fpath, metadata_name, max_chunks)
+        idx = _embedding_msword(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            apikey=apikey,
+        )
     elif file_ext == ".pptx" or file_ext == ".ppt":
-        idx = _embedding_msppt(fpath, metadata_name, max_chunks)
+        idx = _embedding_msppt(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            apikey=apikey,
+        )
     elif file_ext == ".html":
-        idx = _embedding_html(fpath, metadata_name, max_chunks)
+        idx = _embedding_html(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            apikey=apikey,
+        )
     else:
         raise ValueError(f"unsupported file type {file_ext}")
 
@@ -277,7 +313,9 @@ def reset_eof_of_pdf(fpath: str) -> None:
         f.write(content)
 
 
-def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_pdf(
+    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+) -> Index:
     """embedding pdf file
 
     pricing: https://openai.com/pricing
@@ -285,6 +323,8 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     Args:
         fpath (str): file path
         metadata_name (str): file key
+        max_chunks (int, optional): max chunks. Defaults to 1500.
+        apikey (str, optional): openai api key. Defaults to None.
 
     Returns:
         Index: index
@@ -294,7 +334,7 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     reset_eof_of_pdf(fpath)
     loader = PyPDFLoader(fpath)
 
-    index = new_store()
+    index = new_store(apikey=apikey)
     docs = []
     metadatas = []
     text_splitter = TokenTextSplitter(
@@ -313,7 +353,9 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     return index
 
 
-def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_markdown(
+    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+) -> Index:
     """embedding markdown file
 
     Args:
@@ -325,7 +367,7 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
     """
     logger.info(f"call embedding_markdown {fpath=}, {metadata_name=}")
     markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
-    index = new_store()
+    index = new_store(apikey=apikey)
     docs = []
     metadatas = []
     docus: List[markdown_splitter.Document] = None
@@ -355,7 +397,9 @@ def _embedding_markdown(fpath: str, metadata_name: str, max_chunks=1500) -> Inde
     return index
 
 
-def _embedding_msword(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_msword(
+    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+) -> Index:
     """embedding word file
 
     Args:
@@ -366,7 +410,7 @@ def _embedding_msword(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         Index: index
     """
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
-    index = new_store()
+    index = new_store(apikey=apikey)
     docs = []
     metadatas = []
     text_splitter = TokenTextSplitter(
@@ -394,14 +438,16 @@ def _embedding_msword(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     return index
 
 
-def _embedding_msppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_msppt(
+    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+) -> Index:
     """embedding office powerpoint file"""
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
     text_splitter = TokenTextSplitter(
         chunk_size=500,
         chunk_overlap=30,
     )
-    index = new_store()
+    index = new_store(apikey=apikey)
     docs = []
     metadatas = []
     loader = UnstructuredPowerPointLoader(fpath)
@@ -417,7 +463,9 @@ def _embedding_msppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     return index
 
 
-def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
+def _embedding_html(
+    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+) -> Index:
     """embedding html file
 
     Args:
@@ -439,7 +487,7 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
 
     def _embeddings_worker(texts: List[str], metadatas: List[str]) -> FAISS:
-        index = new_store()
+        index = new_store(apikey=apikey)
         index.store.add_texts(texts, metadatas=metadatas)
         return index.store
 
