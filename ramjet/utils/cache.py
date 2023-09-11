@@ -36,7 +36,7 @@ class Cache:
             expire_at = time.time() + 60
 
         with self.cache_lock:
-            logger.debug(f"save cache {key=}, expire_at={expire_at-time.time()}")
+            logger.debug(f"save cache {key=}, expire_at={expire_at-time.time():.2f}")
             self.cache_store[key] = CacheItem(key, value, expire_at)
 
     def get_cache(self, key: str) -> Any:

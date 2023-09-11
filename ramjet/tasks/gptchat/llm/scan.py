@@ -102,18 +102,21 @@ def _summary_by_mapreduce(docus: List[Document], apikey: str = None) -> str:
         Helpful Answer:
         """
     )
+    return query
 
-    apikey = apikey or os.environ["OPENAI_API_KEY"]
-    llm = ChatOpenAI(
-        client=None,
-        openai_api_key=apikey,
-        model="gpt-3.5-turbo",
-        temperature=0,
-        max_tokens=1000,
-        streaming=False,
-    )
+    # reduce by go-ramjet, do not use it for now
 
-    return llm.predict(query)
+    # apikey = apikey or os.environ["OPENAI_API_KEY"]
+    # llm = ChatOpenAI(
+    #     client=None,
+    #     openai_api_key=apikey,
+    #     model="gpt-3.5-turbo",
+    #     temperature=0,
+    #     max_tokens=1000,
+    #     streaming=False,
+    # )
+
+    # return llm.predict(query)
 
 
 def summary_docu(docu: Document, apikey: str = None) -> str:

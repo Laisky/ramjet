@@ -276,7 +276,7 @@ def _query_to_summary(
 
 
 def _chunk_search(
-    cache_key: str, query: str, content: str, ext: str
+    cache_key: str, query: str, b64content: str, ext: str
 ) -> aiohttp.web.Response:
     """search in embedding chunk
 
@@ -292,7 +292,7 @@ def _chunk_search(
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
 
-    idx, cached = _make_embedding_chunk(cache_key, content, ext)
+    idx, cached = _make_embedding_chunk(cache_key, b64content, ext)
     logger.debug(f"similarity search in embedding chunk...")
     refs = idx.store.similarity_search(query, k=5)
     results = "\n".join([ref.page_content for ref in refs if ref.page_content])
