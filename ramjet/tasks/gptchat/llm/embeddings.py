@@ -27,7 +27,11 @@ from langchain.prompts.chat import (
     HumanMessagePromptTemplate,
     SystemMessagePromptTemplate,
 )
-from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter
+from langchain.text_splitter import (
+    CharacterTextSplitter,
+    MarkdownTextSplitter,
+    TokenTextSplitter,
+)
 from langchain.vectorstores import FAISS
 from minio import Minio
 
@@ -293,8 +297,9 @@ def _embedding_pdf(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
-    text_splitter = CharacterTextSplitter(
-        chunk_size=500, chunk_overlap=30, separator="\n"
+    text_splitter = TokenTextSplitter(
+        chunk_size=500,
+        chunk_overlap=30,
     )
     for page, data in enumerate(loader.load_and_split()):
         splits = text_splitter.split_text(data.page_content)
@@ -364,8 +369,9 @@ def _embedding_msword(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     index = new_store()
     docs = []
     metadatas = []
-    text_splitter = CharacterTextSplitter(
-        chunk_size=500, chunk_overlap=30, separator="\n"
+    text_splitter = TokenTextSplitter(
+        chunk_size=500,
+        chunk_overlap=30,
     )
 
     fileext = os.path.splitext(fpath)[1].lower()
@@ -391,8 +397,9 @@ def _embedding_msword(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 def _embedding_msppt(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """embedding office powerpoint file"""
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
-    text_splitter = CharacterTextSplitter(
-        chunk_size=500, chunk_overlap=30, separator="\n"
+    text_splitter = TokenTextSplitter(
+        chunk_size=500,
+        chunk_overlap=30,
     )
     index = new_store()
     docs = []
@@ -422,10 +429,11 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
     """
     logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
 
-    text_splitter = CharacterTextSplitter(
-        chunk_size=300, chunk_overlap=30, separator="\n"
+    text_splitter = TokenTextSplitter(
+        chunk_size=500,
+        chunk_overlap=30,
     )
-    loader = BSHTMLLoader(fpath, get_text_separator=",")
+    loader = BSHTMLLoader(fpath)
     page_data = loader.load()[0]
     splits = text_splitter.split_text(page_data.page_content)
     assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
@@ -457,6 +465,7 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
         index.store.merge_from(f.result())
 
     return index
+
 
 def new_store(apikey: str = None) -> Index:
     """

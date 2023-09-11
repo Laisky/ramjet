@@ -21,7 +21,11 @@ from langchain.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from langchain.schema.document import Document
-from langchain.text_splitter import CharacterTextSplitter, MarkdownTextSplitter,TokenTextSplitter
+from langchain.text_splitter import (
+    CharacterTextSplitter,
+    MarkdownTextSplitter,
+    TokenTextSplitter,
+)
 
 from ramjet.engines import thread_executor
 
@@ -41,7 +45,8 @@ def summary_content(b64content: str, ext: str, apikey: str = None) -> str:
     #     chunk_size=500, chunk_overlap=30, separator="\n"
     # )
     text_splitter = TokenTextSplitter(
-        chunk_size=3000, chunk_overlap=30,
+        chunk_size=3000,
+        chunk_overlap=30,
     )
 
     # write to file
@@ -141,7 +146,6 @@ def summary_docu(docu: Document, apikey: str = None) -> str:
         max_tokens=500,
         streaming=False,
     )
-
 
     query = dedent(
         f"""

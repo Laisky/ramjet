@@ -213,10 +213,9 @@ def _embedding_chunk_worker(data: Dict[str, str]):
     assert query, "query is required"
     ext = data.get("ext")
     assert ext, "ext is required, like '.html'"
-    cache_key = data.get("cache_key") or b64content.encode("utf-8")
-    assert type(cache_key) == str, "cache_key must be string"
-    cache_key = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
-    apikey = data.get("apikey")
+
+    cache_key = hashlib.sha1(base64.decode(b64content)).hexdigest()
+    apikey = data.get("apikey")  # optional
 
     task_type = classificate_query_type(query)
     if task_type == "search":
