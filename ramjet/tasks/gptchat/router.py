@@ -10,6 +10,7 @@ import threading
 import urllib.parse
 from typing import Dict, List, Set, Tuple
 from functools import lru_cache
+from textwrap import dedent
 
 from cachetools import cached, LRUCache
 from cachetools.keys import hashkey
@@ -18,13 +19,16 @@ from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
 from kipp.decorator import timer
 from minio import Minio
+from langchain.chains.llm import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain.chat_models import ChatOpenAI
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
 from ramjet.utils import Cache
 
 from .base import logger
-from .embedding.embeddings import (
+from .llm.embeddings import (
     Index,
     build_user_chain,
     derive_key,
@@ -41,7 +45,8 @@ from .embedding.embeddings import (
     download_chatbot_index,
     UserChain,
 )
-from .embedding.query import build_chain, query, setup
+from .llm.scan import summary_content
+from .llm.query import build_chain, query, setup, classificate_query_type
 from .utils import (
     authenticate_by_appkey as authenticate,
     authenticate_by_appkey_sync as authenticate_sync,
@@ -161,18 +166,15 @@ class Query(aiohttp.web.View):
     @recover
     async def post(self):
         op = self.request.match_info["op"]
+        data = dict(await self.request.json())
         if op == "/chunks":
-            return await self._search_embedding_chunk()
+            return await asyncio.get_event_loop().run_in_executor(
+                thread_executor,
+                _embedding_chunk_worker,
+                data,
+            )
         else:
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
-
-    async def _search_embedding_chunk(self):
-        data = dict(await self.request.json())
-        return await asyncio.get_event_loop().run_in_executor(
-            thread_executor,
-            _search_embedding_chunk_worker,
-            data,
-        )
 
 
 _embedding_chunk_cache = Cache()
@@ -182,7 +184,7 @@ def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Tuple[Index
     """
     Args:
         cache_key (str): cache key
-        content (str): html content
+        content (str): base64 encoded content
         ext (str): file ext, like '.html'
 
     Returns:
@@ -194,8 +196,8 @@ def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Tuple[Index
 
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
-        with open(fpath, "w") as fp:
-            fp.write(content)
+        with open(fpath, "wb") as fp:
+            fp.write(base64.b64decode(content))
 
         idx = embedding_file(fpath, "query")
         _embedding_chunk_cache.save_cache(
@@ -204,17 +206,89 @@ def _make_embedding_chunk(cache_key: str, content: str, ext: str) -> Tuple[Index
         return idx, False
 
 
-def _search_embedding_chunk_worker(data: Dict[str, str]):
-    content = data.get("content")
-    assert content, "content is required"
+def _embedding_chunk_worker(data: Dict[str, str]):
+    b64content = data.get("content")
+    assert b64content, "base64 encoded content is required"
     query = data.get("query")
     assert query, "query is required"
     ext = data.get("ext")
     assert ext, "ext is required, like '.html'"
-    cache_key = data.get("cache_key") or content.encode("utf-8")
+    cache_key = data.get("cache_key") or b64content.encode("utf-8")
     assert type(cache_key) == str, "cache_key must be string"
     cache_key = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
+    apikey = data.get("apikey")
 
+    task_type = classificate_query_type(query)
+    if task_type == "search":
+        return _chunk_search(
+            cache_key=cache_key, query=query, b64content=b64content, ext=ext
+        )
+    elif task_type == "scan":
+        return _query_to_summary(
+            cache_key=cache_key,
+            query=query,
+            b64content=b64content,
+            ext=ext,
+            apikey=apikey,
+        )
+    else:
+        raise Exception(f"unknown task type {task_type}")
+
+
+_summary_cache = Cache()
+
+
+def _query_to_summary(
+    cache_key: str, query: str, b64content: str, ext: str, apikey: str = None
+) -> aiohttp.web.Response:
+    """query to summary
+
+    Args:
+        cache_key (str): cache key
+        query (str): user's query
+        b64content (str): base64 encoded content
+        ext (str): file ext, like '.html'
+
+    Returns:
+        aiohttp.web.Response: json response
+    """
+    logger.debug(f"query to summary, {query=}, {ext=}, {cache_key=}")
+    start_at = time.time()
+
+    summary = _summary_cache.get_cache(cache_key)
+    if summary:
+        cached = True
+        logger.debug(f"hit cached summary, {cache_key=}")
+    else:
+        logger.debug(f"dynamic generate summary, {cache_key=}")
+        cached = False
+        summary = summary_content(b64content, ext, apikey=apikey)
+        _summary_cache.save_cache(cache_key, summary, expire_at=time.time() + 3600 * 24)
+
+    return aiohttp.web.json_response(
+        {
+            "results": summary,
+            "cache_key": cache_key,
+            "cached": cached,
+            "operator": "scan",
+        }
+    )
+
+
+def _chunk_search(
+    cache_key: str, query: str, content: str, ext: str
+) -> aiohttp.web.Response:
+    """search in embedding chunk
+
+    Args:
+        cache_key (str): cache key
+        query (str): user's query
+        content (str): base64 encoded content
+        ext (str): file ext, like '.html'
+
+    Returns:
+        aiohttp.web.Response: json response
+    """
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
 
@@ -230,6 +304,7 @@ def _search_embedding_chunk_worker(data: Dict[str, str]):
             "results": results,
             "cache_key": cache_key,
             "cached": cached,
+            "operator": "search",
         }
     )
 

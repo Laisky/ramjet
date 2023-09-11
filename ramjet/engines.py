@@ -21,8 +21,8 @@ class LazyExecutor:
         return getattr(self.executor, name)
 
 
-thread_executor = LazyExecutor(ThreadPoolExecutor, max_workers=N_THREAD_WORKER)
-process_executor = LazyExecutor(ProcessPoolExecutor, max_workers=N_PROCESS_WORKER)
+thread_executor: ThreadPoolExecutor = LazyExecutor(ThreadPoolExecutor, max_workers=N_THREAD_WORKER)
+process_executor: ProcessPoolExecutor = LazyExecutor(ProcessPoolExecutor, max_workers=N_PROCESS_WORKER)
 ioloop = asyncio.get_event_loop()
 
 

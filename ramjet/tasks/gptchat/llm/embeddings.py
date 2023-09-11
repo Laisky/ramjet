@@ -458,7 +458,6 @@ def _embedding_html(fpath: str, metadata_name: str, max_chunks=1500) -> Index:
 
     return index
 
-
 def new_store(apikey: str = None) -> Index:
     """
     new FAISS store

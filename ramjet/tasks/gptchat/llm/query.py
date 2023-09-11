@@ -79,3 +79,44 @@ def query(project_name: str, question: str) -> Response:
     resp, refs = all_chains[project_name](question)
     # return Response(question=question, text=resp["answer"], url=resp.get("sources", ""))
     return Response(question=question, text=resp, url=list(set(refs)))
+
+
+def classificate_query_type(query: str, apikey: str = None) -> str:
+    """classify query type by user's query
+
+    Args:
+        query (str): user's query
+
+    Returns:
+        str: query type, 'search' or 'scan'
+    """
+    prompt = dedent(
+        f"""
+            there are some types of task, including search and scan.
+            you should judge the task type by user's query and answer the exact type of task in your opinion,
+            do not answer any other words.
+
+            for example, if the query is "summary this", you should answer "scan".
+            for example, if the query is "what is TEE's abilitity", you should answer "search".
+            for example, if the query is "这是啥", you should answer "scan".
+
+            the user's query is between "@>>>>>" and "@<<<<<":
+            @>>>>>
+            {query}
+            @<<<<<
+            your answer is:"""
+    )
+    apikey = apikey or os.environ["OPENAI_API_KEY"]
+    llm = ChatOpenAI(
+        client=None,
+        openai_api_key=apikey,
+        model="gpt-3.5-turbo",
+        temperature=0,
+        max_tokens=200,
+        streaming=False,
+    )
+    task_type = llm.predict(prompt)
+    if "scan" in task_type:
+        return "scan"
+    else:
+        return "search"  # default
