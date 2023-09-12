@@ -231,7 +231,11 @@ def _embedding_chunk_worker(request: aiohttp.web.Request, data: Dict[str, str]):
     task_type = classificate_query_type(query)
     if task_type == "search":
         return _chunk_search(
-            cache_key=cache_key, query=query, b64content=b64content, ext=ext
+            cache_key=cache_key,
+            query=query,
+            b64content=b64content,
+            ext=ext,
+            apikey=apikey,
         )
     elif task_type == "scan":
         return _query_to_summary(
@@ -314,8 +318,9 @@ def _chunk_search(
     """
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
-
-    idx, cached = _make_embedding_chunk(cache_key, b64content, ext)
+    idx, cached = _make_embedding_chunk(
+        cache_key=cache_key, b64content=b64content, ext=ext, apikey=apikey
+    )
     logger.debug(f"similarity search in embedding chunk...")
     refs = idx.store.similarity_search(query, k=5)
     results = "\n".join([ref.page_content for ref in refs if ref.page_content])

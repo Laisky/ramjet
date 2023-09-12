@@ -534,6 +534,9 @@ def new_store(apikey: str = None) -> Index:
     """
     new FAISS store
 
+    Args:
+        apikey (str, optional): openai api key. Defaults to None.
+
     Returns:
         Index: FAISS index
     """
