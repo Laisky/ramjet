@@ -183,14 +183,14 @@ _embedding_chunk_cache = Cache()
 
 def _make_embedding_chunk(
     cache_key: str,
-    content: str,
+    b64content: str,
     ext: str,
     apikey: str = None,
 ) -> Tuple[Index, bool]:
     """
     Args:
         cache_key (str): cache key
-        content (str): base64 encoded content
+        b64content (str): base64 encoded content
         ext (str): file ext, like '.html'
         apikey(str, option): apikey for openai api
 
@@ -204,7 +204,7 @@ def _make_embedding_chunk(
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath = os.path.join(tmpdir, f"content{ext}")
         with open(fpath, "wb") as fp:
-            fp.write(base64.b64decode(content))
+            fp.write(base64.b64decode(b64content))
 
         idx = embedding_file(fpath=fpath, metadata_name="query", apikey=apikey)
         _embedding_chunk_cache.save_cache(
