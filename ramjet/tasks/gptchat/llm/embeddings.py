@@ -237,8 +237,8 @@ def embedding_file(
     Args:
         fpath (str): file path
         metadata_name (str): file key
-        max_chunks (int, optional): max chunks. Defaults to 1500.
-        apikey (str, optional): openai api key. Defaults to None.
+        max_chunks (int, optional): max chunks. Defaults to 1500
+        apikey (str, optional): openai api key. Defaults to None
 
     Returns:
         Index: index
@@ -314,7 +314,10 @@ def reset_eof_of_pdf(fpath: str) -> None:
 
 
 def _embedding_pdf(
-    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+    fpath: str,
+    metadata_name: str,
+    max_chunks=1500,
+    apikey: str = None,
 ) -> Index:
     """embedding pdf file
 
@@ -354,7 +357,10 @@ def _embedding_pdf(
 
 
 def _embedding_markdown(
-    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+    fpath: str,
+    metadata_name: str,
+    max_chunks=1500,
+    apikey: str = None,
 ) -> Index:
     """embedding markdown file
 
@@ -398,7 +404,10 @@ def _embedding_markdown(
 
 
 def _embedding_msword(
-    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+    fpath: str,
+    metadata_name: str,
+    max_chunks=1500,
+    apikey: str = None,
 ) -> Index:
     """embedding word file
 
@@ -439,7 +448,10 @@ def _embedding_msword(
 
 
 def _embedding_msppt(
-    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+    fpath: str,
+    metadata_name: str,
+    max_chunks=1500,
+    apikey: str = None,
 ) -> Index:
     """embedding office powerpoint file"""
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
@@ -464,7 +476,10 @@ def _embedding_msppt(
 
 
 def _embedding_html(
-    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+    fpath: str,
+    metadata_name: str,
+    max_chunks=1500,
+    apikey: str = None,
 ) -> Index:
     """embedding html file
 

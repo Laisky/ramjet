@@ -171,6 +171,7 @@ class Query(aiohttp.web.View):
             return await asyncio.get_event_loop().run_in_executor(
                 thread_executor,
                 _embedding_chunk_worker,
+                self.request,
                 data,
             )
         else:
@@ -181,7 +182,10 @@ _embedding_chunk_cache = Cache()
 
 
 def _make_embedding_chunk(
-    cache_key: str, content: str, ext: str, apikey: str = None
+    cache_key: str,
+    content: str,
+    ext: str,
+    apikey: str = None,
 ) -> Tuple[Index, bool]:
     """
     Args:
@@ -202,24 +206,27 @@ def _make_embedding_chunk(
         with open(fpath, "wb") as fp:
             fp.write(base64.b64decode(content))
 
-        idx = embedding_file(fpath, "query")
+        idx = embedding_file(fpath=fpath, metadata_name="query", apikey=apikey)
         _embedding_chunk_cache.save_cache(
             cache_key, idx, expire_at=time.time() + 3600 * 24
         )
         return idx, False
 
 
-def _embedding_chunk_worker(data: Dict[str, str]):
+def _embedding_chunk_worker(request: aiohttp.web.Request, data: Dict[str, str]):
     b64content = data.get("content")
     assert b64content, "base64 encoded content is required"
     query = data.get("query")
     assert query, "query is required"
     ext = data.get("ext")
     assert ext, "ext is required, like '.html'"
+    model = data.get("model") or "gpt-3.5-turbo"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
-    apikey = data.get("apikey")  # optional
-    logger.debug(f"provide apikey in request {apikey is not None}")
+    apikey = request.headers.get("Authorization").removeprefix("Bearer ")  # optional
+    logger.debug(
+        f"_embedding_chunk_worker for {ext=}, apikey {apikey is not None}, {model=}, {cache_key=}"
+    )
 
     task_type = classificate_query_type(query)
     if task_type == "search":
@@ -233,6 +240,7 @@ def _embedding_chunk_worker(data: Dict[str, str]):
             b64content=b64content,
             ext=ext,
             apikey=apikey,
+            model=model,
         )
     else:
         raise Exception(f"unknown task type {task_type}")
@@ -242,7 +250,12 @@ _summary_cache = Cache()
 
 
 def _query_to_summary(
-    cache_key: str, query: str, b64content: str, ext: str, apikey: str = None
+    cache_key: str,
+    query: str,
+    b64content: str,
+    ext: str,
+    apikey: str = None,
+    model: str = "gpt-3.5-turbo",
 ) -> aiohttp.web.Response:
     """query to summary
 
@@ -251,6 +264,8 @@ def _query_to_summary(
         query (str): user's query
         b64content (str): base64 encoded content
         ext (str): file ext, like '.html'
+        apikey (str, optional): apikey for openai api
+        model (str, optional): openai model name, default is 'gpt-3.5-turbo'
 
     Returns:
         aiohttp.web.Response: json response
@@ -279,7 +294,11 @@ def _query_to_summary(
 
 
 def _chunk_search(
-    cache_key: str, query: str, b64content: str, ext: str, apikey: str = None
+    cache_key: str,
+    query: str,
+    b64content: str,
+    ext: str,
+    apikey: str = None,
 ) -> aiohttp.web.Response:
     """search in embedding chunk
 
@@ -288,6 +307,7 @@ def _chunk_search(
         query (str): user's query
         content (str): base64 encoded content
         ext (str): file ext, like '.html'
+        apikey (str, optional): apikey for openai api
 
     Returns:
         aiohttp.web.Response: json response

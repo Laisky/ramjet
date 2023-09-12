@@ -1,3 +1,4 @@
+import re
 import codecs
 import hashlib
 import os
@@ -30,13 +31,17 @@ from langchain.text_splitter import (
 from ramjet.engines import thread_executor
 
 
-def summary_content(b64content: str, ext: str, apikey: str = None) -> str:
+def summary_content(
+    b64content: str, ext: str, apikey: str = None, model: str = "gpt-3.5-turbo"
+) -> str:
     """Summarize the content of a document.
 
     Args:
-        b64content: The base64 encoded content of the document.
-        ext: The extension of the document.
+        b64content (str): The base64 encoded content of the document
+        ext (str): The extension of the document,
             should be one of: .docx, .pptx, .pdf, .html, .md, .txt
+        apikey (str, optional): The openai api key. Defaults to None
+        model (str, optional): The openai model. Defaults to 'gpt-3.5-turbo'
 
     Returns:
         The summary of the document.
@@ -81,7 +86,9 @@ def summary_content(b64content: str, ext: str, apikey: str = None) -> str:
     return _summary_by_mapreduce(docus, apikey=apikey)
 
 
-def _summary_by_mapreduce(docus: List[Document], apikey: str = None) -> str:
+def _summary_by_mapreduce(
+    docus: List[Document], apikey: str = None, model: str = "gpt-3.5-turbo"
+) -> str:
     """Summarize a list of documents using mapreduce.
 
     Args:
@@ -127,30 +134,38 @@ def _summary_by_mapreduce(docus: List[Document], apikey: str = None) -> str:
     # return llm.predict(query)
 
 
-def summary_docu(docu: Document, apikey: str = None) -> str:
+def summary_docu(
+    docu: Document, apikey: str = None, model: str = "gpt-3.5-turbo"
+) -> str:
     """Summarize a document.
 
     Args:
-        docu: A document.
-        apikey: The openai api key.
+        docu (str): A document
+        apikey (str, optional): The openai api key
+        model (str, optional): The openai model
 
     Returns:
         The summary of the document.
     """
     apikey = apikey or os.environ["OPENAI_API_KEY"]
+    max_token = 500
+    if re.match(r"\-\d+k$", apikey, re.I):
+        max_token = 20000
+
     llm = ChatOpenAI(
         client=None,
         openai_api_key=apikey,
-        model="gpt-3.5-turbo",
+        model=model,
         temperature=0,
-        max_tokens=500,
+        max_tokens=max_token,
         streaming=False,
     )
 
     query = dedent(
         f"""
         Write a concise summary of the following content between "@>>>>>" and "@<<<<<",
-        just response the summary text in a single short line, just contains necessary key informations,
+        just response the summary text in a single {'short ' if max_token <= 500 else ' '}line,
+        just contains necessary key informations,
         do not contains any other words:
 
         @>>>>>
