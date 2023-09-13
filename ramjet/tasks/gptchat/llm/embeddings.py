@@ -352,8 +352,38 @@ def _embedding_pdf(
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-    index.store.add_texts(docs, metadatas=metadatas)
+
+    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
+    futures = []
+    start_at = 0
+    n_batch = 5
+    while True:
+        if start_at >= len(docs):
+            break
+
+        end_at = min(start_at + n_batch, len(docs))
+        f = thread_executor.submit(
+            _embeddings_worker,
+            texts=docs[start_at:end_at],
+            metadatas=metadatas[start_at:end_at],
+            apikey=apikey,
+        )
+        futures.append(f)
+        start_at = end_at
+
+    index = new_store()
+    for f in futures:
+        index.store.merge_from(f.result())
+
     return index
+
+
+def _embeddings_worker(
+    texts: List[str], metadatas: List[str], apikey: str = None
+) -> FAISS:
+    index = new_store(apikey=apikey)
+    index.store.add_texts(texts, metadatas=metadatas)
+    return index.store
 
 
 def _embedding_markdown(
@@ -394,12 +424,34 @@ def _embedding_markdown(
         raise err
 
     for ichunk, docu in enumerate(docus):
-        docs.append(docu.page_content)
         title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
+        docs.append(docu.page_content)
         metadatas.append({"source": f"{metadata_name}#{title}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-    index.store.add_texts(docs, metadatas=metadatas)
+
+    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
+    futures = []
+    start_at = 0
+    n_batch = 5
+    while True:
+        if start_at >= len(docs):
+            break
+
+        end_at = min(start_at + n_batch, len(docs))
+        f = thread_executor.submit(
+            _embeddings_worker,
+            texts=docs[start_at:end_at],
+            metadatas=metadatas[start_at:end_at],
+            apikey=apikey,
+        )
+        futures.append(f)
+        start_at = end_at
+
+    index = new_store()
+    for f in futures:
+        index.store.merge_from(f.result())
+
     return index
 
 
@@ -443,7 +495,29 @@ def _embedding_msword(
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-    index.store.add_texts(docs, metadatas=metadatas)
+
+    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
+    futures = []
+    start_at = 0
+    n_batch = 5
+    while True:
+        if start_at >= len(docs):
+            break
+
+        end_at = min(start_at + n_batch, len(docs))
+        f = thread_executor.submit(
+            _embeddings_worker,
+            texts=docs[start_at:end_at],
+            metadatas=metadatas[start_at:end_at],
+            apikey=apikey,
+        )
+        futures.append(f)
+        start_at = end_at
+
+    index = new_store()
+    for f in futures:
+        index.store.merge_from(f.result())
+
     return index
 
 
@@ -471,7 +545,29 @@ def _embedding_msppt(
             metadatas.append({"source": f"{metadata_name}#page={page+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
-    index.store.add_texts(docs, metadatas=metadatas)
+
+    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
+    futures = []
+    start_at = 0
+    n_batch = 5
+    while True:
+        if start_at >= len(docs):
+            break
+
+        end_at = min(start_at + n_batch, len(docs))
+        f = thread_executor.submit(
+            _embeddings_worker,
+            texts=docs[start_at:end_at],
+            metadatas=metadatas[start_at:end_at],
+            apikey=apikey,
+        )
+        futures.append(f)
+        start_at = end_at
+
+    index = new_store()
+    for f in futures:
+        index.store.merge_from(f.result())
+
     return index
 
 
@@ -501,11 +597,6 @@ def _embedding_html(
     splits = text_splitter.split_text(page_data.page_content)
     assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
 
-    def _embeddings_worker(texts: List[str], metadatas: List[str]) -> FAISS:
-        index = new_store(apikey=apikey)
-        index.store.add_texts(texts, metadatas=metadatas)
-        return index.store
-
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(splits)} chunks")
     futures = []
     start_at = 0
@@ -519,6 +610,7 @@ def _embedding_html(
             _embeddings_worker,
             texts=splits[start_at:end_at],
             metadatas=[""] * (end_at - start_at),
+            apikey=apikey,
         )
         futures.append(f)
         start_at = end_at
