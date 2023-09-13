@@ -223,10 +223,9 @@ def _embedding_chunk_worker(request: aiohttp.web.Request, data: Dict[str, str]):
     model = data.get("model") or "gpt-3.5-turbo"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
-    apikey = request.headers.get("Authorization").removeprefix("Bearer ")  # optional
-    logger.debug(
-        f"_embedding_chunk_worker for {ext=}, apikey {apikey is not None}, {model=}, {cache_key=}"
-    )
+    apikey = request.headers.get("Authorization").removeprefix("Bearer ")
+    assert apikey, "apikey is required"
+    logger.debug(f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}")
 
     task_type = classificate_query_type(query)
     if task_type == "search":
