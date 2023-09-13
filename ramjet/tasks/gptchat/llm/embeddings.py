@@ -543,7 +543,7 @@ def new_store(apikey: str = None) -> Index:
 
     # BUG: some azure openai available-zones do not support text-embedding-ada-002,
     #      so we have to use default internal apikey
-    apikey = None
+    # apikey = None
 
     if os.environ.get("OPENAI_API_TYPE") == "azure":
         azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
