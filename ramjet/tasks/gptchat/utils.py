@@ -36,33 +36,26 @@ def authenticate(func):
 
     @functools.wraps(func)
     async def wrapper(self, *args, **kwargs):
-        try:
-            payload = await verify_user(self.request)
-        except (web.HTTPUnauthorized, AssertionError):
-            return web.json_response({"error": "Unauthorized"}, status=401)
-
+        payload = await verify_user(self.request)
         return await func(self, payload, *args, **kwargs)
 
     return wrapper
 
 
 def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
-    try:
-        apikey: str = request.headers.get("Authorization", "")
-        apikey = apikey.removeprefix("Bearer ")
-        assert apikey, "apikey is required"
+    apikey: str = request.headers.get("Authorization", "")
+    apikey = apikey.removeprefix("Bearer ")
+    assert apikey, "apikey is required"
 
-        model: str = request.query.get("model", "") or "gpt-3.5-turbo"
+    model: str = request.query.get("model", "") or "gpt-3.5-turbo"
 
-        userinfo = prd.UserPermission(
-            is_free=False,
-            uid=hashlib.sha1(apikey.encode()).hexdigest(),
-            n_concurrent=100,
-            chat_model=model,
-            apikey=apikey,
-        )
-    except Exception:
-        return web.HTTPUnauthorized()
+    userinfo = prd.UserPermission(
+        is_free=False,
+        uid=hashlib.sha1(apikey.encode()).hexdigest(),
+        n_concurrent=100,
+        chat_model=model,
+        apikey=apikey,
+    )
 
     return userinfo
 
@@ -91,10 +84,7 @@ def authenticate_by_appkey_sync(func):
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        apikey: str = self.request.headers.get("Authorization", "")
-        apikey = apikey.removeprefix("Bearer ")
-
-        userinfo = get_user_by_appkey(apikey)
+        userinfo = get_user_by_appkey(self.request)
         return func(self, userinfo, *args, **kwargs)
 
     return wrapper
