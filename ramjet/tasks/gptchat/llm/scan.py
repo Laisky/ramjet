@@ -1,38 +1,28 @@
-import re
-import codecs
-import hashlib
-import os
-import pickle
-import re
-import tempfile
-import threading
-import time
 import base64
+import os
+import re
 import tempfile
-from typing import List
-from textwrap import dedent
 from concurrent.futures import Future
+from textwrap import dedent
+from typing import List
 
-from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import (
     BSHTMLLoader,
-    Docx2txtLoader,
     PyPDFLoader,
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
 )
 from langchain.schema.document import Document
-from langchain.text_splitter import (
-    CharacterTextSplitter,
-    MarkdownTextSplitter,
-    TokenTextSplitter,
-)
+from langchain.text_splitter import MarkdownTextSplitter, TokenTextSplitter
 
 from ramjet.engines import thread_executor
 
 
 def summary_content(
-    b64content: str, ext: str, apikey: str = None, model: str = "gpt-3.5-turbo"
+    b64content: str,
+    ext: str,
+    apikey: str = None,
 ) -> str:
     """Summarize the content of a document.
 
@@ -41,7 +31,6 @@ def summary_content(
         ext (str): The extension of the document,
             should be one of: .docx, .pptx, .pdf, .html, .md, .txt
         apikey (str, optional): The openai api key. Defaults to None
-        model (str, optional): The openai model. Defaults to 'gpt-3.5-turbo'
 
     Returns:
         The summary of the document.
@@ -86,9 +75,7 @@ def summary_content(
     return _summary_by_mapreduce(docus, apikey=apikey)
 
 
-def _summary_by_mapreduce(
-    docus: List[Document], apikey: str = None, model: str = "gpt-3.5-turbo"
-) -> str:
+def _summary_by_mapreduce(docus: List[Document], apikey: str = None) -> str:
     """Summarize a list of documents using mapreduce.
 
     Args:
@@ -134,20 +121,17 @@ def _summary_by_mapreduce(
     # return llm.predict(query)
 
 
-def summary_docu(
-    docu: Document, apikey: str = None, model: str = "gpt-3.5-turbo"
-) -> str:
+def summary_docu(docu: Document, apikey: str, model: str = "gpt-3.5-turbo") -> str:
     """Summarize a document.
 
     Args:
         docu (str): A document
-        apikey (str, optional): The openai api key
+        apikey (str): The openai api key
         model (str, optional): The openai model
 
     Returns:
         The summary of the document.
     """
-    apikey = apikey or os.environ["OPENAI_API_KEY"]
     max_token = 500
     if re.match(r"\-\d+k$", apikey, re.I):
         max_token = 20000

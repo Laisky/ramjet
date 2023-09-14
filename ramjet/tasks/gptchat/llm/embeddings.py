@@ -6,13 +6,13 @@ import re
 import tempfile
 import threading
 import time
-from typing import Callable, Dict, List, NamedTuple, Set, Tuple
+from typing import Callable, Dict, List, Tuple
 from urllib.parse import quote
 
 import faiss
 from Crypto.Cipher import AES
 from langchain.chains import LLMChain
-from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import (
     BSHTMLLoader,
     Docx2txtLoader,
@@ -21,17 +21,13 @@ from langchain.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
     SystemMessagePromptTemplate,
 )
-from langchain.text_splitter import (
-    CharacterTextSplitter,
-    MarkdownTextSplitter,
-    TokenTextSplitter,
-)
+from langchain.schema.document import Document
+from langchain.text_splitter import MarkdownTextSplitter, TokenTextSplitter
 from langchain.vectorstores import FAISS
 from minio import Minio
 
@@ -39,21 +35,7 @@ from ramjet.engines import thread_executor
 from ramjet.settings import prd
 
 from ..base import logger
-
-
-class Index(NamedTuple):
-    """embeddings index"""
-
-    store: FAISS
-    scaned_files: Set[str]
-
-
-class UserChain(NamedTuple):
-    """user chatbot"""
-
-    index: Index
-    datasets: List[str]
-    chain: Callable[[str], Tuple[str, List[str]]]
+from .base import Index, UserChain
 
 
 user_embeddings_chain_mu = threading.RLock()
@@ -64,6 +46,22 @@ user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
 N_BACTCH_FILES = 5
 N_NEAREST_CHUNKS = 5
+
+
+def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
+    """build llm for user
+
+    Args:
+        user (UserPermission): user info
+
+    Returns:
+        ChatOpenAI: llm
+    """
+    return OpenAIEmbeddings(
+        client=None,
+        openai_api_key=user.apikey,
+        model="text-embedding-ada-002",
+    )
 
 
 def is_file_scaned(index: Index, fpath: str) -> bool:
@@ -81,19 +79,18 @@ def is_file_scaned(index: Index, fpath: str) -> bool:
 
 
 def build_chain(
-    llm, store: FAISS, nearest_k=N_NEAREST_CHUNKS
-) -> Callable[[str], Tuple[str, List[str]]]:
+    store: FAISS, nearest_k=N_NEAREST_CHUNKS
+) -> Callable[[ChatOpenAI, str], Tuple[str, List[str]]]:
     """
     build a chain for a given store
 
     Args:
-        llm: langchain chat model
         store: vector store
         nearest_k: number of nearest chunks to search,
             these chunks will be used as context for the chat model
 
     Returns:
-        Callable[[str], Tuple[str, List[str]]]: a chain function
+        Callable[[ChatOpenAI, str], Tuple[str, List[str]]]: a chain function
     """
 
     system_template = """Use the following pieces of context to answer the users question.
@@ -107,7 +104,10 @@ def build_chain(
         HumanMessagePromptTemplate.from_template("{question}"),
     ]
     prompt = ChatPromptTemplate.from_messages(messages)
-    query_chain = LLMChain(llm=llm, prompt=prompt)
+
+    # fix stupid compatability issue in langchain faiss
+    if not getattr(store, "_normalize_L2", None):
+        store._normalize_L2 = False
 
     def query_for_more_info(query: str) -> Tuple[str, List[str]]:
         """query more information from embeddings store
@@ -120,10 +120,6 @@ def build_chain(
         """
         logger.debug(f"query for more info: {query}")
 
-        # fix stupid compatability issue in langchain faiss
-        if not getattr(store, "_normalize_L2", None):
-            store._normalize_L2 = False
-
         related_docs = store.similarity_search(
             query=query,
             k=nearest_k,
@@ -134,7 +130,7 @@ def build_chain(
 
         return ctx, refs
 
-    def chain(query: str) -> Tuple[str, List[str]]:
+    def chain(llm: ChatOpenAI, query: str) -> Tuple[str, List[str]]:
         """chain function
 
         Args:
@@ -143,6 +139,7 @@ def build_chain(
         Returns:
             Tuple[str, List[str]]: response and references
         """
+        query_chain = LLMChain(llm=llm, prompt=prompt)
         n = 0
         last_sub_query = ""
         regexp = re.compile(r"I need more information about: .*")
@@ -178,57 +175,31 @@ def build_chain(
     return chain
 
 
-def build_user_chain(
-    user: prd.UserPermission, index: Index, datasets: List[str]
-) -> UserChain:
+def build_user_chain(index: Index, datasets: List[str]) -> UserChain:
     """build user's embedding index and save in memory
 
     Args:
         user (prd.UserPermission): user
         index (Index): index
         datasets (List[str]): datasets
+        apikey (str): openai api key
 
     Returns:
         UserChain: user chain
     """
-    uid = user.uid
     n_chunks = N_NEAREST_CHUNKS
-    model_name = user.chat_model or "gpt-3.5-turbo"
-    max_tokens = 1000
-    if os.environ.get("OPENAI_API_TYPE", "") == "azure":
-        llm = AzureChatOpenAI(
-            client=None,
-            deployment_name="gpt35",
-            # model_name="gpt-3.5-turbo",
-            temperature=0,
-            max_tokens=1000,
-            streaming=False,
-        )
-    else:
-        if "16k" in model_name:
-            max_tokens = 8000
-            n_chunks = max(n_chunks, 10)
-
-        llm = ChatOpenAI(
-            client=None,
-            model=model_name,
-            temperature=0,
-            max_tokens=max_tokens,
-            streaming=False,
-        )
-
-    logger.info(
-        f"succeed to build user chain {uid=}, {model_name=}, {max_tokens=}, {n_chunks=}"
-    )
     return UserChain(
-        chain=build_chain(llm, index.store, n_chunks),
+        chain=build_chain(store=index.store, nearest_k=n_chunks),
         index=index,
         datasets=datasets,
     )
 
 
 def embedding_file(
-    fpath: str, metadata_name: str, max_chunks=1500, apikey: str = None
+    fpath: str,
+    metadata_name: str,
+    apikey: str,
+    max_chunks=1500,
 ) -> Index:
     """read and parse file content, then embedding it to FAISS index
 
@@ -238,7 +209,7 @@ def embedding_file(
         fpath (str): file path
         metadata_name (str): file key
         max_chunks (int, optional): max chunks. Defaults to 1500
-        apikey (str, optional): openai api key. Defaults to None
+        apikey (str): openai api key. Defaults to None
 
     Returns:
         Index: index
@@ -316,8 +287,8 @@ def reset_eof_of_pdf(fpath: str) -> None:
 def _embedding_pdf(
     fpath: str,
     metadata_name: str,
+    apikey: str,
     max_chunks=1500,
-    apikey: str = None,
 ) -> Index:
     """embedding pdf file
 
@@ -327,7 +298,7 @@ def _embedding_pdf(
         fpath (str): file path
         metadata_name (str): file key
         max_chunks (int, optional): max chunks. Defaults to 1500.
-        apikey (str, optional): openai api key. Defaults to None.
+        apikey (str): openai api key. Defaults to None.
 
     Returns:
         Index: index
@@ -371,16 +342,14 @@ def _embedding_pdf(
         futures.append(f)
         start_at = end_at
 
-    index = new_store()
+    index = new_store(apikey=apikey)
     for f in futures:
         index.store.merge_from(f.result())
 
     return index
 
 
-def _embeddings_worker(
-    texts: List[str], metadatas: List[str], apikey: str = None
-) -> FAISS:
+def _embeddings_worker(texts: List[str], metadatas: List[str], apikey: str) -> FAISS:
     index = new_store(apikey=apikey)
     index.store.add_texts(texts, metadatas=metadatas)
     return index.store
@@ -389,8 +358,8 @@ def _embeddings_worker(
 def _embedding_markdown(
     fpath: str,
     metadata_name: str,
+    apikey: str,
     max_chunks=1500,
-    apikey: str = None,
 ) -> Index:
     """embedding markdown file
 
@@ -406,7 +375,7 @@ def _embedding_markdown(
     index = new_store(apikey=apikey)
     docs = []
     metadatas = []
-    docus: List[markdown_splitter.Document] = None
+    docus: List[Document] = None
     err: Exception
     for charset in ["utf-8", "gbk", "gb2312"]:
         try:
@@ -448,7 +417,7 @@ def _embedding_markdown(
         futures.append(f)
         start_at = end_at
 
-    index = new_store()
+    index = new_store(apikey=apikey)
     for f in futures:
         index.store.merge_from(f.result())
 
@@ -458,14 +427,16 @@ def _embedding_markdown(
 def _embedding_msword(
     fpath: str,
     metadata_name: str,
+    apikey: str,
     max_chunks=1500,
-    apikey: str = None,
 ) -> Index:
     """embedding word file
 
     Args:
         fpath (str): file path
         metadata_name (str): file key
+        apikey (str): openai api key
+        max_chunks (int, optional): max chunks. Defaults to 1500.
 
     Returns:
         Index: index
@@ -514,7 +485,7 @@ def _embedding_msword(
         futures.append(f)
         start_at = end_at
 
-    index = new_store()
+    index = new_store(apikey=apikey)
     for f in futures:
         index.store.merge_from(f.result())
 
@@ -524,10 +495,20 @@ def _embedding_msword(
 def _embedding_msppt(
     fpath: str,
     metadata_name: str,
+    apikey: str,
     max_chunks=1500,
-    apikey: str = None,
 ) -> Index:
-    """embedding office powerpoint file"""
+    """embedding office powerpoint file
+
+    Args:
+        fpath (str): file path
+        metadata_name (str): file key
+        apikey (str): openai api key
+        max_chunks (int, optional): max chunks. Defaults to 1500.
+
+    Returns:
+        Index: index
+    """
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
     text_splitter = TokenTextSplitter(
         chunk_size=500,
@@ -564,7 +545,7 @@ def _embedding_msppt(
         futures.append(f)
         start_at = end_at
 
-    index = new_store()
+    index = new_store(apikey=apikey)
     for f in futures:
         index.store.merge_from(f.result())
 
@@ -574,14 +555,16 @@ def _embedding_msppt(
 def _embedding_html(
     fpath: str,
     metadata_name: str,
+    apikey: str,
     max_chunks=1500,
-    apikey: str = None,
 ) -> Index:
     """embedding html file
 
     Args:
         fpath (str): file path
         metadata_name (str): file key
+        apikey (str): openai api key
+        max_chunks (int, optional): max chunks. Defaults to 1500.
 
     Returns:
         Index: index
@@ -615,46 +598,41 @@ def _embedding_html(
         futures.append(f)
         start_at = end_at
 
-    index = new_store()
+    index = new_store(apikey=apikey)
     for f in futures:
         index.store.merge_from(f.result())
 
     return index
 
 
-def new_store(apikey: str = None) -> Index:
+def new_store(apikey: str) -> Index:
     """
     new FAISS store
 
     Args:
-        apikey (str, optional): openai api key. Defaults to None.
+        apikey (str): openai api key. Defaults to None.
 
     Returns:
         Index: FAISS index
     """
+    # if os.environ.get("OPENAI_API_TYPE") == "azure":
+    #     azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
+    #         "embeddings"
+    #     ].deployment_id
+    #     azure_gpt_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
 
-    # BUG: some azure openai available-zones do not support text-embedding-ada-002,
-    #      so we have to use default internal apikey
-    # apikey = None
-
-    if os.environ.get("OPENAI_API_TYPE") == "azure":
-        azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
-            "embeddings"
-        ].deployment_id
-        azure_gpt_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
-
-        embedding_model = OpenAIEmbeddings(
-            openai_api_key=apikey,
-            client=None,
-            model="text-embedding-ada-002",
-            deployment=azure_embeddings_deploymentid,
-        )
-    else:
-        embedding_model = OpenAIEmbeddings(
-            openai_api_key=apikey,
-            client=None,
-            model="text-embedding-ada-002",
-        )
+    #     embedding_model = OpenAIEmbeddings(
+    #         openai_api_key=apikey,
+    #         client=None,
+    #         model="text-embedding-ada-002",
+    #         deployment=azure_embeddings_deploymentid,
+    #     )
+    # else:
+    embedding_model = OpenAIEmbeddings(
+        openai_api_key=apikey,
+        client=None,
+        model="text-embedding-ada-002",
+    )
 
     store = FAISS.from_texts([""], embedding_model, metadatas=[{"source": ""}])
     return Index(
@@ -781,15 +759,15 @@ def restore_user_chain(
     uid = user.uid
     with tempfile.TemporaryDirectory() as tmpdir:
         chatbot_name, index, datasets = download_chatbot_index(
+            dirpath=tmpdir,
             s3cli=s3cli,
             user=user,
-            dirpath=tmpdir,
             chatbot_name=chatbot_name,
             password=password,
         )
 
     logger.info(f"succeed restore user {uid=} chain from s3")
-    chain = build_user_chain(user, index, datasets)
+    chain = build_user_chain(index, datasets)
 
     if password:
         logger.info(f"load encrypted user chain, {uid=}, {chatbot_name=}")
@@ -807,7 +785,7 @@ def save_encrypt_store(
     index: Index,
     name: str,
     password: str,
-    datasets: List[str] = [],
+    datasets: List[str] = None,
 ) -> None:
     """save encrypted store
 
@@ -836,7 +814,8 @@ def save_encrypt_store(
         with open(f"{fpath_prefix}.store", "wb") as f:
             cipher = AES.new(key, AES.MODE_EAX)
             ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.store))
-            [f.write(x) for x in (cipher.nonce, tag, ciphertext)]
+            for x in (cipher.nonce, tag, ciphertext):
+                f.write(x)
         index.store.index = store_index
 
         fs = [

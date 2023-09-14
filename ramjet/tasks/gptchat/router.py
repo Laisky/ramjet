@@ -1,27 +1,21 @@
 import asyncio
-import hashlib
-import time
 import base64
+import hashlib
 import io
 import os
 import re
 import tempfile
 import threading
+import time
 import urllib.parse
 from typing import Dict, List, Set, Tuple
-from functools import lru_cache
-from textwrap import dedent
+from functools import partial
 
-from cachetools import cached, LRUCache
-from cachetools.keys import hashkey
 import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
 from kipp.decorator import timer
 from minio import Minio
-from langchain.chains.llm import LLMChain
-from langchain.prompts import PromptTemplate
-from langchain.chat_models import ChatOpenAI
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
@@ -32,27 +26,23 @@ from .llm.embeddings import (
     Index,
     build_user_chain,
     derive_key,
+    download_chatbot_index,
     embedding_file,
     load_encrypt_store,
     new_store,
     restore_user_chain,
     save_encrypt_store,
+    save_plaintext_store,
     user_embeddings_chain,
     user_embeddings_chain_mu,
-    user_shared_chain_mu,
     user_shared_chain,
-    save_plaintext_store,
-    download_chatbot_index,
-    UserChain,
+    user_shared_chain_mu,
 )
+from .llm.query import classificate_query_type, query, setup, build_llm_for_user
 from .llm.scan import summary_content
-from .llm.query import build_chain, query, setup, classificate_query_type
-from .utils import (
-    authenticate_by_appkey as authenticate,
-    authenticate_by_appkey_sync as authenticate_sync,
-    get_user_by_uid,
-    recover,
-)
+from .utils import authenticate_by_appkey as authenticate
+from .utils import authenticate_by_appkey_sync as authenticate_sync
+from .utils import recover
 
 # limit concurrent process files by uid
 user_prcess_file_sema_lock = threading.RLock()
@@ -154,25 +144,28 @@ class Query(aiohttp.web.View):
 
         ioloop = asyncio.get_running_loop()
         resp = await ioloop.run_in_executor(
-            thread_executor, self.query, user, project, question
+            thread_executor,
+            partial(self.query, user=user, project=project, question=question),
         )
 
         return aiohttp.web.json_response(resp._asdict())
 
     @uid_method_ratelimiter()
     def query(self, user: prd.UserPermission, project: str, question: str):
-        return query(project, question)
+        llm = build_llm_for_user(user)
+        return query(project, question, llm)
 
     @recover
-    async def post(self):
+    @authenticate
+    async def post(self, user):
         op = self.request.match_info["op"]
         data = dict(await self.request.json())
         if op == "/chunks":
             return await asyncio.get_event_loop().run_in_executor(
                 thread_executor,
-                _embedding_chunk_worker,
-                self.request,
-                data,
+                partial(
+                    _embedding_chunk_worker, request=self.request, data=data, user=user
+                ),
             )
         else:
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
@@ -185,14 +178,14 @@ def _make_embedding_chunk(
     cache_key: str,
     b64content: str,
     ext: str,
-    apikey: str = None,
+    apikey: str,
 ) -> Tuple[Index, bool]:
     """
     Args:
         cache_key (str): cache key
         b64content (str): base64 encoded content
         ext (str): file ext, like '.html'
-        apikey(str, option): apikey for openai api
+        apikey(str): apikey for openai api
 
     Returns:
         Tuple[Index, bool]: (index, is_cached)
@@ -213,11 +206,13 @@ def _make_embedding_chunk(
         return idx, False
 
 
-def _embedding_chunk_worker(request: aiohttp.web.Request, data: Dict[str, str]):
+def _embedding_chunk_worker(
+    request: aiohttp.web.Request, data: Dict[str, str], user: prd.UserPermission
+):
     b64content = data.get("content")
     assert b64content, "base64 encoded content is required"
-    query = data.get("query")
-    assert query, "query is required"
+    user_query = data.get("query")
+    assert user_query, "query is required"
     ext = data.get("ext")
     assert ext, "ext is required, like '.html'"
     model = data.get("model") or "gpt-3.5-turbo"
@@ -227,11 +222,11 @@ def _embedding_chunk_worker(request: aiohttp.web.Request, data: Dict[str, str]):
     assert apikey, "apikey is required"
     logger.debug(f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}")
 
-    task_type = classificate_query_type(query)
+    task_type = classificate_query_type(query=user_query, apikey=user.apikey)
     if task_type == "search":
         return _chunk_search(
             cache_key=cache_key,
-            query=query,
+            query=user_query,
             b64content=b64content,
             ext=ext,
             apikey=apikey,
@@ -239,7 +234,7 @@ def _embedding_chunk_worker(request: aiohttp.web.Request, data: Dict[str, str]):
     elif task_type == "scan":
         return _query_to_summary(
             cache_key=cache_key,
-            query=query,
+            query=user_query,
             b64content=b64content,
             ext=ext,
             apikey=apikey,
@@ -257,7 +252,7 @@ def _query_to_summary(
     query: str,
     b64content: str,
     ext: str,
-    apikey: str = None,
+    apikey: str,
     model: str = "gpt-3.5-turbo",
 ) -> aiohttp.web.Response:
     """query to summary
@@ -267,7 +262,7 @@ def _query_to_summary(
         query (str): user's query
         b64content (str): base64 encoded content
         ext (str): file ext, like '.html'
-        apikey (str, optional): apikey for openai api
+        apikey (str): apikey for openai api
         model (str, optional): openai model name, default is 'gpt-3.5-turbo'
 
     Returns:
@@ -275,17 +270,19 @@ def _query_to_summary(
     """
     logger.debug(f"query to summary, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
+    hit_cache = False
 
     summary = _summary_cache.get_cache(cache_key)
     if summary:
         cached = True
-        logger.debug(f"hit cached summary, {cache_key=}")
     else:
-        logger.debug(f"dynamic generate summary, {cache_key=}")
-        cached = False
         summary = summary_content(b64content, ext, apikey=apikey)
         _summary_cache.save_cache(cache_key, summary, expire_at=time.time() + 3600 * 24)
 
+    logger.debug(
+        f"return summary, length={len(summary)}, cost={time.time() - start_at:.2f}s, "
+        f"hit_cache={hit_cache}"
+    )
     return aiohttp.web.json_response(
         {
             "results": summary,
@@ -301,7 +298,7 @@ def _chunk_search(
     query: str,
     b64content: str,
     ext: str,
-    apikey: str = None,
+    apikey: str,
 ) -> aiohttp.web.Response:
     """search in embedding chunk
 
@@ -310,7 +307,7 @@ def _chunk_search(
         query (str): user's query
         content (str): base64 encoded content
         ext (str): file ext, like '.html'
-        apikey (str, optional): apikey for openai api
+        apikey (str): apikey for openai api
 
     Returns:
         aiohttp.web.Response: json response
@@ -320,11 +317,11 @@ def _chunk_search(
     idx, cached = _make_embedding_chunk(
         cache_key=cache_key, b64content=b64content, ext=ext, apikey=apikey
     )
-    logger.debug(f"similarity search in embedding chunk...")
     refs = idx.store.similarity_search(query, k=5)
     results = "\n".join([ref.page_content for ref in refs if ref.page_content])
     logger.info(
-        f"return similarity search results, length={len(results)}, cost={time.time() - start_at:.2f}s"
+        f"return similarity search results, length={len(results)}, "
+        f"cost={time.time() - start_at:.2f}s"
     )
     return aiohttp.web.json_response(
         {
@@ -481,7 +478,10 @@ class UploadedFiles(aiohttp.web.View):
             ioloop = asyncio.get_event_loop()
 
             # do not wait task done
-            ioloop.run_in_executor(thread_executor, self.delete_files, user, datasets)
+            ioloop.run_in_executor(
+                thread_executor,
+                partial(self.delete_files, user=user, datasets=datasets),
+            )
         except Exception as e:
             logger.exception(f"failed to delete files {data.get('files', [])}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
@@ -499,14 +499,13 @@ class UploadedFiles(aiohttp.web.View):
                         object_name=objkey,
                     )
                     logger.info(f"deleted file on s3, {objkey=}")
-                except Exception as e:
+                except Exception:
                     logger.exception(f"failed to delete file on s3, {objkey=}")
 
     @recover
     @authenticate
     async def post(self, user: prd.UserPermission):
         """Upload pdf file by form"""
-        uid = user.uid
         data = await self.request.post()
 
         sema = uid_ratelimiter(user, 3)
@@ -514,7 +513,9 @@ class UploadedFiles(aiohttp.web.View):
             ioloop = asyncio.get_event_loop()
 
             # do not wait task done
-            ioloop.run_in_executor(thread_executor, self.process_file, user, data)
+            ioloop.run_in_executor(
+                thread_executor, partial(self.process_file, user=user, data=data)
+            )
         except Exception as e:
             logger.exception(f"failed to process file {data.get('file', '')}")
             return aiohttp.web.json_response({"error": str(e)}, status=400)
@@ -648,13 +649,10 @@ class EmbeddingContext(aiohttp.web.View):
         else:
             raise Exception(f"unknown op {op}")
 
-    def share_chatbot_query(self) -> aiohttp.web.Response:
+    @authenticate_sync
+    def share_chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
         """talk with somebody shared private knowledge base"""
         # get uid and chatbot_name from query args
-        uid = self.request.query.get("uid", "")
-        assert re.match(r"^[a-zA-Z0-9\-_]+$", uid), "uid is required"
-        user = get_user_by_uid(uid)
-
         chatbot_name = self.request.query.get("chatbot_name", "")
         assert re.match(r"^[a-zA-Z0-9\-_]+$", chatbot_name), "chatbot_name is required"
 
@@ -662,18 +660,19 @@ class EmbeddingContext(aiohttp.web.View):
         assert query, "q is required"
 
         with user_shared_chain_mu:
-            need_restore = uid not in user_shared_chain
+            need_restore = user.uid not in user_shared_chain
 
         if need_restore:
-            logger.debug(f"try restore user shared chain from s3 for {uid=}")
+            logger.debug(f"try restore user shared chain from s3 for {user.uid=}")
             restore_user_chain(s3cli=s3cli, user=user, chatbot_name=chatbot_name)
 
         with user_shared_chain_mu:
-            chatbot = user_shared_chain[uid + chatbot_name]
+            chatbot = user_shared_chain[user.uid + chatbot_name]
 
+        llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
-            resp, refs = chatbot.chain(query)
+            resp, refs = chatbot.chain(llm, query)
             refs = list(set(refs))
         finally:
             sema.release()
@@ -689,8 +688,8 @@ class EmbeddingContext(aiohttp.web.View):
     def chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
         """talk with user's private knowledge base"""
         uid = user.uid
-        query = self.request.query.get("q", "").strip()
-        assert query, "q is required"
+        user_query = self.request.query.get("q", "").strip()
+        assert user_query, "q is required"
 
         password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
         assert password, "X-PDFCHAT-PASSWORD is required"
@@ -705,9 +704,10 @@ class EmbeddingContext(aiohttp.web.View):
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]
 
+        llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
-            resp, refs = chatbot.chain(query)
+            resp, refs = chatbot.chain(llm, user_query)
             refs = list(set(refs))
         finally:
             sema.release()
@@ -764,23 +764,29 @@ class EmbeddingContext(aiohttp.web.View):
         if op == "/build":
             return await ioloop.run_in_executor(
                 thread_executor,
-                self.build_chatbot,
-                user,
-                data,
+                partial(
+                    self.build_chatbot,
+                    user=user,
+                    data=data,
+                ),
             )
         elif op == "/active":
             return await ioloop.run_in_executor(
                 thread_executor,
-                self.active_chatbot,
-                user,
-                data,
+                partial(
+                    self.active_chatbot,
+                    user=user,
+                    data=data,
+                ),
             )
         elif op == "/share":
             return await ioloop.run_in_executor(
                 thread_executor,
-                self.share_chatbot,
-                user,
-                data,
+                partial(
+                    self.share_chatbot,
+                    user=user,
+                    data=data,
+                ),
             )
         else:
             raise NotImplementedError(f"unknown op {op}")
@@ -858,8 +864,15 @@ class EmbeddingContext(aiohttp.web.View):
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
 
+        apikey = data.get("apikey", "")
+        assert apikey, "apikey is required"
+
         self._build_user_chatbot(
-            user=user, password=password, datasets=datasets, chatbot_name=chatbot_name
+            user=user,
+            password=password,
+            datasets=datasets,
+            chatbot_name=chatbot_name,
+            apikey=apikey,
         )
         return aiohttp.web.json_response(
             {"msg": f"{chatbot_name} build ok"},
@@ -870,11 +883,26 @@ class EmbeddingContext(aiohttp.web.View):
         user: prd.UserPermission,
         password: str,
         datasets: List[str],
+        apikey: str,
         chatbot_name: str = "default",
-    ):
+    ) -> None:
+        """build user custom chatbot by selected datasets
+
+        Args:
+            user (prd.UserPermission): user
+            password (str): password for decrypt
+            datasets (List[str]): dataset names
+            apikey (str): apikey for openai api
+            chatbot_name (str, optional): chatbot name. Defaults to "default".
+        """
         uid = user.uid
-        index = self.load_datasets(uid, datasets, password)
-        chain = build_user_chain(user, index, datasets)
+        index = self.load_datasets(
+            uid=uid, datasets=datasets, password=password, apikey=apikey
+        )
+        chain = build_user_chain(
+            index=index,
+            datasets=datasets,
+        )
         with user_embeddings_chain_mu:
             user_embeddings_chain[uid] = chain
 
@@ -895,9 +923,18 @@ class EmbeddingContext(aiohttp.web.View):
             length=len(chatbot_name.encode("utf-8")),
         )
 
-    def load_datasets(self, uid: str, datasets: List[str], password: str) -> Index:
-        """load datasets from s3"""
-        store = new_store()
+    def load_datasets(
+        self, uid: str, datasets: List[str], password: str, apikey: str
+    ) -> Index:
+        """load datasets from s3
+
+        Args:
+            uid (str): user id
+            datasets (List[str]): dataset names
+            password (str): password for decrypt
+            apikey (str): apikey for openai api
+        """
+        store = new_store(apikey=apikey)
         for dataset in datasets:
             idx_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
             store_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"

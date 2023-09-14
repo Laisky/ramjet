@@ -1,8 +1,9 @@
-import hashlib
 import functools
 import time
 from typing import Mapping
+import hashlib
 
+import aiohttp.web
 import jwt
 from aiohttp import web
 
@@ -45,31 +46,23 @@ def authenticate(func):
     return wrapper
 
 
-def get_user_by_appkey(apikey: str) -> prd.UserPermission:
-    if apikey.startswith("sk-"):
-        uid = hashlib.sha256(apikey.encode("utf-8")).hexdigest()[:16]
-        logger.debug(f"user's own openai token, {uid=}")
+def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
+    try:
+        apikey: str = request.headers.get("Authorization", "")
+        apikey = apikey.removeprefix("Bearer ")
+        assert apikey, "apikey is required"
+
+        model: str = request.query.get("model", "") or "gpt-3.5-turbo"
+
         userinfo = prd.UserPermission(
             is_free=False,
-            uid=uid,
+            uid=hashlib.sha1(apikey.encode()).hexdigest(),
             n_concurrent=100,
-            chat_model="gpt-3.5-turbo-16k",
+            chat_model=model,
+            apikey=apikey,
         )
-    elif apikey.startswith("FREETIER-"):
-        uid = hashlib.sha256(apikey.encode("utf-8")).hexdigest()[:16]
-        logger.debug(f"free tier openai token, {uid=}")
-        userinfo = prd.UserPermission(
-            is_free=True,
-            uid=uid,
-            n_concurrent=0,
-            chat_model="",
-        )
-    else:
-        userinfo = prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.get(apikey)
-        if not userinfo:
-            raise web.HTTPUnauthorized()
-
-        logger.debug(f"openai private embedding api key, {userinfo.uid=}")
+    except Exception:
+        return web.HTTPUnauthorized()
 
     return userinfo
 
@@ -83,10 +76,7 @@ def authenticate_by_appkey(func):
 
     @functools.wraps(func)
     async def wrapper(self, *args, **kwargs):
-        apikey: str = self.request.headers.get("Authorization", "")
-        apikey = apikey.removeprefix("Bearer ")
-
-        userinfo = get_user_by_appkey(apikey)
+        userinfo = get_user_by_appkey(self.request)
         return await func(self, userinfo, *args, **kwargs)
 
     return wrapper
@@ -124,23 +114,23 @@ def recover(func):
     return wrapper
 
 
-def get_user_by_uid(uid: str) -> prd.UserPermission:
-    """Get user by uid
+# def get_user_by_uid(uid: str) -> prd.UserPermission:
+#     """Get user by uid
 
-    Args:
-        uid (str): uid of user
+#     Args:
+#         uid (str): uid of user
 
-    Returns:
-        prd.UserPermission: user info
-    """
-    for user in prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.values():
-        if user.uid == uid:
-            return user
+#     Returns:
+#         prd.UserPermission: user info
+#     """
+#     for user in prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.values():
+#         if user.uid == uid:
+#             return user
 
-    logger.debug(f"uid {uid=} not found, using default user")
-    return prd.UserPermission(
-        is_free=True,
-        uid=uid,
-        n_concurrent=0,
-        chat_model="",
-    )
+#     logger.debug(f"uid {uid=} not found, using default user")
+#     return prd.UserPermission(
+#         is_free=True,
+#         uid=uid,
+#         n_concurrent=0,
+#         chat_model="",
+#     )
