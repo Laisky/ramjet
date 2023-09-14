@@ -338,10 +338,10 @@ class EncryptedFiles(aiohttp.web.View):
     async def get(self):
         # https://uid:password@fikekey.pdf
         # get uid and password from request basic auth
-        auth_header = self.request.headers.get("Authorization")
+        auth_header = self.request.headers.get("Authorization", "").strip()
+        auth_header = auth_header.removeprefix("Basic").removeprefix("Bearer").strip()
         if auth_header:
-            encoded_credentials = auth_header.split(" ")[1]
-            decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            decoded_credentials = base64.b64decode(auth_header).decode("utf-8")
             _, password = decoded_credentials.split(":")
         else:
             response = aiohttp.web.Response(status=401)
@@ -868,15 +868,11 @@ class EmbeddingContext(aiohttp.web.View):
         assert type(password) == str, "data_key must be string"
         assert password, "data_key is required"
 
-        apikey = data.get("apikey", "")
-        assert apikey, "apikey is required"
-
         self._build_user_chatbot(
             user=user,
             password=password,
             datasets=datasets,
             chatbot_name=chatbot_name,
-            apikey=apikey,
         )
         return aiohttp.web.json_response(
             {"msg": f"{chatbot_name} build ok"},
@@ -887,7 +883,6 @@ class EmbeddingContext(aiohttp.web.View):
         user: prd.UserPermission,
         password: str,
         datasets: List[str],
-        apikey: str,
         chatbot_name: str = "default",
     ) -> None:
         """build user custom chatbot by selected datasets
@@ -896,12 +891,13 @@ class EmbeddingContext(aiohttp.web.View):
             user (prd.UserPermission): user
             password (str): password for decrypt
             datasets (List[str]): dataset names
-            apikey (str): apikey for openai api
             chatbot_name (str, optional): chatbot name. Defaults to "default".
         """
         uid = user.uid
         index = self.load_datasets(
-            uid=uid, datasets=datasets, password=password, apikey=apikey
+            user=user,
+            datasets=datasets,
+            password=password,
         )
         chain = build_user_chain(
             index=index,
@@ -928,17 +924,20 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     def load_datasets(
-        self, uid: str, datasets: List[str], password: str, apikey: str
+        self,
+        user: prd.UserPermission,
+        datasets: List[str],
+        password: str,
     ) -> Index:
         """load datasets from s3
 
         Args:
-            uid (str): user id
+            user (prd.UserPermission): user
             datasets (List[str]): dataset names
             password (str): password for decrypt
-            apikey (str): apikey for openai api
         """
-        store = new_store(apikey=apikey)
+        uid = user.uid
+        store = new_store(apikey=user.apikey)
         for dataset in datasets:
             idx_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
             store_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
