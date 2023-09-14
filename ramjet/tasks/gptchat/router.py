@@ -580,10 +580,9 @@ class UploadedFiles(aiohttp.web.View):
                         break
 
                     total_size += len(chunk)
-                    if total_size > prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT:
-                        raise Exception(
-                            f"file size should not exceed {prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes"
-                        )
+                    assert (
+                        total_size < prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT
+                    ), f"file size should not exceed {prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes"
 
                     fp.write(chunk)
 
@@ -592,7 +591,12 @@ class UploadedFiles(aiohttp.web.View):
 
             # index = embedding_file(fp.name, metadata_name)
             index = thread_executor.submit(
-                embedding_file, fp.name, metadata_name
+                partial(
+                    embedding_file,
+                    fpath=fp.name,
+                    metadata_name=metadata_name,
+                    apikey=user.apikey,
+                )
             ).result()
 
             # encrypt and upload origin pdf file
