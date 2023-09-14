@@ -274,7 +274,7 @@ def _query_to_summary(
 
     summary = _summary_cache.get_cache(cache_key)
     if summary:
-        cached = True
+        hit_cache = True
     else:
         summary = summary_content(b64content, ext, apikey=apikey)
         _summary_cache.save_cache(cache_key, summary, expire_at=time.time() + 3600 * 24)
@@ -287,7 +287,7 @@ def _query_to_summary(
         {
             "results": summary,
             "cache_key": cache_key,
-            "cached": cached,
+            "cached": hit_cache,
             "operator": "scan",
         }
     )
