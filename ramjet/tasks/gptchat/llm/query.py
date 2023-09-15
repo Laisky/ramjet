@@ -95,7 +95,7 @@ def setup():
     logger.info("all chains have been setup")
 
 
-def query(project_name: str, question: str, llm: ChatOpenAI) -> Response:
+def query_for_user_chain(project_name: str, question: str, llm: ChatOpenAI) -> Response:
     resp, refs = all_chains[project_name](llm, question)
     # return Response(question=question, text=resp["answer"], url=resp.get("sources", ""))
     return Response(question=question, text=resp, url=list(set(refs)))

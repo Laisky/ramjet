@@ -38,7 +38,12 @@ from .llm.embeddings import (
     user_shared_chain,
     user_shared_chain_mu,
 )
-from .llm.query import classificate_query_type, query, setup, build_llm_for_user
+from .llm.query import (
+    classificate_query_type,
+    query_for_user_chain,
+    setup,
+    build_llm_for_user,
+)
 from .llm.scan import summary_content
 from .utils import authenticate_by_appkey as authenticate
 from .utils import authenticate_by_appkey_sync as authenticate_sync
@@ -153,7 +158,7 @@ class Query(aiohttp.web.View):
     @uid_method_ratelimiter()
     def query(self, user: prd.UserPermission, project: str, question: str):
         llm = build_llm_for_user(user)
-        return query(project, question, llm)
+        return query_for_user_chain(project, question, llm)
 
     @recover
     @authenticate
@@ -238,7 +243,6 @@ def _embedding_chunk_worker(
             b64content=b64content,
             ext=ext,
             apikey=apikey,
-            model=model,
         )
     else:
         raise Exception(f"unknown task type {task_type}")
@@ -253,7 +257,6 @@ def _query_to_summary(
     b64content: str,
     ext: str,
     apikey: str,
-    model: str = "gpt-3.5-turbo",
 ) -> aiohttp.web.Response:
     """query to summary
 
@@ -263,7 +266,6 @@ def _query_to_summary(
         b64content (str): base64 encoded content
         ext (str): file ext, like '.html'
         apikey (str): apikey for openai api
-        model (str, optional): openai model name, default is 'gpt-3.5-turbo'
 
     Returns:
         aiohttp.web.Response: json response
@@ -527,7 +529,7 @@ class UploadedFiles(aiohttp.web.View):
     @timer
     def process_file(self, user: prd.UserPermission, data) -> List[str]:
         dataset_name = data.get("file_key", "")
-        assert type(dataset_name) == str, "file_key must be string"
+        assert isinstance(dataset_name, str), "file_key must be string"
         assert dataset_name, "file_key is required"
         assert dataset_name_regex.match(
             dataset_name
@@ -552,11 +554,11 @@ class UploadedFiles(aiohttp.web.View):
         then encrypt and upload to s3
         """
         file = data.get("file", "")
-        assert type(file) == FileField, f"file must be FileField, got {type(file)}"
+        assert isinstance(file, FileField), f"file must be FileField, got {type(file)}"
 
         dataset_name = data.get("file_key", "")
         password = data.get("data_key", "")
-        assert type(password) == str, "data_key must be string"
+        assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
         file_ext = os.path.splitext(file.filename)[1]
@@ -607,7 +609,8 @@ class UploadedFiles(aiohttp.web.View):
                     key = derive_key(password)
                     cipher = AES.new(key, AES.MODE_EAX)
                     ciphertext, tag = cipher.encrypt_and_digest(src_fp.read())
-                    [encrypted_fp.write(x) for x in (cipher.nonce, tag, ciphertext)]
+                    for x in (cipher.nonce, tag, ciphertext):
+                        encrypted_fp.write(x)
 
             objs.append(encrypted_file_key)
             s3cli.fput_object(
@@ -804,7 +807,7 @@ class EmbeddingContext(aiohttp.web.View):
         will decrypt user's embeddings store and save it in plain text
         """
         password = data.get("data_key", "")
-        assert type(password) == str, "data_key must be string"
+        assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
         chatbot_name = data.get("chatbot_name", "")
@@ -841,7 +844,7 @@ class EmbeddingContext(aiohttp.web.View):
     ) -> aiohttp.web.Response:
         """active existed chatbot by name"""
         password = data.get("data_key", "")
-        assert type(password) == str, "data_key must be string"
+        assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
         chatbot_name = data.get("chatbot_name", "")
@@ -858,14 +861,14 @@ class EmbeddingContext(aiohttp.web.View):
     ) -> aiohttp.web.Response:
         """build chatbot by selected datasets"""
         datasets = data.get("datasets", [])
-        assert type(datasets) == list, "datasets must be list"
+        assert isinstance(datasets, list), "datasets must be list"
         assert datasets, "datasets is required"
 
         chatbot_name = data.get("chatbot_name", "")
         assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
 
         password = data.get("data_key", "")
-        assert type(password) == str, "data_key must be string"
+        assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
         self._build_user_chatbot(

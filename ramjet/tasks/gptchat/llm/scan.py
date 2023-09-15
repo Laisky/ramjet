@@ -72,17 +72,18 @@ def summary_content(
         else:
             raise ValueError(f"Unsupported extension: {ext}")
 
-    return _summary_by_mapreduce(docus, apikey=apikey)
+    return _get_question_tobe_summary(docus, apikey=apikey)
 
 
-def _summary_by_mapreduce(docus: List[Document], apikey: str = None) -> str:
-    """Summarize a list of documents using mapreduce.
+def _get_question_tobe_summary(docus: List[Document], apikey: str = None) -> str:
+    """return the question can be give to LLM to summarize the documents.
 
     Args:
-        docus: A list of documents.
+        docus (List[Document]): The documents to be summarized
+        apikey (str, optional): The openai api key. Defaults to None
 
     Returns:
-        The summary of the documents.
+        str: The question to be summarized
     """
 
     summary: str = ""

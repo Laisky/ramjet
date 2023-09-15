@@ -1,6 +1,6 @@
-from .query import query, setup
+from .query import query_for_user_chain, setup
 
 __all__ = [
-    "query",
+    "query_for_user_chain",
     "setup",
 ]
