@@ -1,0 +1,8 @@
+[MAIN]
+py-version = 3.10.13
+
+[MESSAGES CONTROL]
+disable=
+    broad-exception-caught,
+    broad-exception-raised,
+    unknown-option-value

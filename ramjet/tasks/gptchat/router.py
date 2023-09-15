@@ -65,7 +65,7 @@ s3cli: Minio = Minio(
     endpoint=prd.S3_MINIO_ADDR,
     access_key=prd.S3_KEY,
     secret_key=prd.S3_SECRET,
-    secure=False,
+    secure=True,
 )
 
 
@@ -176,7 +176,7 @@ class Query(aiohttp.web.View):
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
 
 
-_embedding_chunk_cache = Cache()
+_embedding_chunk_cache = Cache(s3cli=s3cli)
 
 
 def _make_embedding_chunk(
@@ -223,8 +223,10 @@ def _embedding_chunk_worker(
     model = data.get("model") or "gpt-3.5-turbo"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
-    apikey = request.headers.get("Authorization").removeprefix("Bearer ")
+    apikey = request.headers.get("Authorization", "")
+    assert isinstance(apikey, str), "apikey must be string"
     assert apikey, "apikey is required"
+    apikey = apikey.removeprefix("Bearer").strip()
     logger.debug(f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}")
 
     task_type = classificate_query_type(query=user_query, apikey=user.apikey)
@@ -248,7 +250,7 @@ def _embedding_chunk_worker(
         raise Exception(f"unknown task type {task_type}")
 
 
-_summary_cache = Cache()
+_summary_cache = Cache(s3cli=s3cli)
 
 
 def _query_to_summary(

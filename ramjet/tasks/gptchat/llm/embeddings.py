@@ -6,7 +6,7 @@ import re
 import tempfile
 import threading
 import time
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Optional, Any
 from urllib.parse import quote
 
 import faiss
@@ -21,6 +21,7 @@ from langchain.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from langchain.embeddings import OpenAIEmbeddings
+from langchain.document_loaders.base import BaseLoader
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
@@ -223,21 +224,21 @@ def embedding_file(
             max_chunks=max_chunks,
             apikey=apikey,
         )
-    elif file_ext == ".md":
+    elif file_ext in [".md", ".txt"]:
         idx = _embedding_markdown(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
         )
-    elif file_ext == ".docx" or file_ext == ".doc":
+    elif file_ext in [".docx", ".doc"]:
         idx = _embedding_msword(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
         )
-    elif file_ext == ".pptx" or file_ext == ".ppt":
+    elif file_ext in [".pptx", ".ppt"]:
         idx = _embedding_msppt(
             fpath=fpath,
             metadata_name=metadata_name,
@@ -319,8 +320,8 @@ def _embedding_pdf(
         splits = text_splitter.split_text(data.page_content)
         docs.extend(splits)
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
-        for ichunk, _ in enumerate(splits):
-            metadatas.append({"source": f"{metadata_name}#page={page+1}"})
+        for i, _ in enumerate(splits):
+            metadatas.append({"source": f"{metadata_name}#page={page+1}&chunk={i+1}"})
 
     assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
 
@@ -349,9 +350,9 @@ def _embedding_pdf(
     return index
 
 
-def _embeddings_worker(texts: List[str], metadatas: List[str], apikey: str) -> FAISS:
+def _embeddings_worker(texts: List[str], metadatas: List[dict], apikey: str) -> FAISS:
     index = new_store(apikey=apikey)
-    index.store.add_texts(texts, metadatas=metadatas)
+    index.store.add_texts(texts=texts, metadatas=metadatas)
     return index.store
 
 
@@ -371,16 +372,20 @@ def _embedding_markdown(
         Index: index
     """
     logger.info(f"call embedding_markdown {fpath=}, {metadata_name=}")
-    markdown_splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
+    # splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
+    splitter = TokenTextSplitter(
+        chunk_size=500,
+        chunk_overlap=30,
+    )
     index = new_store(apikey=apikey)
     docs = []
     metadatas = []
-    docus: List[Document] = None
+    docus: Optional[List[Document]] = None
     err: Exception
     for charset in ["utf-8", "gbk", "gb2312"]:
         try:
             fp = codecs.open(fpath, "rb", charset)
-            docus = markdown_splitter.create_documents([fp.read()])
+            docus = splitter.create_documents([fp.read()])
             fp.close()
             break
         except UnicodeDecodeError as e:
@@ -451,6 +456,7 @@ def _embedding_msword(
     )
 
     fileext = os.path.splitext(fpath)[1].lower()
+    loader: BaseLoader
     if fileext == ".docx":
         loader = Docx2txtLoader(fpath)
     elif fileext == ".doc":
@@ -592,7 +598,7 @@ def _embedding_html(
         f = thread_executor.submit(
             _embeddings_worker,
             texts=splits[start_at:end_at],
-            metadatas=[""] * (end_at - start_at),
+            metadatas=[{"key_holder": "val_holder"}] * (end_at - start_at),
             apikey=apikey,
         )
         futures.append(f)
@@ -681,14 +687,18 @@ def download_chatbot_index(
 
     if chatbot_name == "":
         # download current chatbot name
-        response = s3cli.get_object(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
-        )
-        chatbot_name = response.data.decode("utf-8")
-        logger.debug(f"download current chatbot name {chatbot_name=}")
-        response.close()
-        response.release_conn()
+        response: Any = None
+        try:
+            response = s3cli.get_object(
+                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+            )
+            chatbot_name = response.data.decode("utf-8")
+            logger.debug(f"download current chatbot name {chatbot_name=}")
+        finally:
+            if response:
+                response.close()
+                response.release_conn()
 
     if password:
         objkeys = [
@@ -785,7 +795,7 @@ def save_encrypt_store(
     index: Index,
     name: str,
     password: str,
-    datasets: List[str] = None,
+    datasets: Optional[List[str]] = None,
 ) -> None:
     """save encrypted store
 
@@ -794,7 +804,7 @@ def save_encrypt_store(
         dirpath (str): dirpath
         name (str): name of file, without ext
         password (str): password
-        datasets (List[str]): datasets, if empty, save as user's datasets,
+        datasets (Optional[List[str]]): datasets, if empty, save as user's datasets,
             if not empty, save as user's chatbot.
 
     Returns:

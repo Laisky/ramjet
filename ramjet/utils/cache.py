@@ -1,9 +1,19 @@
+# import datetime
+import io
+import pickle
 import time
-from typing import Any
+import gzip
 from dataclasses import dataclass
-from threading import Thread, RLock
+from threading import RLock, Thread
+from typing import Any, Dict, Optional
+
+from minio import Minio
+# from minio.retention import GOVERNANCE, Retention
+
+from ramjet.settings import prd
 
 from .log import logger
+
 
 @dataclass
 class CacheItem:
@@ -11,18 +21,22 @@ class CacheItem:
     value: Any
     expire_at_epoch: float
 
+
 logger = logger.getChild("cache")
 
+
 class Cache:
-    def __init__(self):
-        self.cache_lock = RLock()
-        self.cache_store = dict()
+    def __init__(self, s3cli: Minio):
+        self._cache_lock = RLock()
+        self._local_cache_store: Dict[str, CacheItem] = dict()
+        self._remote_cache_store = s3cli
         self.__closed = False
-        self._cleaner = Thread(target=self._cache_cleaner, daemon=True).start()
+
+        Thread(target=self._cache_cleaner, daemon=True).start()
 
     def close(self):
         logger.debug("close")
-        with self.cache_lock:
+        with self._cache_lock:
             self.__closed = True
 
     def save_cache(self, key: str, value: Any, expire_at: float = 0):
@@ -33,11 +47,29 @@ class Cache:
             expire_at (int, optional): The epoch time to expire the cache. Defaults to 0.
         """
         if not expire_at:
-            expire_at = time.time() + 60
+            expire_at = time.time() + 3600 * 24
 
-        with self.cache_lock:
-            logger.debug(f"save cache {key=}, expire_at={expire_at-time.time():.2f}")
-            self.cache_store[key] = CacheItem(key, value, expire_at)
+        item = CacheItem(key, value, expire_at)
+
+        # save to local cache first
+        with self._cache_lock:
+            self._local_cache_store[key] = item
+
+        # then save to remote cache
+        s3key = f"{prd.OPENAI_S3_CHUNK_CACHE_PREFIX}/{key}"
+        data = gzip.compress(pickle.dumps(item))
+        self._remote_cache_store.put_object(
+            bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
+            object_name=s3key,
+            data=io.BytesIO(data),
+            length=len(data),
+            # retention=Retention(
+            #     mode=GOVERNANCE,
+            #     retain_until_date=datetime.datetime.fromtimestamp(expire_at),
+            # ),
+        )
+
+        logger.debug(f"save cache {key=}, ttl={(expire_at-time.time())/3600:.2f}hr")
 
     def get_cache(self, key: str) -> Any:
         """
@@ -47,26 +79,57 @@ class Cache:
         Returns:
             Any: The value of the cache if it exists and is not expired, otherwise None
         """
-        with self.cache_lock:
-            if key in self.cache_store:
-                cache_item = self.cache_store[key]
+        # load from local cache first
+        with self._cache_lock:
+            if key in self._local_cache_store:
+                cache_item = self._local_cache_store[key]
                 if cache_item.expire_at_epoch > time.time():
-                    logger.debug(f"hit cache {key=}")
+                    logger.debug(f"hit local cache {key=}")
                     return cache_item.value
                 else:
-                    del self.cache_store[key]
+                    del self._local_cache_store[key]
 
-        logger.debug(f"miss cache {key=}")
-        return None
+        # then load from remote cache
+        data: Optional[CacheItem] = None
+        s3key = f"{prd.OPENAI_S3_CHUNK_CACHE_PREFIX}/{key}"
+        response: Any = None
+        try:
+            response = self._remote_cache_store.get_object(
+                bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
+                object_name=s3key,
+            )
+            data = pickle.loads(gzip.decompress(response.read()))
+        except Exception:
+            return
+        finally:
+            if response:
+                response.close()
+                response.release_conn()
+
+        if data and data.expire_at_epoch < time.time():
+            data = None
+            self._remote_cache_store.remove_object(
+                bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
+                object_name=s3key,
+            )
+
+        if not data:
+            logger.debug(f"miss cache {key=}")
+            return None
+
+        with self._cache_lock:
+            logger.debug(f"hit remote cache {s3key=}")
+            self._local_cache_store[key] = data
+            return data.value
 
     def _cache_cleaner(self):
         while True:
             time.sleep(60)
-            with self.cache_lock:
+            with self._cache_lock:
                 if self.__closed:
                     return
 
-                for key, cache_item in self.cache_store.items():
+                for key, cache_item in self._local_cache_store.items():
                     if cache_item.expire_at_epoch < time.time():
                         logger.debug(f"remove expired cache {key=}")
-                        del self.cache_store[key]
+                        del self._local_cache_store[key]
