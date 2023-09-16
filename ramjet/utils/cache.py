@@ -63,10 +63,6 @@ class Cache:
             object_name=s3key,
             data=io.BytesIO(data),
             length=len(data),
-            # retention=Retention(
-            #     mode=GOVERNANCE,
-            #     retain_until_date=datetime.datetime.fromtimestamp(expire_at),
-            # ),
         )
 
         logger.debug(f"save cache {key=}, ttl={(expire_at-time.time())/3600:.2f}hr")

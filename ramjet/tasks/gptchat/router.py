@@ -283,12 +283,13 @@ def _query_to_summary(
     Returns:
         aiohttp.web.Response: json response
     """
+    cache_key = f"summary-{cache_key}"
     logger.debug(f"query to summary, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     hit_cache = False
 
     summary = _summary_cache.get_cache(cache_key)
-    if summary:
+    if summary and isinstance(summary, str):
         hit_cache = True
     else:
         summary = summary_content(b64content, ext, apikey=apikey)
@@ -329,6 +330,7 @@ def _chunk_search(
     Returns:
         aiohttp.web.Response: json response
     """
+    cache_key = f"chunksearch-{cache_key}"
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     idx, cached = _make_embedding_chunk(
