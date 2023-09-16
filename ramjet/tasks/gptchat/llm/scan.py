@@ -4,7 +4,7 @@ import re
 import tempfile
 from concurrent.futures import Future
 from textwrap import dedent
-from typing import List
+from typing import List, Optional
 
 from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import (
@@ -14,7 +14,8 @@ from langchain.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from langchain.schema.document import Document
-from langchain.text_splitter import MarkdownTextSplitter, TokenTextSplitter
+from langchain.document_loaders.base import BaseLoader
+from langchain.text_splitter import TokenTextSplitter
 
 from ramjet.engines import thread_executor
 
@@ -22,7 +23,7 @@ from ramjet.engines import thread_executor
 def summary_content(
     b64content: str,
     ext: str,
-    apikey: str = None,
+    apikey: Optional[str] = None,
 ) -> str:
     """Summarize the content of a document.
 
@@ -51,23 +52,25 @@ def summary_content(
             f.write(file_content)
 
         docus: List[Document]
-        if ext == ".docx":
+        loader: BaseLoader
+        if ext in [".docx"]:
             loader = UnstructuredWordDocumentLoader(tmpfile)
             docus = loader.load_and_split(text_splitter=text_splitter)
-        elif ext == ".pptx":
+        elif ext in [".pptx"]:
             loader = UnstructuredPowerPointLoader(tmpfile)
             docus = loader.load_and_split(text_splitter=text_splitter)
-        elif ext == ".pdf":
+        elif ext in [".pdf"]:
             loader = PyPDFLoader(tmpfile)
             docus = loader.load_and_split(text_splitter=text_splitter)
-        elif ext == ".html":
+        elif ext in [".html"]:
             loader = BSHTMLLoader(tmpfile)
             docus = loader.load_and_split(text_splitter=text_splitter)
-        elif ext == ".md":
-            docus = MarkdownTextSplitter(
-                chunk_size=500, chunk_overlap=50
-            ).create_documents([file_content.decode("utf-8")])
-        elif ext == ".txt":
+        elif ext in [".md"]:
+            # docus = MarkdownTextSplitter(
+            #     chunk_size=500, chunk_overlap=50
+            # ).create_documents([file_content.decode("utf-8")])
+            docus = text_splitter.create_documents([file_content.decode("utf-8")])
+        elif ext in [".txt"]:
             docus = text_splitter.create_documents([file_content.decode("utf-8")])
         else:
             raise ValueError(f"Unsupported extension: {ext}")
@@ -75,7 +78,9 @@ def summary_content(
     return _get_question_tobe_summary(docus, apikey=apikey)
 
 
-def _get_question_tobe_summary(docus: List[Document], apikey: str = None) -> str:
+def _get_question_tobe_summary(
+    docus: List[Document], apikey: Optional[str] = None
+) -> str:
     """return the question can be give to LLM to summarize the documents.
 
     Args:
@@ -122,7 +127,9 @@ def _get_question_tobe_summary(docus: List[Document], apikey: str = None) -> str
     # return llm.predict(query)
 
 
-def summary_docu(docu: Document, apikey: str, model: str = "gpt-3.5-turbo") -> str:
+def summary_docu(
+    docu: Document, apikey: Optional[str] = None, model: str = "gpt-3.5-turbo"
+) -> str:
     """Summarize a document.
 
     Args:
@@ -134,7 +141,7 @@ def summary_docu(docu: Document, apikey: str, model: str = "gpt-3.5-turbo") -> s
         The summary of the document.
     """
     max_token = 500
-    if re.match(r"\-\d+k$", apikey, re.I):
+    if apikey and re.match(r"\-\d+k$", apikey, re.I):
         max_token = 20000
 
     llm = ChatOpenAI(

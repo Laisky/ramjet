@@ -28,7 +28,7 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
 )
 from langchain.schema.document import Document
-from langchain.text_splitter import MarkdownTextSplitter, TokenTextSplitter
+from langchain.text_splitter import TokenTextSplitter
 from langchain.vectorstores import FAISS
 from minio import Minio
 
@@ -45,8 +45,9 @@ user_shared_chain_mu = threading.RLock()
 user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
 
-N_BACTCH_FILES = 5
-N_NEAREST_CHUNKS = 5
+N_BACTCH_FILES: int = 5
+N_NEAREST_CHUNKS: int = 5
+DEFAULT_MAX_CHUNKS: int = 500
 
 
 def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
@@ -108,7 +109,7 @@ def build_chain(
 
     # fix stupid compatability issue in langchain faiss
     if not getattr(store, "_normalize_L2", None):
-        store._normalize_L2 = False
+        store._normalize_L2 = False  # pyliny: disable=protected-access
 
     def query_for_more_info(query: str) -> Tuple[str, List[str]]:
         """query more information from embeddings store
@@ -200,7 +201,7 @@ def embedding_file(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks=1500,
+    max_chunks: int = DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """read and parse file content, then embedding it to FAISS index
 
@@ -209,8 +210,8 @@ def embedding_file(
     Args:
         fpath (str): file path
         metadata_name (str): file key
-        max_chunks (int, optional): max chunks. Defaults to 1500
-        apikey (str): openai api key. Defaults to None
+        apikey (str): openai api key
+        max_chunks (int, optional): max chunks
 
     Returns:
         Index: index
@@ -289,7 +290,7 @@ def _embedding_pdf(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks=1500,
+    max_chunks: int = DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding pdf file
 
@@ -298,8 +299,8 @@ def _embedding_pdf(
     Args:
         fpath (str): file path
         metadata_name (str): file key
-        max_chunks (int, optional): max chunks. Defaults to 1500.
-        apikey (str): openai api key. Defaults to None.
+        apikey (str): openai api key
+        max_chunks (int, optional): max chunks
 
     Returns:
         Index: index
@@ -321,9 +322,12 @@ def _embedding_pdf(
         docs.extend(splits)
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for i, _ in enumerate(splits):
-            metadatas.append({"source": f"{metadata_name}#page={page+1}&chunk={i+1}"})
+            metadatas.append({"source": f"{metadata_name}#page={page+1}?chunk={i+1}"})
 
-    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+    assert len(docs) <= max_chunks, (
+        f"your account limit to parse at most {max_chunks} chunks, ",
+        f"but you submit {len(docs)}, consider upgrade your account",
+    )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
     futures = []
@@ -360,13 +364,14 @@ def _embedding_markdown(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks=1500,
+    max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding markdown file
 
     Args:
         fpath (str): file path
         metadata_name (str): file key
+        apikey (str): openai api key
 
     Returns:
         Index: index
@@ -391,8 +396,6 @@ def _embedding_markdown(
         except UnicodeDecodeError as e:
             err = e
             continue
-        except Exception:
-            raise
 
     if not docus:
         raise err
@@ -400,9 +403,12 @@ def _embedding_markdown(
     for ichunk, docu in enumerate(docus):
         title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
         docs.append(docu.page_content)
-        metadatas.append({"source": f"{metadata_name}#{title}"})
+        metadatas.append({"source": f"{metadata_name}#{title}?chunk={ichunk+1}"})
 
-    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+    assert len(docs) <= max_chunks, (
+        f"your account limit to parse at most {max_chunks} chunks, ",
+        f"but you submit {len(docs)}, consider upgrade your account",
+    )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
     futures = []
@@ -433,7 +439,7 @@ def _embedding_msword(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks=1500,
+    max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding word file
 
@@ -441,7 +447,7 @@ def _embedding_msword(
         fpath (str): file path
         metadata_name (str): file key
         apikey (str): openai api key
-        max_chunks (int, optional): max chunks. Defaults to 1500.
+        max_chunks (int, optional): max chunks
 
     Returns:
         Index: index
@@ -469,9 +475,14 @@ def _embedding_msword(
         docs.extend(splits)
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for ichunk, _ in enumerate(splits):
-            metadatas.append({"source": f"{metadata_name}#page={page+1}"})
+            metadatas.append(
+                {"source": f"{metadata_name}#page={page+1}?chunk={ichunk+1}"}
+            )
 
-    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+    assert len(docs) <= max_chunks, (
+        f"your account limit to parse at most {max_chunks} chunks, ",
+        f"but you submit {len(docs)}, consider upgrade your account",
+    )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
     futures = []
@@ -502,7 +513,7 @@ def _embedding_msppt(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks=1500,
+    max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding office powerpoint file
 
@@ -510,7 +521,7 @@ def _embedding_msppt(
         fpath (str): file path
         metadata_name (str): file key
         apikey (str): openai api key
-        max_chunks (int, optional): max chunks. Defaults to 1500.
+        max_chunks (int, optional): max chunks.
 
     Returns:
         Index: index
@@ -529,9 +540,14 @@ def _embedding_msppt(
         docs.extend(splits)
         logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
         for ichunk, _ in enumerate(splits):
-            metadatas.append({"source": f"{metadata_name}#page={page+1}"})
+            metadatas.append(
+                {"source": f"{metadata_name}#page={page+1}?chunk={ichunk+1}"}
+            )
 
-    assert len(docs) <= max_chunks, f"too many chunks {len(docs)} > {max_chunks}"
+    assert len(docs) <= max_chunks, (
+        f"your account limit to parse at most {max_chunks} chunks, ",
+        f"but you submit {len(docs)}, consider upgrade your account",
+    )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
     futures = []
@@ -562,7 +578,7 @@ def _embedding_html(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks=1500,
+    max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding html file
 
@@ -570,7 +586,7 @@ def _embedding_html(
         fpath (str): file path
         metadata_name (str): file key
         apikey (str): openai api key
-        max_chunks (int, optional): max chunks. Defaults to 1500.
+        max_chunks (int, optional): max chunks.
 
     Returns:
         Index: index
@@ -616,7 +632,7 @@ def new_store(apikey: str) -> Index:
     new FAISS store
 
     Args:
-        apikey (str): openai api key. Defaults to None.
+        apikey (str): openai api key
 
     Returns:
         Index: FAISS index
