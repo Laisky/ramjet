@@ -37,6 +37,7 @@ from .llm.embeddings import (
     user_embeddings_chain_mu,
     user_shared_chain,
     user_shared_chain_mu,
+    DEFAULT_MAX_CHUNKS,
 )
 from .llm.query import (
     build_llm_for_user,
@@ -582,7 +583,7 @@ class UploadedFiles(aiohttp.web.View):
         assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
-        max_chunks = data.get("max_chunks", 10)
+        max_chunks = data.get("max_chunks", DEFAULT_MAX_CHUNKS)
         assert isinstance(max_chunks, int), "max_chunks must be int"
 
         file_ext = os.path.splitext(file.filename)[1]
