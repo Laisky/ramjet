@@ -972,8 +972,8 @@ class EmbeddingContext(aiohttp.web.View):
             store_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
 
             with tempfile.TemporaryDirectory() as tmpdir:
-                idx_path = os.path.join(tmpdir, idx_key)
-                store_path = os.path.join(tmpdir, store_key)
+                idx_path = os.path.join(tmpdir, os.path.basename(idx_key))
+                store_path = os.path.join(tmpdir, os.path.basename(store_key))
 
                 logger.debug(f"load dataset {dataset} from {tmpdir}/{uid}")
                 s3cli.fget_object(
