@@ -1,17 +1,27 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import List
 
-from ramjet.settings import (MAIL_FROM_ADDR, MAIL_HOST, MAIL_PASSWD, MAIL_PORT,
-                             MAIL_USERNAME)
+from ramjet.settings import (
+    MAIL_FROM_ADDR,
+    MAIL_HOST,
+    MAIL_PASSWD,
+    MAIL_PORT,
+    MAIL_USERNAME,
+)
 
 
-
-def send_alert(*, to_addrs, subject, content, from_addr=MAIL_FROM_ADDR):
+def send_alert(
+    *, to_addrs: List[str], subject: str, content: str, from_addr: str = MAIL_FROM_ADDR
+):
     # FIXME: change to telegram
     return
 
-def send_mail(*, to_addrs, subject, content, from_addr=MAIL_FROM_ADDR):
+
+def send_mail(
+    *, to_addrs: List[str], subject: str, content: str, from_addr: str = MAIL_FROM_ADDR
+):
     """Send email
 
     Args:

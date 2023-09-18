@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Callable, Dict, List, Tuple, Optional, Any
 from urllib.parse import quote
+from concurrent.futures import Future
 
 import faiss
 from Crypto.Cipher import AES
@@ -145,7 +146,7 @@ def build_chain(
         n = 0
         last_sub_query = ""
         regexp = re.compile(r"I need more information about: .*")
-        all_refs = []
+        all_refs: List[str] = []
         ctx, refs = query_for_more_info(query)
         resp = ""
         while n < 3:
@@ -216,8 +217,8 @@ def embedding_file(
     Returns:
         Index: index
     """
-    start_at = time.time()
-    file_ext = os.path.splitext(fpath)[1].lower()
+    start_at: float = time.time()
+    file_ext: str = os.path.splitext(fpath)[1].lower()
     if file_ext == ".pdf":
         idx = _embedding_pdf(
             fpath=fpath,
@@ -311,8 +312,8 @@ def _embedding_pdf(
     loader = PyPDFLoader(fpath)
 
     index = new_store(apikey=apikey)
-    docs = []
-    metadatas = []
+    docs: List[str] = []
+    metadatas: List[dict] = []
     text_splitter = TokenTextSplitter(
         chunk_size=500,
         chunk_overlap=30,
@@ -330,22 +331,22 @@ def _embedding_pdf(
     )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures = []
-    start_at = 0
-    n_batch = 5
+    futures: List[Future] = []
+    start_idx: int = 0
+    n_batch: int = 5
     while True:
-        if start_at >= len(docs):
+        if start_idx >= len(docs):
             break
 
-        end_at = min(start_at + n_batch, len(docs))
+        end_at = min(start_idx + n_batch, len(docs))
         f = thread_executor.submit(
             _embeddings_worker,
-            texts=docs[start_at:end_at],
-            metadatas=metadatas[start_at:end_at],
+            texts=docs[start_idx:end_at],
+            metadatas=metadatas[start_idx:end_at],
             apikey=apikey,
         )
         futures.append(f)
-        start_at = end_at
+        start_idx = end_at
 
     index = new_store(apikey=apikey)
     for f in futures:
@@ -411,7 +412,7 @@ def _embedding_markdown(
     )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures = []
+    futures: List[Future] = []
     start_at = 0
     n_batch = 5
     while True:
@@ -485,7 +486,7 @@ def _embedding_msword(
     )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures = []
+    futures: List[Future] = []
     start_at = 0
     n_batch = 5
     while True:
@@ -550,7 +551,7 @@ def _embedding_msppt(
     )
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures = []
+    futures: List[Future] = []
     start_at = 0
     n_batch = 5
     while True:
@@ -603,22 +604,22 @@ def _embedding_html(
     assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
 
     logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(splits)} chunks")
-    futures = []
-    start_at = 0
+    futures: List[Future] = []
+    start_idx: int = 0
     n_batch = 5
     while True:
-        if start_at >= len(splits):
+        if start_idx >= len(splits):
             break
 
-        end_at = min(start_at + n_batch, len(splits))
+        end_at = min(start_idx + n_batch, len(splits))
         f = thread_executor.submit(
             _embeddings_worker,
-            texts=splits[start_at:end_at],
-            metadatas=[{"key_holder": "val_holder"}] * (end_at - start_at),
+            texts=splits[start_idx:end_at],
+            metadatas=[{"key_holder": "val_holder"}] * (end_at - start_idx),
             apikey=apikey,
         )
         futures.append(f)
-        start_at = end_at
+        start_idx = end_at
 
     index = new_store(apikey=apikey)
     for f in futures:

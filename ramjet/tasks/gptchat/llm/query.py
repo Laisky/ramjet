@@ -25,8 +25,8 @@ def build_llm_for_user(user: UserPermission) -> ChatOpenAI:
         ChatOpenAI: llm
     """
     max_token = 500
-    if re.match(r"\-\d+k$", user.chat_model, re.I):
-        max_token = 5000
+    if not user.is_free and re.match(r"\-\d+k$", user.chat_model, re.I):
+        max_token = 2000
 
     return ChatOpenAI(
         client=None,

@@ -8,8 +8,8 @@ import tempfile
 import threading
 import time
 import urllib.parse
-from typing import Dict, List, Set, Tuple
 from functools import partial
+from typing import Dict, List, Set, Tuple
 
 import aiohttp.web
 from aiohttp.web_request import FileField
@@ -39,10 +39,10 @@ from .llm.embeddings import (
     user_shared_chain_mu,
 )
 from .llm.query import (
+    build_llm_for_user,
     classificate_query_type,
     query_for_user_chain,
     setup,
-    build_llm_for_user,
 )
 from .llm.scan import summary_content
 from .utils import authenticate_by_appkey as authenticate

@@ -142,7 +142,7 @@ def summary_docu(
     """
     max_token = 500
     if apikey and re.match(r"\-\d+k$", apikey, re.I):
-        max_token = 20000
+        max_token = 10000
 
     llm = ChatOpenAI(
         client=None,

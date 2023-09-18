@@ -7,7 +7,7 @@ from ramjet.settings import logger
 
 def debug_wrapper(func):
     def wrapper(*args, **kw):
-        logger.debug("debug_wrapper for args {}, kw {}".format(args, kw))
+        logger.debug(f"debug_wrapper for {args=}, {kw=}")
         try:
             yield from func(*args, **kw)
         except Exception:
@@ -19,10 +19,9 @@ def debug_wrapper(func):
                 "cookies": self.request.cookies,
             }
             logger.error(
-                "{}\n-----\n{}".format(
-                    json.dumps(err_msg, indent=4, sort_keys=True),
-                    traceback.format_exc(),
-                )
+                f"{json.dumps(err_msg, indent=4, sort_keys=True)}"
+                "\n-----\n"
+                f"{traceback.format_exc()}"
             )
             raise
 
@@ -30,7 +29,6 @@ def debug_wrapper(func):
 
 
 class TemplateRendering:
-
     """
     A simple class to hold methods for rendering templates.
 

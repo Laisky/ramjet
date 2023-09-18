@@ -5,7 +5,8 @@ from kipp.options import opt
 from kipp.utils import setup_logger
 
 from ramjet.engines import thread_executor
-from ramjet.settings import LOG_NAME, LOG_PATH, MAIL_FROM_ADDR, MAIL_TO_ADDRS
+from ramjet.settings import LOG_NAME
+
 
 class MultiProcessLogHandler(logging.Handler):
     def __init__(self, *args, **kw):
@@ -48,26 +49,25 @@ class MultiProcessLogHandler(logging.Handler):
     def setup_queue(self):
         self.queue = multiprocessing.Queue(-1)
 
-    def __exit__(self):
-        super().__exit__()
+    def __exit__(self, exc_type, exc_value, traceback):
         self.queue.put_nowait(None)
 
 
 def setup_log():
-    logger = setup_logger(LOG_NAME)
+    _logger = setup_logger(LOG_NAME)
     # set roll file
     # rf = RFHandler(LOG_PATH, maxBytes=1024*1024*100, backupCount=3, delay=0.05)
     # rf.setLevel(logging.INFO)
     # rf.setFormatter(formatter)
 
     # log
-    logger.setLevel(logging.ERROR)
-    logger.addHandler(MultiProcessLogHandler())
+    _logger.setLevel(logging.ERROR)
+    _logger.addHandler(MultiProcessLogHandler())
     # log = logging.getLogger()
     # log.setLevel(logging.INFO)
     # log.addHandler(rf)
 
-    return logger
+    return _logger
 
 
 logger = setup_log()

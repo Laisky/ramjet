@@ -1,14 +1,13 @@
 # import datetime
+import gzip
 import io
 import pickle
 import time
-import gzip
 from dataclasses import dataclass
 from threading import RLock, Thread
 from typing import Any, Dict, Optional
 
 from minio import Minio
-# from minio.retention import GOVERNANCE, Retention
 
 from ramjet.settings import prd
 

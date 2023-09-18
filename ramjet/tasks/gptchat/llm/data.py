@@ -1,12 +1,13 @@
+import asyncio
 import os
 import pickle
-import aiohttp
-import asyncio
-from typing import Dict
+from typing import Coroutine, Dict, List
 
+import aiohttp
 import faiss
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
+
 from ramjet.settings import prd
 
 from ..base import logger
@@ -51,7 +52,7 @@ def load_all_stores() -> Dict[str, FAISS]:
 
 
 def prepare_data():
-    tasks = []
+    tasks: List[Coroutine] = []
     for name, project in prd.OPENAI_EMBEDDING_QA.items():
         logger.info(
             f"download vector datasets to {prd.OPENAI_INDEX_DIR} for {name} ..."
@@ -62,9 +63,9 @@ def prepare_data():
     loop.run_until_complete(asyncio.wait(tasks))
 
 
-async def _download_index_data(project: Dict):
+async def _download_index_data(project: Dict[str, str]):
     # download store
-    url = project["store"]
+    url: str = project["store"]
     fname = url.rsplit("/")[-1]
     fpath = os.path.join(prd.OPENAI_INDEX_DIR, fname)
     if os.path.exists(fpath):

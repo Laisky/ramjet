@@ -3,6 +3,7 @@
 
 import bcrypt
 import jwt
+
 from ramjet.settings import SECRET_KEY
 
 

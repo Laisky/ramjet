@@ -1,11 +1,10 @@
 import functools
+import hashlib
 import time
 from typing import Mapping
-import hashlib
 
 import aiohttp.web
 import jwt
-from aiohttp import web
 
 from ramjet.settings import prd
 
@@ -23,7 +22,7 @@ async def verify_user(request) -> Mapping:
     token = token.removeprefix("Bearer ")
 
     if not token:
-        raise web.HTTPUnauthorized()
+        raise aiohttp.web.HTTPUnauthorized()
 
     payload = jwt.decode(token, prd.SECRET_KEY, algorithms=["HS256"])
     assert payload["exp"] > time.time(), "jwt expired"
@@ -99,7 +98,7 @@ def recover(func):
             return await func(self, *args, **kwargs)
         except Exception as e:
             logger.exception("handler error")
-            return web.HTTPBadRequest(text=str(e))
+            return aiohttp.web.HTTPBadRequest(text=str(e))
 
     return wrapper
 
