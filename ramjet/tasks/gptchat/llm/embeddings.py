@@ -742,11 +742,15 @@ def download_chatbot_index(
             ),
         ]
 
+    # fix bug for https://github.com/minio/minio-py/pull/1309
+    tmp_file = os.path.join(dirpath, "tmp.part.minio")
+
     for objkey in objkeys:
         s3cli.fget_object(
             bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
             object_name=objkey,
             file_path=os.path.join(dirpath, os.path.basename(objkey)),
+            tmp_file_path=tmp_file,
         )
 
     # read index file

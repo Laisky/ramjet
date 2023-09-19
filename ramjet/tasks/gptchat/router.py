@@ -377,11 +377,16 @@ class EncryptedFiles(aiohttp.web.View):
         filename = os.path.basename(filekey)
         with tempfile.TemporaryDirectory() as tmpdir:
             fpath = os.path.join(tmpdir, filename)
+
+            # fix bug for https://github.com/minio/minio-py/pull/1309
+            tmp_file = os.path.join(tmpdir, "tmp.part.minio")
+
             s3cli.fget_object(
                 bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                 object_name=f"{filekey}",
                 file_path=fpath,
                 request_headers={"Cache-Control": "no-cache"},
+                tmp_file_path=tmp_file,
             )
 
             # decrypt pdf file
@@ -972,26 +977,31 @@ class EmbeddingContext(aiohttp.web.View):
             store_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
 
             with tempfile.TemporaryDirectory() as tmpdir:
-                idx_path = os.path.join(tmpdir, os.path.basename(idx_key))
-                store_path = os.path.join(tmpdir, os.path.basename(store_key))
+                idx_path = os.path.join(tmpdir, "dataset.index")
+                store_path = os.path.join(tmpdir, "dataset.store")
 
-                logger.debug(f"load dataset {dataset} from {tmpdir}/{uid}")
+                # fix bug for https://github.com/minio/minio-py/pull/1309
+                tmp_file = os.path.join(tmpdir, "tmp.part.minio")
+
+                logger.debug(f"download dataset {dataset=}, {idx_path=}")
                 s3cli.fget_object(
                     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=idx_key,
                     file_path=idx_path,
+                    tmp_file_path=tmp_file,
                     # request_headers={"Cache-Control": "no-cache"},
                 )
                 s3cli.fget_object(
                     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=store_key,
                     file_path=store_path,
+                    tmp_file_path=tmp_file,
                     # request_headers={"Cache-Control": "no-cache"},
                 )
 
                 store_part = load_encrypt_store(
                     dirpath=os.path.dirname(idx_path),
-                    name=dataset,
+                    name="dataset",
                     password=password,
                 )
 

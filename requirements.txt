@@ -32,7 +32,7 @@ humanize==3.12.0
 idna==3.3
 jieba==0.39
 pycryptodome==3.18.0
-minio==7.1.15
+minio==7.1.16
 Jinja2==3.0.3
 jmespath==0.10.0
 kipp==0.2.9

@@ -19,9 +19,9 @@ def debug_wrapper(func):
                 "cookies": self.request.cookies,
             }
             logger.error(
-                f"{json.dumps(err_msg, indent=4, sort_keys=True)}"
-                "\n-----\n"
-                f"{traceback.format_exc()}"
+                "%s\n-----\n%s",
+                {json.dumps(err_msg, indent=4, sort_keys=True)},
+                traceback.format_exc(),
             )
             raise
 

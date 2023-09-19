@@ -5,4 +5,5 @@ py-version = 3.10.13
 disable=
     broad-exception-caught,
     broad-exception-raised,
-    unknown-option-value
+    unknown-option-value,
+    logging-fstring-interpolation
