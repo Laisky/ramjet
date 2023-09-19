@@ -42,7 +42,8 @@ from .llm.embeddings import (
 from .llm.query import (
     build_llm_for_user,
     classificate_query_type,
-    query_for_user_chain,
+    query_for_prebuild_qa,
+    search_for_prebuild_qa,
     setup,
 )
 from .llm.scan import summary_content
@@ -140,6 +141,8 @@ class Query(aiohttp.web.View):
     @recover
     @authenticate
     async def get(self, user: prd.UserPermission):
+        op = self.request.match_info.get("op", "query")
+
         project = self.request.query.get("p")
         question = urllib.parse.unquote(self.request.query.get("q", ""))
 
@@ -148,18 +151,30 @@ class Query(aiohttp.web.View):
         if not question:
             return aiohttp.web.Response(text="q is required", status=400)
 
+        logger.debug(f"query prebuild qa, {op=}, {project=}, {question=}")
         ioloop = asyncio.get_running_loop()
-        resp = await ioloop.run_in_executor(
-            thread_executor,
-            partial(self.query, user=user, project=project, question=question),
-        )
+        if op == "/query":
+            resp = await ioloop.run_in_executor(
+                thread_executor,
+                partial(self.query, user=user, project=project, question=question),
+            )
+        elif op == "/search":
+            resp = await ioloop.run_in_executor(
+                thread_executor,
+                partial(self.search, project=project, question=question),
+            )
+        else:
+            return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
 
         return aiohttp.web.json_response(resp._asdict())
 
     @uid_method_ratelimiter()
     def query(self, user: prd.UserPermission, project: str, question: str):
         llm = build_llm_for_user(user)
-        return query_for_user_chain(project, question, llm)
+        return query_for_prebuild_qa(project, question, llm)
+
+    def search(self, project: str, question: str):
+        return search_for_prebuild_qa(project, question)
 
     @recover
     @authenticate
@@ -675,17 +690,23 @@ class EmbeddingContext(aiohttp.web.View):
         dispatch request to different handlers by url
         """
         op = self.request.match_info["op"]
+        logger.debug(f"embedding context, {op=}")
+
         ioloop = asyncio.get_event_loop()
         if op == "/chat":
-            return await ioloop.run_in_executor(thread_executor, self.chatbot_query)
+            resp = await ioloop.run_in_executor(thread_executor, self.chatbot_query)
+        elif op == "/search":
+            resp = await ioloop.run_in_executor(thread_executor, self.chatbot_search)
         elif op == "/list":
-            return await ioloop.run_in_executor(thread_executor, self.list_chatbots)
+            resp = await ioloop.run_in_executor(thread_executor, self.list_chatbots)
         elif op == "/share":
-            return await ioloop.run_in_executor(
+            resp = await ioloop.run_in_executor(
                 thread_executor, self.share_chatbot_query
             )
         else:
             raise Exception(f"unknown op {op}")
+
+        return resp
 
     @authenticate_sync
     def share_chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
@@ -711,6 +732,39 @@ class EmbeddingContext(aiohttp.web.View):
         sema = uid_ratelimiter(user=user)
         try:
             resp, refs = chatbot.chain(llm, query)
+            refs = list(set(refs))
+        finally:
+            sema.release()
+
+        return aiohttp.web.json_response(
+            {
+                "text": resp,
+                "url": refs,
+            }
+        )
+
+    @authenticate_sync
+    def chatbot_search(self, user: prd.UserPermission) -> aiohttp.web.Response:
+        uid = user.uid
+        user_query = self.request.query.get("q", "").strip()
+        assert user_query, "q is required"
+
+        password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
+        assert password, "X-PDFCHAT-PASSWORD is required"
+
+        with user_embeddings_chain_mu:
+            need_restore = uid not in user_embeddings_chain
+
+        if need_restore:
+            logger.debug(f"try restore user chain from s3 for {uid=}")
+            restore_user_chain(s3cli, user, password)
+
+        with user_embeddings_chain_mu:
+            chatbot = user_embeddings_chain[uid]
+
+        sema = uid_ratelimiter(user=user)
+        try:
+            resp, refs = chatbot.search(user_query)
             refs = list(set(refs))
         finally:
             sema.release()

@@ -81,6 +81,45 @@ def is_file_scaned(index: Index, fpath: str) -> bool:
     return os.path.split(fpath)[1] in index.scaned_files
 
 
+def build_search(
+    store: FAISS, nearest_k=N_NEAREST_CHUNKS
+) -> Callable[[str], Tuple[str, List[str]]]:
+    """build search function for a given store
+
+    Args:
+        store (FAISS): store
+        nearest_k (int, optional): number of nearest chunks to search.
+            Defaults to N_NEAREST_CHUNKS.
+
+    Returns:
+        Callable[[str], Tuple[str, List[str]]]:
+            search function, return context and references
+    """
+
+    def query_for_more_info(query: str) -> Tuple[str, List[str]]:
+        """query more information from embeddings store
+
+        Args:
+            query (str): query
+
+        Returns:
+            Tuple[str, List[str]]: context and references
+        """
+        logger.debug(f"query for more info: {query}")
+
+        related_docs = store.similarity_search(
+            query=query,
+            k=nearest_k,
+        )
+
+        ctx = "; ".join([d.page_content for d in related_docs if d.page_content])
+        refs = [d.metadata["source"] for d in related_docs]
+
+        return ctx, refs
+
+    return query_for_more_info
+
+
 def build_chain(
     store: FAISS, nearest_k=N_NEAREST_CHUNKS
 ) -> Callable[[ChatOpenAI, str], Tuple[str, List[str]]]:
@@ -112,26 +151,7 @@ def build_chain(
     if not getattr(store, "_normalize_L2", None):
         store._normalize_L2 = False  # pyliny: disable=protected-access
 
-    def query_for_more_info(query: str) -> Tuple[str, List[str]]:
-        """query more information from embeddings store
-
-        Args:
-            query (str): query
-
-        Returns:
-            Tuple[str, List[str]]: context and references
-        """
-        logger.debug(f"query for more info: {query}")
-
-        related_docs = store.similarity_search(
-            query=query,
-            k=nearest_k,
-        )
-
-        ctx = "; ".join([d.page_content for d in related_docs if d.page_content])
-        refs = [d.metadata["source"] for d in related_docs]
-
-        return ctx, refs
+    query_for_more_info = build_search(store=store, nearest_k=nearest_k)
 
     def chain(llm: ChatOpenAI, query: str) -> Tuple[str, List[str]]:
         """chain function
@@ -178,23 +198,24 @@ def build_chain(
     return chain
 
 
-def build_user_chain(index: Index, datasets: List[str]) -> UserChain:
+def build_user_chain(
+    index: Index, datasets: List[str], nearest_k: int = N_NEAREST_CHUNKS
+) -> UserChain:
     """build user's embedding index and save in memory
 
     Args:
-        user (prd.UserPermission): user
         index (Index): index
         datasets (List[str]): datasets
-        apikey (str): openai api key
+        nearest_k (int, optional): number of nearest chunks to search.
 
     Returns:
         UserChain: user chain
     """
-    n_chunks = N_NEAREST_CHUNKS
     return UserChain(
-        chain=build_chain(store=index.store, nearest_k=n_chunks),
-        index=index,
+        chain=build_chain(store=index.store, nearest_k=nearest_k),
+        user_index=index,
         datasets=datasets,
+        search=build_search(store=index.store, nearest_k=nearest_k),
     )
 
 

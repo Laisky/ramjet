@@ -1,17 +1,18 @@
 import re
 from collections import namedtuple
-from typing import Dict, Callable, Tuple, List
+from typing import Dict
 from textwrap import dedent
 
 from langchain.chat_models import ChatOpenAI
 from ramjet.settings.prd import UserPermission
 from ramjet.utils.log import logger
 
-from .data import load_all_stores, prepare_data
-from .embeddings import build_chain, N_NEAREST_CHUNKS
+from .data import load_all_prebuild_qa, prepare_data
+from .embeddings import build_user_chain, N_NEAREST_CHUNKS
+from .base import UserChain, Index
 
 logger = logger.getChild("gptchat.llm")
-all_chains: Dict[str, Callable[[ChatOpenAI, str], Tuple[str, List[str]]]] = {}
+prebuild_chains: Dict[str, UserChain] = {}
 Response = namedtuple("Response", ["question", "text", "url"])
 
 
@@ -57,7 +58,7 @@ def setup():
     # ]
     # prompt = ChatPromptTemplate.from_messages(messages)
 
-    for project_name, store in load_all_stores().items():
+    for project_name, store in load_all_prebuild_qa().items():
         # chain_type_kwargs = {"prompt": prompt}
 
         # n_chunk = N_NEAREST_CHUNKS
@@ -89,15 +90,44 @@ def setup():
         #     reduce_k_below_max_tokens=True,
         # )
 
-        all_chains[project_name] = build_chain(store=store, nearest_k=N_NEAREST_CHUNKS)
+        prebuild_chains[project_name] = build_user_chain(
+            index=Index(store=store, scaned_files=set([])),
+            datasets=[],
+            nearest_k=N_NEAREST_CHUNKS,
+        )
         logger.info(f"load chain for project: {project_name}")
 
     logger.info("all chains have been setup")
 
 
-def query_for_user_chain(project_name: str, question: str, llm: ChatOpenAI) -> Response:
-    resp, refs = all_chains[project_name](llm, question)
-    # return Response(question=question, text=resp["answer"], url=resp.get("sources", ""))
+def query_for_prebuild_qa(
+    project_name: str, question: str, llm: ChatOpenAI
+) -> Response:
+    """ask llm depends prebuild qa index
+
+    Args:
+        project_name (str): project name
+        question (str): user's question
+        llm (ChatOpenAI): llm
+
+    Returns:
+        Response: response consists of question, text and reference urls
+    """
+    resp, refs = prebuild_chains[project_name].chain(llm, question)
+    return Response(question=question, text=resp, url=list(set(refs)))
+
+
+def search_for_prebuild_qa(project_name: str, question: str) -> Response:
+    """search related docs for user's question in prebuild qa index
+
+    Args:
+        project_name (str): project name
+        question (str): user's question
+
+    Returns:
+        Response: response consists of question, text and reference urls
+    """
+    resp, refs = prebuild_chains[project_name].search(question)
     return Response(question=question, text=resp, url=list(set(refs)))
 
 

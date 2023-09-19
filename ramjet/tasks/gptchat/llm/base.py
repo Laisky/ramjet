@@ -14,6 +14,7 @@ class Index(NamedTuple):
 class UserChain(NamedTuple):
     """user chatbot"""
 
-    index: Index
+    user_index: Index
     datasets: List[str]
     chain: Callable[[ChatOpenAI, str], Tuple[str, List[str]]]
+    search: Callable[[str], Tuple[str, List[str]]]

@@ -13,7 +13,9 @@ from ramjet.settings import prd
 from ..base import logger
 
 
-def load_all_stores() -> Dict[str, FAISS]:
+def load_all_prebuild_qa() -> Dict[str, FAISS]:
+    """load all prebuild qa embeddings stores
+    """
     stores = {}
     # if os.environ.get("OPENAI_API_TYPE") == "azure":
     #     azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
