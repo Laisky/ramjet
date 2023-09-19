@@ -394,15 +394,25 @@ class EncryptedFiles(aiohttp.web.View):
             fpath = os.path.join(tmpdir, filename)
 
             # fix bug for https://github.com/minio/minio-py/pull/1309
-            tmp_file = os.path.join(tmpdir, "tmp.part.minio")
+            # tmp_file = os.path.join(tmpdir, "tmp.part.minio")
 
-            s3cli.fget_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=f"{filekey}",
-                file_path=fpath,
-                request_headers={"Cache-Control": "no-cache"},
-                tmp_file_path=tmp_file,
-            )
+            # s3cli.fget_object(
+            #     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            #     object_name=f"{filekey}",
+            #     file_path=fpath,
+            #     request_headers={"Cache-Control": "no-cache"},
+            #     tmp_file_path=tmp_file,
+            # )
+
+            # weird bug, my minio root account cannot fget_object, tell me 403.
+            # so I use aiohttp to download file
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url=f"https://s3.laisky.com/{prd.OPENAI_S3_EMBEDDINGS_BUCKET}/{filekey}",
+                ) as resp:
+                    assert resp.status == 200, f"failed to download file {filekey}"
+                    with open(fpath, "wb") as fp:
+                        fp.write(await resp.read())
 
             # decrypt pdf file
             with open(fpath, "rb") as f:
