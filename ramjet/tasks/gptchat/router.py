@@ -509,7 +509,7 @@ class UploadedFiles(aiohttp.web.View):
             # do not wait task done
             ioloop.run_in_executor(
                 thread_executor,
-                partial(self.delete_files, user=user, datasets=datasets),
+                partial(self.delete_files, user=user, dataset_names=datasets),
             )
         except Exception as e:
             logger.exception(f"failed to delete files {data.get('files', [])}")
