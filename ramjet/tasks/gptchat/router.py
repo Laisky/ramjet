@@ -299,7 +299,7 @@ def _query_to_summary(
     Returns:
         aiohttp.web.Response: json response
     """
-    cache_key = f"summary-{cache_key}"
+    cache_key = f"summary/{cache_key[:2]}/{cache_key[2:4]}/{cache_key}"
     logger.debug(f"query to summary, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     hit_cache = False
@@ -346,7 +346,7 @@ def _chunk_search(
     Returns:
         aiohttp.web.Response: json response
     """
-    cache_key = f"chunksearch-{cache_key}"
+    cache_key = f"chunksearch/{cache_key[:2]}/{cache_key[2:4]}/{cache_key}"
     logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     idx, cached = _make_embedding_chunk(
