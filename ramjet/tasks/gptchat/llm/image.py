@@ -38,6 +38,7 @@ def upload_image_to_s3(
         str: image url
     """
     objkey_prefix = os.path.splitext(image_objkey(task_id=task_id))[0]
+    logger.debug(f"wait upload image and prompt to s3, key={objkey_prefix}")
 
     # upload image
     s3cli.put_object(
@@ -55,7 +56,7 @@ def upload_image_to_s3(
         length=len(prompt.encode("utf-8")),
     )
 
-    logger.info(f"upload image and prompt to s3, key={objkey_prefix}")
+    logger.info(f"succceed upload image and prompt to s3, key={objkey_prefix}")
     return f"{prd.S3_SERVER}/{prd.OPENAI_S3_CHUNK_CACHE_BUCKET}/{objkey_prefix}.png"
 
 
@@ -76,9 +77,10 @@ def draw_image_by_dalle(prompt: str, apikey: str) -> bytes:
         prompt=prompt,
         api_key=apikey,
         n=1,
-        size="1024x1024",
+        # size="1024x1024",
+        size="512x512",
         response_format="b64_json",
     )
 
-    logger.info(f"draw image by dalle-2, {prompt=}")
+    logger.debug(f"succeed draw image by dalle-2, {prompt=}")
     return b64decode(response["data"][0]["b64_json"])

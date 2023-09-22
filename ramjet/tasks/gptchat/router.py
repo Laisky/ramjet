@@ -158,7 +158,10 @@ class Image(aiohttp.web.View):
             resp = aiohttp.web.json_response(
                 {
                     "task_id": task_id,
-                    "image_url": f"{settings.S3_SERVER}/{settings.OPENAI_S3_CHUNK_CACHE_BUCKET}/{image_objkey(task_id=task_id)}",
+                    "image_url": (
+                        f"{settings.S3_SERVER}/"
+                        f"{settings.OPENAI_S3_CHUNK_CACHE_BUCKET}/{image_objkey(task_id=task_id)}",
+                    ),
                 }
             )
         else:
@@ -197,7 +200,7 @@ class Image(aiohttp.web.View):
         assert isinstance(prompt, str), "prompt must be string"
         assert prompt, "prompt is required"
 
-        logger.debug(f"draw image by dalle, user={user.uid}")
+        logger.debug(f"draw image by dalle, user={user.uid}, {task_id=}")
         img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
         upload_image_to_s3(
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
@@ -918,10 +921,12 @@ class EmbeddingContext(aiohttp.web.View):
                 object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
             )
             current_chatbot = resp.data.decode("utf-8")
-            resp.close()
-            resp.release_conn()
         except Exception:
             current_chatbot = ""
+        finally:
+            if resp:
+                resp.close()
+                resp.release_conn()
 
         return aiohttp.web.json_response(
             {
