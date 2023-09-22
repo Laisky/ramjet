@@ -725,18 +725,18 @@ def download_chatbot_index(
 
     if chatbot_name == "":
         # download current chatbot name
-        response: Any = None
+        resp: Any = None
         try:
-            response = s3cli.get_object(
+            resp = s3cli.get_object(
                 bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
                 object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
             )
-            chatbot_name = response.data.decode("utf-8")
+            chatbot_name = resp.data.decode("utf-8")
             logger.debug(f"download current chatbot name {chatbot_name=}")
         finally:
-            if response:
-                response.close()
-                response.release_conn()
+            if resp:
+                resp.close()
+                resp.release_conn()
 
     if password:
         objkeys = [

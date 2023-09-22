@@ -87,19 +87,19 @@ class Cache:
         # then load from remote cache
         data: Optional[CacheItem] = None
         s3key = f"{prd.OPENAI_S3_CHUNK_CACHE_PREFIX}/{key}"
-        response: Any = None
+        resp: Any = None
         try:
-            response = self._remote_cache_store.get_object(
+            resp = self._remote_cache_store.get_object(
                 bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=s3key,
             )
-            data = pickle.loads(gzip.decompress(response.read()))
+            data = pickle.loads(gzip.decompress(resp.read()))
         except Exception:
             return
         finally:
-            if response:
-                response.close()
-                response.release_conn()
+            if resp:
+                resp.close()
+                resp.release_conn()
 
         if data and data.expire_at_epoch < time.time():
             data = None

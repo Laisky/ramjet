@@ -915,6 +915,7 @@ class EmbeddingContext(aiohttp.web.View):
             )
 
         # get current
+        resp = None
         try:
             resp = s3cli.get_object(
                 bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
@@ -1094,11 +1095,17 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
         # save current chatbot
+        current_chatbot_objkey = (
+            f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT"
+        )
         s3cli.put_object(
             bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
-            object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+            object_name=current_chatbot_objkey,
             data=io.BytesIO(chatbot_name.encode("utf-8")),
             length=len(chatbot_name.encode("utf-8")),
+        )
+        logger.debug(
+            f"save current chatbot {chatbot_name=}, {current_chatbot_objkey}, {uid=}"
         )
 
     def load_datasets(
