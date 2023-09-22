@@ -40,7 +40,7 @@ from .llm.embeddings import (
     user_shared_chain,
     user_shared_chain_mu,
 )
-from .llm.image import draw_image_by_dalle, upload_image_to_s3, image_url
+from .llm.image import draw_image_by_dalle, upload_image_to_s3, image_objkey
 from .llm.query import (
     build_llm_for_user,
     classificate_query_type,
@@ -156,7 +156,10 @@ class Image(aiohttp.web.View):
                 ),
             )
             resp = aiohttp.web.json_response(
-                {"task_id": task_id, "image_url": image_url(task_id=task_id)}
+                {
+                    "task_id": task_id,
+                    "image_url": f"{settings.S3_SERVER}/{settings.OPENAI_S3_CHUNK_CACHE_BUCKET}/{image_objkey(task_id=task_id)}",
+                }
             )
         else:
             resp = aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
@@ -168,7 +171,7 @@ class Image(aiohttp.web.View):
         try:
             return func()
         except Exception as err:
-            objkey = f"{os.path.splitext(image_url(task_id=task_id))[0]}.err.txt"
+            objkey = f"{os.path.splitext(image_objkey(task_id=task_id))[0]}.err.txt"
             logger.error(f"catch and upload image drawing error, {objkey=}, {err=}")
             errmsg = str(err).encode("utf-8")
             s3cli.put_object(

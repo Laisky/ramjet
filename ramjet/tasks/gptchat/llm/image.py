@@ -11,7 +11,15 @@ from ramjet.tasks.gptchat.utils import logger
 logger = logger.getChild("image")
 
 
-def image_url(task_id: str) -> str:
+def image_objkey(task_id: str) -> str:
+    """get image url path without schema and domain by task id
+
+    Args:
+        task_id (str): task id
+
+    Returns:
+        str: image url path
+    """
     return f"{prd.OPENAI_S3_CHUNK_CACHE_IMAGES}/{task_id[:2]}/{task_id[2:4]}/{task_id}.png"
 
 
@@ -29,7 +37,7 @@ def upload_image_to_s3(
     Returns:
         str: image url
     """
-    objkey_prefix = os.path.splitext(image_url(task_id=task_id))[0]
+    objkey_prefix = os.path.splitext(image_objkey(task_id=task_id))[0]
 
     # upload image
     s3cli.put_object(
