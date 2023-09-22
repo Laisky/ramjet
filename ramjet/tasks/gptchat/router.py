@@ -10,19 +10,21 @@ import time
 import urllib.parse
 from functools import partial
 from typing import Dict, List, Set, Tuple
+from uuid import uuid1
 
 import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
-from kipp.decorator import timer
+from kipp.decorator import timer, debug_wrapper
 from minio import Minio
 
 from ramjet.engines import thread_executor
-from ramjet.settings import prd
+from ramjet import settings
 from ramjet.utils import Cache
 
 from .base import logger
 from .llm.embeddings import (
+    DEFAULT_MAX_CHUNKS,
     Index,
     build_user_chain,
     derive_key,
@@ -37,8 +39,8 @@ from .llm.embeddings import (
     user_embeddings_chain_mu,
     user_shared_chain,
     user_shared_chain_mu,
-    DEFAULT_MAX_CHUNKS,
 )
+from .llm.image import draw_image_by_dalle, upload_image_to_s3, image_url
 from .llm.query import (
     build_llm_for_user,
     classificate_query_type,
@@ -64,9 +66,9 @@ user_processing_files: Dict[str, Set[str]] = {}
 dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 s3cli: Minio = Minio(
-    endpoint=prd.S3_MINIO_ADDR,
-    access_key=prd.S3_KEY,
-    secret_key=prd.S3_SECRET,
+    endpoint=settings.S3_MINIO_ADDR,
+    access_key=settings.S3_KEY,
+    secret_key=settings.S3_SECRET,
     secure=True,
 )
 
@@ -81,10 +83,11 @@ def bind_handle(add_route):
     add_route("query{op:(/.*)?}", Query)
     add_route("files", UploadedFiles)
     add_route("ctx{op:(/.*)?}", EmbeddingContext)
+    add_route("image{op:(/.*)?}", Image)
     add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
 
 
-def uid_ratelimiter(user: prd.UserPermission, concurrent=3) -> threading.Semaphore:
+def uid_ratelimiter(user: settings.UserPermission, concurrent=3) -> threading.Semaphore:
     logger.debug(f"uid_ratelimiter: {user.uid=}")
     uid = user.uid
     limit = user.n_concurrent or concurrent
@@ -117,7 +120,7 @@ def uid_method_ratelimiter(concurrent=3):
     """
 
     def decorator(func):
-        def wrapper(self, user: prd.UserPermission, *args, **kwargs):
+        def wrapper(self, user: settings.UserPermission, *args, **kwargs):
             sema = uid_ratelimiter(user, concurrent)
 
             try:
@@ -135,12 +138,57 @@ class LandingPage(aiohttp.web.View):
         return aiohttp.web.Response(text="welcome to gptchat")
 
 
+class Image(aiohttp.web.View):
+    @recover
+    @authenticate
+    async def post(self, user: settings.UserPermission):
+        op = self.request.match_info["op"]
+        data = dict(await self.request.json())
+        logger.debug(f"post image api, {op=}")
+
+        if op == "/dalle":
+            task_id = str(uuid1())
+            thread_executor.submit(
+                self._draw_by_dalle, data=data, user=user, task_id=task_id
+            )
+            resp = aiohttp.web.json_response(
+                {"task_id": task_id, "image_url": image_url(taskid=task_id)}
+            )
+        else:
+            resp = aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
+
+        return resp
+
+    @debug_wrapper
+    def _draw_by_dalle(
+        self,
+        user: settings.UserPermission,
+        data: dict,
+        task_id: str,
+    ) -> None:
+        """draw image by openai dalle-2 and upload to s3
+
+        Args:
+            user (settings.UserPermission): user info
+            data (dict): request data
+        """
+        prompt = data.get("prompt", "")
+        assert isinstance(prompt, str), "prompt must be string"
+        assert prompt, "prompt is required"
+
+        logger.debug(f"draw image by dalle, user={user.uid}")
+        img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
+        upload_image_to_s3(
+            s3cli=s3cli, img_content=img_content, taskid=task_id, prompt=prompt
+        )
+
+
 class Query(aiohttp.web.View):
     """query by pre-embedded pdf files"""
 
     @recover
     @authenticate
-    async def get(self, user: prd.UserPermission):
+    async def get(self, user: settings.UserPermission):
         op = self.request.match_info.get("op", "query")
 
         project = self.request.query.get("p")
@@ -169,7 +217,7 @@ class Query(aiohttp.web.View):
         return aiohttp.web.json_response(resp._asdict())
 
     @uid_method_ratelimiter()
-    def query(self, user: prd.UserPermission, project: str, question: str):
+    def query(self, user: settings.UserPermission, project: str, question: str):
         llm = build_llm_for_user(user)
         return query_for_prebuild_qa(project, question, llm)
 
@@ -232,8 +280,8 @@ def _make_embedding_chunk(
 
 
 def _embedding_chunk_worker(
-    request: aiohttp.web.Request, data: Dict[str, str], user: prd.UserPermission
-):
+    request: aiohttp.web.Request, data: Dict[str, str], user: settings.UserPermission
+) -> aiohttp.web.Response:
     b64content = data.get("content")
     assert b64content, "base64 encoded content is required"
     user_query = data.get("query")
@@ -397,7 +445,7 @@ class EncryptedFiles(aiohttp.web.View):
             # tmp_file = os.path.join(tmpdir, "tmp.part.minio")
 
             # s3cli.fget_object(
-            #     bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            #     bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
             #     object_name=f"{filekey}",
             #     file_path=fpath,
             #     request_headers={"Cache-Control": "no-cache"},
@@ -408,7 +456,7 @@ class EncryptedFiles(aiohttp.web.View):
             # so I use aiohttp to download file
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    url=f"https://s3.laisky.com/{prd.OPENAI_S3_EMBEDDINGS_BUCKET}/{filekey}",
+                    url=f"https://s3.laisky.com/{settings.OPENAI_S3_EMBEDDINGS_BUCKET}/{filekey}",
                 ) as resp:
                     assert resp.status == 200, f"failed to download file {filekey}"
                     with open(fpath, "wb") as fp:
@@ -462,7 +510,7 @@ class UploadedFiles(aiohttp.web.View):
 
     @recover
     @authenticate
-    async def get(self, user: prd.UserPermission):
+    async def get(self, user: settings.UserPermission):
         """list s3 files"""
         uid = user.uid
         files: List[Dict] = []
@@ -472,8 +520,8 @@ class UploadedFiles(aiohttp.web.View):
         # files.append({"name": "test.pdf", "status": "processing", "progress": 75})
 
         for obj in s3cli.list_objects(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/",
+            bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            prefix=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/",
             recursive=False,
         ):
             if obj.object_name.endswith(".store"):
@@ -517,7 +565,7 @@ class UploadedFiles(aiohttp.web.View):
 
     @recover
     @authenticate
-    async def delete(self, user: prd.UserPermission):
+    async def delete(self, user: settings.UserPermission):
         """delete s3 files"""
         data = await self.request.json()
         datasets = data.get("datasets", [])
@@ -542,14 +590,16 @@ class UploadedFiles(aiohttp.web.View):
 
         return aiohttp.web.json_response({"status": "ok"})
 
-    def delete_files(self, user: prd.UserPermission, dataset_names: List[str]):
+    def delete_files(self, user: settings.UserPermission, dataset_names: List[str]):
         uid = user.uid
         for ext in ["store", "index", "pdf"]:
             for dataset_name in dataset_names:
-                objkey = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}.{ext}"
+                objkey = (
+                    f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}.{ext}"
+                )
                 try:
                     s3cli.remove_object(
-                        bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                        bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
                         object_name=objkey,
                     )
                     logger.info(f"deleted file on s3, {objkey=}")
@@ -558,7 +608,7 @@ class UploadedFiles(aiohttp.web.View):
 
     @recover
     @authenticate
-    async def post(self, user: prd.UserPermission):
+    async def post(self, user: settings.UserPermission):
         """Upload pdf file by form"""
         data = await self.request.post()
 
@@ -579,7 +629,7 @@ class UploadedFiles(aiohttp.web.View):
         return aiohttp.web.json_response({"status": "ok"})
 
     @timer
-    def process_file(self, user: prd.UserPermission, data) -> List[str]:
+    def process_file(self, user: settings.UserPermission, data) -> List[str]:
         dataset_name = data.get("file_key", "")
         assert isinstance(dataset_name, str), "file_key must be string"
         assert dataset_name, "file_key is required"
@@ -601,7 +651,7 @@ class UploadedFiles(aiohttp.web.View):
             with user_processing_files_lock:
                 user_processing_files[uid].remove(dataset_name)
 
-    def _process_file(self, user: prd.UserPermission, data: Dict) -> List[str]:
+    def _process_file(self, user: settings.UserPermission, data: Dict) -> List[str]:
         """process user uploaded file by openai embeddings,
         then encrypt and upload to s3
         """
@@ -621,7 +671,7 @@ class UploadedFiles(aiohttp.web.View):
         uid = user.uid
         objs = []
         encrypted_file_key = (
-            f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}{file_ext}"
+            f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset_name}{file_ext}"
         )
 
         logger.info(f"process file {file.filename} for {uid}")
@@ -638,12 +688,14 @@ class UploadedFiles(aiohttp.web.View):
 
                     total_size += len(chunk)
                     assert (
-                        total_size < prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT
-                    ), f"file size should not exceed {prd.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes"
+                        total_size < settings.OPENAI_EMBEDDING_FILE_SIZE_LIMIT
+                    ), f"file size should not exceed {settings.OPENAI_EMBEDDING_FILE_SIZE_LIMIT} bytes"
 
                     fp.write(chunk)
 
-            metadata_name = f"{prd.OPENAI_EMBEDDING_REF_URL_PREFIX}{encrypted_file_key}"
+            metadata_name = (
+                f"{settings.OPENAI_EMBEDDING_REF_URL_PREFIX}{encrypted_file_key}"
+            )
             file_ext = os.path.splitext(fp.name)[1]
 
             # index = embedding_file(fp.name, metadata_name)
@@ -670,7 +722,7 @@ class UploadedFiles(aiohttp.web.View):
 
             objs.append(encrypted_file_key)
             s3cli.fput_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
                 object_name=encrypted_file_key,
                 file_path=encrypted_file_path,
             )
@@ -719,7 +771,9 @@ class EmbeddingContext(aiohttp.web.View):
         return resp
 
     @authenticate_sync
-    def share_chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
+    def share_chatbot_query(
+        self, user: settings.UserPermission
+    ) -> aiohttp.web.Response:
         """talk with somebody shared private knowledge base"""
         # get uid and chatbot_name from query args
         chatbot_name = self.request.query.get("chatbot_name", "")
@@ -754,7 +808,7 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     @authenticate_sync
-    def chatbot_search(self, user: prd.UserPermission) -> aiohttp.web.Response:
+    def chatbot_search(self, user: settings.UserPermission) -> aiohttp.web.Response:
         uid = user.uid
         user_query = self.request.query.get("q", "").strip()
         assert user_query, "q is required"
@@ -787,7 +841,7 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     @authenticate_sync
-    def chatbot_query(self, user: prd.UserPermission) -> aiohttp.web.Response:
+    def chatbot_query(self, user: settings.UserPermission) -> aiohttp.web.Response:
         """talk with user's private knowledge base"""
         uid = user.uid
         user_query = self.request.query.get("q", "").strip()
@@ -822,11 +876,11 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     @authenticate_sync
-    def list_chatbots(self, user: prd.UserPermission) -> aiohttp.web.Response:
+    def list_chatbots(self, user: settings.UserPermission) -> aiohttp.web.Response:
         chatbot_names = []
         for obj in s3cli.list_objects(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            prefix=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/",
+            bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            prefix=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/",
             recursive=False,
         ):
             if not obj.object_name.endswith(".store"):
@@ -839,8 +893,8 @@ class EmbeddingContext(aiohttp.web.View):
         # get current
         try:
             resp = s3cli.get_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
+                bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+                object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
             )
             current_chatbot = resp.data.decode("utf-8")
             resp.close()
@@ -857,7 +911,7 @@ class EmbeddingContext(aiohttp.web.View):
 
     @recover
     @authenticate
-    async def post(self, user: prd.UserPermission):
+    async def post(self, user: settings.UserPermission):
         data = await self.request.json()
 
         ioloop = asyncio.get_event_loop()
@@ -894,7 +948,7 @@ class EmbeddingContext(aiohttp.web.View):
             raise NotImplementedError(f"unknown op {op}")
 
     def share_chatbot(
-        self, user: prd.UserPermission, data: Dict
+        self, user: settings.UserPermission, data: Dict
     ) -> aiohttp.web.Response:
         """
         share chatbot to other users
@@ -934,7 +988,7 @@ class EmbeddingContext(aiohttp.web.View):
 
     def active_chatbot(
         self,
-        user: prd.UserPermission,
+        user: settings.UserPermission,
         data: Dict,
     ) -> aiohttp.web.Response:
         """active existed chatbot by name"""
@@ -952,7 +1006,7 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     def build_chatbot(
-        self, user: prd.UserPermission, data: Dict
+        self, user: settings.UserPermission, data: Dict
     ) -> aiohttp.web.Response:
         """build chatbot by selected datasets"""
         datasets = data.get("datasets", [])
@@ -978,7 +1032,7 @@ class EmbeddingContext(aiohttp.web.View):
 
     def _build_user_chatbot(
         self,
-        user: prd.UserPermission,
+        user: settings.UserPermission,
         password: str,
         datasets: List[str],
         chatbot_name: str = "default",
@@ -986,7 +1040,7 @@ class EmbeddingContext(aiohttp.web.View):
         """build user custom chatbot by selected datasets
 
         Args:
-            user (prd.UserPermission): user
+            user (settings.UserPermission): user
             password (str): password for decrypt
             datasets (List[str]): dataset names
             chatbot_name (str, optional): chatbot name. Defaults to "default".
@@ -1015,30 +1069,30 @@ class EmbeddingContext(aiohttp.web.View):
 
         # save current chatbot
         s3cli.put_object(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-            object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+            bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
             data=io.BytesIO(chatbot_name.encode("utf-8")),
             length=len(chatbot_name.encode("utf-8")),
         )
 
     def load_datasets(
         self,
-        user: prd.UserPermission,
+        user: settings.UserPermission,
         datasets: List[str],
         password: str,
     ) -> Index:
         """load datasets from s3
 
         Args:
-            user (prd.UserPermission): user
+            user (settings.UserPermission): user
             datasets (List[str]): dataset names
             password (str): password for decrypt
         """
         uid = user.uid
         store = new_store(apikey=user.apikey)
         for dataset in datasets:
-            idx_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
-            store_key = f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
+            idx_key = f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
+            store_key = f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 idx_path = os.path.join(tmpdir, "dataset.index")
@@ -1049,14 +1103,14 @@ class EmbeddingContext(aiohttp.web.View):
 
                 logger.debug(f"download dataset {dataset=}, {idx_path=}")
                 s3cli.fget_object(
-                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                    bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=idx_key,
                     file_path=idx_path,
                     tmp_file_path=tmp_file,
                     # request_headers={"Cache-Control": "no-cache"},
                 )
                 s3cli.fget_object(
-                    bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                    bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=store_key,
                     file_path=store_path,
                     tmp_file_path=tmp_file,
