@@ -9,13 +9,13 @@ import threading
 import time
 import urllib.parse
 from functools import partial
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Callable
 from uuid import uuid1
 
 import aiohttp.web
 from aiohttp.web_request import FileField
 from Crypto.Cipher import AES
-from kipp.decorator import timer, debug_wrapper
+from kipp.decorator import timer
 from minio import Minio
 
 from ramjet.engines import thread_executor
@@ -149,17 +149,35 @@ class Image(aiohttp.web.View):
         if op == "/dalle":
             task_id = str(uuid1())
             thread_executor.submit(
-                self._draw_by_dalle, data=data, user=user, task_id=task_id
+                self.catch_and_upload_err,
+                task_id=task_id,
+                func=partial(
+                    self._draw_by_dalle, data=data, user=user, task_id=task_id
+                ),
             )
             resp = aiohttp.web.json_response(
-                {"task_id": task_id, "image_url": image_url(taskid=task_id)}
+                {"task_id": task_id, "image_url": image_url(task_id=task_id)}
             )
         else:
             resp = aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
 
         return resp
 
-    @debug_wrapper
+    @timer
+    def catch_and_upload_err(self, task_id: str, func: Callable[[], None]):
+        try:
+            return func()
+        except Exception as err:
+            objkey = f"{os.path.splitext(image_url(task_id=task_id))[0]}.err.txt"
+            logger.error(f"catch and upload image drawing error, {objkey=}, {err=}")
+            errmsg = str(err).encode("utf-8")
+            s3cli.put_object(
+                bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
+                object_name=objkey,
+                data=io.BytesIO(errmsg),
+                length=len(errmsg),
+            )
+
     def _draw_by_dalle(
         self,
         user: settings.UserPermission,
@@ -179,7 +197,7 @@ class Image(aiohttp.web.View):
         logger.debug(f"draw image by dalle, user={user.uid}")
         img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
         upload_image_to_s3(
-            s3cli=s3cli, img_content=img_content, taskid=task_id, prompt=prompt
+            s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
         )
 
 

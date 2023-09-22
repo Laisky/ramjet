@@ -11,25 +11,25 @@ from ramjet.tasks.gptchat.utils import logger
 logger = logger.getChild("image")
 
 
-def image_url(taskid: str) -> str:
-    return f"{prd.OPENAI_S3_CHUNK_CACHE_IMAGES}/{taskid[:2]}/{taskid[2:4]}/{taskid}.png"
+def image_url(task_id: str) -> str:
+    return f"{prd.OPENAI_S3_CHUNK_CACHE_IMAGES}/{task_id[:2]}/{task_id[2:4]}/{task_id}.png"
 
 
 def upload_image_to_s3(
-    s3cli: Minio, taskid: str, prompt: str, img_content: bytes
+    s3cli: Minio, task_id: str, prompt: str, img_content: bytes
 ) -> str:
     """upload image to s3
 
     Args:
         s3cli (Minio): s3 client
         img_content (bytes): image content
-        taskid (str): task id
+        task_id (str): task id
         prompt (str): prompt be used to generate the image
 
     Returns:
         str: image url
     """
-    objkey_prefix = os.path.splitext(image_url(taskid=taskid))[0]
+    objkey_prefix = os.path.splitext(image_url(task_id=task_id))[0]
 
     # upload image
     s3cli.put_object(
