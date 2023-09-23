@@ -80,8 +80,8 @@ def draw_image_by_dalle(prompt: str, apikey: str) -> bytes:
         prompt=prompt,
         api_key=apikey,
         n=1,
-        # size="1024x1024",
-        size="512x512",
+        size="1024x1024",
+        # size="512x512",
         response_format="b64_json",
     )
 
@@ -108,8 +108,8 @@ def draw_image_by_dalle_azure(prompt: str, apikey: str) -> bytes:
         prompt=prompt,
         api_key=apikey,
         n=1,
-        # size="1024x1024",
-        size="512x512",
+        size="1024x1024",
+        # size="512x512",
         # response_format="b64_json",
     )
 
