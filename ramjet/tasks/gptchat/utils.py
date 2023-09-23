@@ -49,6 +49,11 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
     uid: str = request.headers.get("X-Laisky-User-Id", "")
     assert isinstance(uid, str), "uid must be a string"
 
+    api_base: str = (
+        request.query.get("X-Laisky-Openai-Api-Base", "") or "https://api.openai.com/"
+    )
+    assert isinstance(api_base, str), "api_base must be a string"
+
     model: str = request.query.get("model", "") or "gpt-3.5-turbo"
 
     userinfo = prd.UserPermission(
@@ -57,6 +62,7 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
         n_concurrent=100,
         chat_model=model,
         apikey=apikey,
+        api_base=api_base.strip("/") + "/v1",
     )
 
     return userinfo
