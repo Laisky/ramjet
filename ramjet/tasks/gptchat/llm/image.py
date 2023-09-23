@@ -4,6 +4,7 @@ from io import BytesIO
 
 import openai
 from minio import Minio
+import requests
 
 from ramjet.settings import prd
 from ramjet.tasks.gptchat.utils import logger
@@ -20,7 +21,9 @@ def image_objkey(task_id: str) -> str:
     Returns:
         str: image url path
     """
-    return f"{prd.OPENAI_S3_CHUNK_CACHE_IMAGES}/{task_id[:2]}/{task_id[2:4]}/{task_id}.png"
+    return (
+        f"{prd.OPENAI_S3_CHUNK_CACHE_IMAGES}/{task_id[:2]}/{task_id[2:4]}/{task_id}.png"
+    )
 
 
 def upload_image_to_s3(
@@ -84,3 +87,34 @@ def draw_image_by_dalle(prompt: str, apikey: str) -> bytes:
 
     logger.debug(f"succeed draw image by dalle-2, {prompt=}")
     return b64decode(response["data"][0]["b64_json"])
+
+
+def draw_image_by_dalle_azure(prompt: str, apikey: str) -> bytes:
+    """generate image from prompt by azure dalle
+
+    ref: https://platform.openai.com/docs/api-reference/images/create
+
+    Args:
+        prompt (str): description to draw the image
+        apikey (str): openai api key
+
+    Returns:
+        bytes: the image in bytes, can be save as png file
+    """
+    response: dict = openai.Image.create(
+        api_type="azure",
+        api_base="https://laisky-openai.openai.azure.com/",
+        api_version="2023-06-01-preview",
+        prompt=prompt,
+        api_key=apikey,
+        n=1,
+        # size="1024x1024",
+        size="512x512",
+        # response_format="b64_json",
+    )
+
+    # azure only support url
+    resp = requests.get(url=response["data"][0]["url"], timeout=30)
+
+    logger.debug(f"succeed draw image by dalle-2, {prompt=}")
+    return resp.content

@@ -40,7 +40,12 @@ from .llm.embeddings import (
     user_shared_chain,
     user_shared_chain_mu,
 )
-from .llm.image import draw_image_by_dalle, upload_image_to_s3, image_objkey
+from .llm.image import (
+    draw_image_by_dalle,
+    upload_image_to_s3,
+    image_objkey,
+    draw_image_by_dalle_azure,
+)
 from .llm.query import (
     build_llm_for_user,
     classificate_query_type,
@@ -175,7 +180,7 @@ class Image(aiohttp.web.View):
             return func()
         except Exception as err:
             objkey = f"{os.path.splitext(image_objkey(task_id=task_id))[0]}.err.txt"
-            logger.error(f"catch and upload image drawing error, {objkey=}, {err=}")
+            logger.exception(f"catch and upload image drawing error, {objkey=}")
             errmsg = str(err).encode("utf-8")
             s3cli.put_object(
                 bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
@@ -201,7 +206,15 @@ class Image(aiohttp.web.View):
         assert prompt, "prompt is required"
 
         logger.debug(f"draw image by dalle, user={user.uid}, {task_id=}")
-        img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
+
+        model_type = self.request.headers.getone("X-Laisky-Image-Token-Type", "azure")
+        if model_type == "azure":
+            img_content = draw_image_by_dalle_azure(prompt=prompt, apikey=user.apikey)
+        elif model_type == "openai":
+            img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
+        else:
+            raise Exception(f"unknown image model type {model_type}")
+
         upload_image_to_s3(
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
         )
