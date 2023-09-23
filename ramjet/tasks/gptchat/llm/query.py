@@ -4,7 +4,7 @@ from typing import Dict
 from textwrap import dedent
 
 from langchain.chat_models import ChatOpenAI
-from ramjet.settings.prd import UserPermission
+from ramjet.settings import UserPermission
 from ramjet.utils.log import logger
 
 from .data import load_all_prebuild_qa, prepare_data
@@ -26,7 +26,7 @@ def build_llm_for_user(user: UserPermission) -> ChatOpenAI:
         ChatOpenAI: llm
     """
     max_token = 500
-    if not user.is_free and re.match(r"\-\d+k$", user.chat_model, re.I):
+    if user.is_paid and re.match(r"\-\d+k$", user.chat_model, re.I):
         max_token = 2000
 
     return ChatOpenAI(

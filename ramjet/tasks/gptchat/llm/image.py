@@ -3,8 +3,8 @@ from base64 import b64decode
 from io import BytesIO
 
 import openai
-from minio import Minio
 import requests
+from minio import Minio
 
 from ramjet.settings import prd
 from ramjet.tasks.gptchat.utils import logger

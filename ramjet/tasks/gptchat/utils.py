@@ -52,7 +52,7 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
     model: str = request.query.get("model", "") or "gpt-3.5-turbo"
 
     userinfo = prd.UserPermission(
-        is_free=False,
+        is_paid=False,
         uid=uid or hashlib.sha1(apikey.encode("utf-8")).hexdigest(),
         n_concurrent=100,
         chat_model=model,
@@ -104,25 +104,3 @@ def recover(func):
             return aiohttp.web.HTTPBadRequest(text=str(e))
 
     return wrapper
-
-
-# def get_user_by_uid(uid: str) -> prd.UserPermission:
-#     """Get user by uid
-
-#     Args:
-#         uid (str): uid of user
-
-#     Returns:
-#         prd.UserPermission: user info
-#     """
-#     for user in prd.OPENAI_PRIVATE_EMBEDDINGS_API_KEYS.values():
-#         if user.uid == uid:
-#             return user
-
-#     logger.debug(f"uid {uid=} not found, using default user")
-#     return prd.UserPermission(
-#         is_free=True,
-#         uid=uid,
-#         n_concurrent=0,
-#         chat_model="",
-#     )
