@@ -24,6 +24,7 @@ def summary_content(
     b64content: str,
     ext: str,
     apikey: Optional[str] = None,
+    api_base: str = "https://api.openai.com/v1",
 ) -> str:
     """Summarize the content of a document.
 
@@ -32,6 +33,7 @@ def summary_content(
         ext (str): The extension of the document,
             should be one of: .docx, .pptx, .pdf, .html, .md, .txt
         apikey (str, optional): The openai api key. Defaults to None
+        api_base (str, optional): The openai api base url. Defaults to "https://api.openai.com/v1"
 
     Returns:
         The summary of the document.
@@ -75,17 +77,18 @@ def summary_content(
         else:
             raise ValueError(f"Unsupported extension: {ext}")
 
-    return _get_question_tobe_summary(docus, apikey=apikey)
+    return _get_question_tobe_summary(docus, apikey=apikey, api_base=api_base)
 
 
 def _get_question_tobe_summary(
-    docus: List[Document], apikey: Optional[str] = None
+    docus: List[Document], apikey: Optional[str] = None, api_base: str = "https://api.openai.com/v1"
 ) -> str:
     """return the question can be give to LLM to summarize the documents.
 
     Args:
         docus (List[Document]): The documents to be summarized
         apikey (str, optional): The openai api key. Defaults to None
+        api_base (str, optional): The openai api base url. Defaults to "https://api.openai.com/v1"
 
     Returns:
         str: The question to be summarized
@@ -95,7 +98,7 @@ def _get_question_tobe_summary(
     # map
     fs: List[Future] = []
     for docu in docus:
-        fs.append(thread_executor.submit(summary_docu, docu, apikey=apikey))
+        fs.append(thread_executor.submit(summary_docu, docu, apikey=apikey, api_base=api_base))
     for f in fs:
         summary += f"* {f.result()}\n"
 
@@ -128,7 +131,10 @@ def _get_question_tobe_summary(
 
 
 def summary_docu(
-    docu: Document, apikey: Optional[str] = None, model: str = "gpt-3.5-turbo"
+    docu: Document,
+    apikey: Optional[str] = None,
+    model: str = "gpt-3.5-turbo",
+    api_base: str = "https://api.openai.com/v1",
 ) -> str:
     """Summarize a document.
 
@@ -136,6 +142,7 @@ def summary_docu(
         docu (str): A document
         apikey (str): The openai api key
         model (str, optional): The openai model
+        api_base (str, optional): The openai api base url
 
     Returns:
         The summary of the document.
@@ -147,6 +154,7 @@ def summary_docu(
     llm = ChatOpenAI(
         client=None,
         openai_api_key=apikey,
+        openai_api_base=api_base,
         model=model,
         temperature=0,
         max_tokens=max_token,

@@ -50,7 +50,7 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
     assert isinstance(uid, str), "uid must be a string"
 
     api_base: str = (
-        request.query.get("X-Laisky-Openai-Api-Base", "") or "https://api.openai.com/"
+        request.headers.get("X-Laisky-Openai-Api-Base", "") or "https://api.openai.com/"
     )
     assert isinstance(api_base, str), "api_base must be a string"
 

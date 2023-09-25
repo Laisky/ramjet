@@ -286,6 +286,7 @@ def _make_embedding_chunk(
     ext: str,
     apikey: str,
     max_chunks: int = 0,
+    api_base: str = "https://api.openai.com/v1/",
 ) -> Tuple[Index, bool]:
     """
     Args:
@@ -294,6 +295,7 @@ def _make_embedding_chunk(
         ext (str): file ext, like '.html'
         apikey(str): apikey for openai api
         max_chunks (int, optional): max chunks to embed. Defaults to 0.
+        api_base (str, optional): openai api base url. Defaults to "https://api.openai.com/v1/".
 
     Returns:
         Tuple[Index, bool]: (index, is_cached)
@@ -308,7 +310,11 @@ def _make_embedding_chunk(
             fp.write(base64.b64decode(b64content))
 
         idx = embedding_file(
-            fpath=fpath, metadata_name="query", apikey=apikey, max_chunks=max_chunks
+            fpath=fpath,
+            metadata_name="query",
+            apikey=apikey,
+            max_chunks=max_chunks,
+            api_base=api_base,
         )
         _embedding_chunk_cache.save_cache(
             cache_key, idx, expire_at=time.time() + 3600 * 24
@@ -328,26 +334,23 @@ def _embedding_chunk_worker(
     model = data.get("model") or "gpt-3.5-turbo"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
-    apikey = request.headers.get("Authorization", "")
-    assert isinstance(apikey, str), "apikey must be string"
-    assert apikey, "apikey is required"
-    apikey = apikey.removeprefix("Bearer").strip()
 
     max_chunks = data.get("max_chunks", 0)
     assert isinstance(max_chunks, int), "max_chunks must be int"
 
     logger.debug(
-        f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}"
+        f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}, {user.info()=}"
     )
 
-    task_type = classificate_query_type(query=user_query, apikey=user.apikey)
+    task_type = classificate_query_type(query=user_query, apikey=user.apikey, api_base=user.api_base)
     if task_type == "search":
         return _chunk_search(
             cache_key=cache_key,
             query=user_query,
             b64content=b64content,
             ext=ext,
-            apikey=apikey,
+            apikey=user.apikey,
+            api_base=user.api_base,
             max_chunks=max_chunks,
         )
     elif task_type == "scan":
@@ -356,7 +359,8 @@ def _embedding_chunk_worker(
             query=user_query,
             b64content=b64content,
             ext=ext,
-            apikey=apikey,
+            apikey=user.apikey,
+            api_base=user.api_base,
         )
     else:
         raise Exception(f"unknown task type {task_type}")
@@ -371,6 +375,7 @@ def _query_to_summary(
     b64content: str,
     ext: str,
     apikey: str,
+    api_base: str = "https://api.openai.com/v1/",
 ) -> aiohttp.web.Response:
     """query to summary
 
@@ -380,6 +385,7 @@ def _query_to_summary(
         b64content (str): base64 encoded content
         ext (str): file ext, like '.html'
         apikey (str): apikey for openai api
+        api_base (str, optional): openai api base url. Defaults to "https://api.openai.com/v1/".
 
     Returns:
         aiohttp.web.Response: json response
@@ -393,7 +399,7 @@ def _query_to_summary(
     if summary and isinstance(summary, str):
         hit_cache = True
     else:
-        summary = summary_content(b64content, ext, apikey=apikey)
+        summary = summary_content(b64content, ext, apikey=apikey, api_base=api_base)
         _summary_cache.save_cache(cache_key, summary, expire_at=time.time() + 3600 * 24)
 
     logger.debug(
@@ -417,6 +423,7 @@ def _chunk_search(
     ext: str,
     apikey: str,
     max_chunks: int = 0,
+    api_base: str = "https://api.openai.com/v1/",
 ) -> aiohttp.web.Response:
     """search in embedding chunk
 
@@ -427,18 +434,20 @@ def _chunk_search(
         ext (str): file ext, like '.html'
         apikey (str): apikey for openai api
         max_chunks (int, optional): max chunks to embed. Defaults to 0.
+        api_base (str, optional): openai api base url. Defaults to "https://api.openai.com/v1/".
 
     Returns:
         aiohttp.web.Response: json response
     """
     cache_key = f"chunksearch/{cache_key[:2]}/{cache_key[2:4]}/{cache_key}"
-    logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
+    logger.debug(f"search embedding chunk, {query=}, {ext=}, {api_base=}, {cache_key=}")
     start_at = time.time()
     idx, cached = _make_embedding_chunk(
         cache_key=cache_key,
         b64content=b64content,
         ext=ext,
         apikey=apikey,
+        api_base=api_base,
         max_chunks=max_chunks,
     )
     refs = idx.store.similarity_search(query, k=5)
@@ -743,6 +752,7 @@ class UploadedFiles(aiohttp.web.View):
                     metadata_name=metadata_name,
                     apikey=user.apikey,
                     max_chunks=max_chunks,
+                    api_base=user.api_base,
                 )
             ).result()
 
@@ -1135,7 +1145,7 @@ class EmbeddingContext(aiohttp.web.View):
             password (str): password for decrypt
         """
         uid = user.uid
-        store = new_store(apikey=user.apikey)
+        store = new_store(apikey=user.apikey, api_base=user.api_base)
         for dataset in datasets:
             idx_key = f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
             store_key = f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"

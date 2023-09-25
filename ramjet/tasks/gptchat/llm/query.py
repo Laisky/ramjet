@@ -32,6 +32,7 @@ def build_llm_for_user(user: UserPermission) -> ChatOpenAI:
     return ChatOpenAI(
         client=None,
         openai_api_key=user.apikey,
+        openai_api_base=user.api_base,
         model=user.chat_model,
         temperature=0,
         max_tokens=max_token,
@@ -131,12 +132,17 @@ def search_for_prebuild_qa(project_name: str, question: str) -> Response:
     return Response(question=question, text=resp, url=list(set(refs)))
 
 
-def classificate_query_type(query: str, apikey: str) -> str:
+def classificate_query_type(
+    query: str,
+    apikey: str,
+    api_base: str = "https://api.openai.com/v1",
+) -> str:
     """classify query type by user's query
 
     Args:
         query (str): user's query
         apikey (str): openai api key
+        api_base (str, optional): openai api base url
 
     Returns:
         str: query type, 'search' or 'scan'
@@ -160,6 +166,7 @@ def classificate_query_type(query: str, apikey: str) -> str:
     llm = ChatOpenAI(
         client=None,
         openai_api_key=apikey,
+        openai_api_base=api_base,
         model="gpt-3.5-turbo",
         temperature=0,
         max_tokens=200,

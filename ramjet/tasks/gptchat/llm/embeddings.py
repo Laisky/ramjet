@@ -224,6 +224,7 @@ def embedding_file(
     metadata_name: str,
     apikey: str,
     max_chunks: int = DEFAULT_MAX_CHUNKS,
+    api_base: str = "https://api.openai.com/v1/",
 ) -> Index:
     """read and parse file content, then embedding it to FAISS index
 
@@ -246,6 +247,7 @@ def embedding_file(
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
+            api_base=api_base,
         )
     elif file_ext in [".md", ".txt"]:
         idx = _embedding_markdown(
@@ -253,6 +255,7 @@ def embedding_file(
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
+            api_base=api_base,
         )
     elif file_ext in [".docx", ".doc"]:
         idx = _embedding_msword(
@@ -260,6 +263,7 @@ def embedding_file(
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
+            api_base=api_base,
         )
     elif file_ext in [".pptx", ".ppt"]:
         idx = _embedding_msppt(
@@ -267,6 +271,7 @@ def embedding_file(
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
+            api_base=api_base,
         )
     elif file_ext == ".html":
         idx = _embedding_html(
@@ -274,11 +279,14 @@ def embedding_file(
             metadata_name=metadata_name,
             max_chunks=max_chunks,
             apikey=apikey,
+            api_base=api_base,
         )
     else:
         raise ValueError(f"unsupported file type {file_ext}")
 
-    logger.info(f"embedding {fpath} done, cost {time.time() - start_at:.2f}s")
+    logger.info(
+        f"embedding {fpath} done, {api_base=}, cost {time.time() - start_at:.2f}s"
+    )
     return idx
 
 
@@ -312,6 +320,7 @@ def _embedding_pdf(
     fpath: str,
     metadata_name: str,
     apikey: str,
+    api_base: str = "https://api.openai.com/v1",
     max_chunks: int = DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding pdf file
@@ -332,7 +341,7 @@ def _embedding_pdf(
     reset_eof_of_pdf(fpath)
     loader = PyPDFLoader(fpath)
 
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     docs: List[str] = []
     metadatas: List[dict] = []
     text_splitter = TokenTextSplitter(
@@ -365,19 +374,25 @@ def _embedding_pdf(
             texts=docs[start_idx:end_at],
             metadatas=metadatas[start_idx:end_at],
             apikey=apikey,
+            api_base=api_base,
         )
         futures.append(f)
         start_idx = end_at
 
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     for f in futures:
         index.store.merge_from(f.result())
 
     return index
 
 
-def _embeddings_worker(texts: List[str], metadatas: List[dict], apikey: str) -> FAISS:
-    index = new_store(apikey=apikey)
+def _embeddings_worker(
+    texts: List[str],
+    metadatas: List[dict],
+    apikey: str,
+    api_base: str = "https://api.openai.com/v1",
+) -> FAISS:
+    index = new_store(apikey=apikey, api_base=api_base)
     index.store.add_texts(texts=texts, metadatas=metadatas)
     return index.store
 
@@ -386,6 +401,7 @@ def _embedding_markdown(
     fpath: str,
     metadata_name: str,
     apikey: str,
+    api_base: str = "https://api.openai.com/v1",
     max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding markdown file
@@ -404,7 +420,7 @@ def _embedding_markdown(
         chunk_size=500,
         chunk_overlap=30,
     )
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     docs = []
     metadatas = []
     docus: Optional[List[Document]] = None
@@ -446,11 +462,12 @@ def _embedding_markdown(
             texts=docs[start_at:end_at],
             metadatas=metadatas[start_at:end_at],
             apikey=apikey,
+            api_base=api_base,
         )
         futures.append(f)
         start_at = end_at
 
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     for f in futures:
         index.store.merge_from(f.result())
 
@@ -461,6 +478,7 @@ def _embedding_msword(
     fpath: str,
     metadata_name: str,
     apikey: str,
+    api_base: str = "https://api.openai.com/v1",
     max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding word file
@@ -475,7 +493,7 @@ def _embedding_msword(
         Index: index
     """
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     docs = []
     metadatas = []
     text_splitter = TokenTextSplitter(
@@ -520,11 +538,12 @@ def _embedding_msword(
             texts=docs[start_at:end_at],
             metadatas=metadatas[start_at:end_at],
             apikey=apikey,
+            api_base=api_base,
         )
         futures.append(f)
         start_at = end_at
 
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     for f in futures:
         index.store.merge_from(f.result())
 
@@ -535,6 +554,7 @@ def _embedding_msppt(
     fpath: str,
     metadata_name: str,
     apikey: str,
+    api_base: str = "https://api.openai.com/v1",
     max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding office powerpoint file
@@ -553,7 +573,7 @@ def _embedding_msppt(
         chunk_size=500,
         chunk_overlap=30,
     )
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     docs = []
     metadatas = []
     loader = UnstructuredPowerPointLoader(fpath)
@@ -585,11 +605,12 @@ def _embedding_msppt(
             texts=docs[start_at:end_at],
             metadatas=metadatas[start_at:end_at],
             apikey=apikey,
+            api_base=api_base,
         )
         futures.append(f)
         start_at = end_at
 
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     for f in futures:
         index.store.merge_from(f.result())
 
@@ -600,6 +621,7 @@ def _embedding_html(
     fpath: str,
     metadata_name: str,
     apikey: str,
+    api_base: str = "https://api.openai.com/v1",
     max_chunks=DEFAULT_MAX_CHUNKS,
 ) -> Index:
     """embedding html file
@@ -638,23 +660,25 @@ def _embedding_html(
             texts=splits[start_idx:end_at],
             metadatas=[{"key_holder": "val_holder"}] * (end_at - start_idx),
             apikey=apikey,
+            api_base=api_base,
         )
         futures.append(f)
         start_idx = end_at
 
-    index = new_store(apikey=apikey)
+    index = new_store(apikey=apikey, api_base=api_base)
     for f in futures:
         index.store.merge_from(f.result())
 
     return index
 
 
-def new_store(apikey: str) -> Index:
+def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index:
     """
     new FAISS store
 
     Args:
         apikey (str): openai api key
+        api_base (str, optional): openai api base url. Defaults to "https://api.openai.com/v1".
 
     Returns:
         Index: FAISS index
@@ -672,8 +696,10 @@ def new_store(apikey: str) -> Index:
     #         deployment=azure_embeddings_deploymentid,
     #     )
     # else:
+    logger.debug(f"new faiss store {api_base=}")
     embedding_model = OpenAIEmbeddings(
         openai_api_key=apikey,
+        openai_api_base=api_base,
         client=None,
         model="text-embedding-ada-002",
     )
