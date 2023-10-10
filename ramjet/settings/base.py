@@ -64,6 +64,7 @@ INSTALL_TASKS = [
     "upload",
     "monitors",
     "gptchat",
+    "converter",
 ]
 
 
