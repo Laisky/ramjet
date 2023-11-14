@@ -11,6 +11,7 @@ from urllib.parse import quote
 from concurrent.futures import Future
 
 import faiss
+from kipp.utils import timer
 from Crypto.Cipher import AES
 from langchain.chains import LLMChain
 from langchain.chat_models import ChatOpenAI
@@ -96,6 +97,7 @@ def build_search(
             search function, return context and references
     """
 
+    @timer
     def query_for_more_info(query: str) -> Tuple[str, List[str]]:
         """query more information from embeddings store
 
@@ -106,7 +108,6 @@ def build_search(
             Tuple[str, List[str]]: context and references
         """
         logger.debug(f"query for more info: {query}")
-
         related_docs = store.similarity_search(
             query=query,
             k=nearest_k,
