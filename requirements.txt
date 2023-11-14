@@ -1,5 +1,5 @@
 aiographql-client==1.0.3a2
-aiohttp==3.8.5
+aiohttp==3.8.6
 aiohttp-jinja2==1.5.1
 aiohttp-session==2.12.0
 aiomysql==0.0.22
