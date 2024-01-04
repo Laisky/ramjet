@@ -638,12 +638,13 @@ def _embedding_html(
     """
     logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
 
+    loader = BSHTMLLoader(fpath)
+    page_data = loader.load()[0]
+
     text_splitter = TokenTextSplitter(
         chunk_size=500,
         chunk_overlap=30,
     )
-    loader = BSHTMLLoader(fpath)
-    page_data = loader.load()[0]
     splits = text_splitter.split_text(page_data.page_content)
     assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
 
