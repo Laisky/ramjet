@@ -57,7 +57,7 @@ pendulum==2.1.2
 pdf2image==1.16.3
 pdfminer.six==20221105
 pdfplumber==0.8.0
-pypdf==3.12.1
+pypdf==3.17.4
 platformdirs==2.4.0
 pycparser==2.21
 PyJWT==2.4.0
