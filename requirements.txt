@@ -12,6 +12,7 @@ cffi==1.15.0
 chardet==4.0.0
 click==8.0.3
 cryptography==41.0.4
+cython<3.0
 dateparser==1.1.6
 docx2txt==0.8
 docutils==0.18.1
