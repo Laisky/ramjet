@@ -169,7 +169,7 @@ def classificate_query_type(
         openai_api_base=api_base,
         model="gpt-3.5-turbo-1106",
         temperature=0,
-        max_tokens=200,
+        max_tokens=1000,
         streaming=False,
     )
     task_type = llm.predict(prompt)
