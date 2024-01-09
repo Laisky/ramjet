@@ -56,8 +56,15 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
 
     model: str = request.query.get("model", "") or "gpt-3.5-turbo-1106"
 
+    is_paid = False
+    if apikey.startswith("sk-"):
+        is_paid = True
+    elif apikey.startswith("laisky-"):
+        is_paid = True
+        api_base = "https://oneapi.laisky.com/"
+
     userinfo = prd.UserPermission(
-        is_paid=False,
+        is_paid=is_paid,
         uid=uid or hashlib.sha1(apikey.encode("utf-8")).hexdigest(),
         n_concurrent=100,
         chat_model=model,
