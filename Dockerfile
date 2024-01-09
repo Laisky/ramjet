@@ -6,9 +6,8 @@ RUN apt-get update \
     && update-ca-certificates
 
 WORKDIR /app
-# ADD ./requirements.txt .
-# ADD ./constraints.txt .
-# RUN PIP_CONSTRAINT=constraints.txt pip install -r requirements.txt
+ADD ./requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 ADD . .
 RUN rm -rf /app/ramjet/settings/prd.*
