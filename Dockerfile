@@ -1,4 +1,4 @@
-FROM python:3.11.7-bullseye
+FROM python:3.9.18-bullseye
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make gcc git build-essential ca-certificates curl \
@@ -7,7 +7,8 @@ RUN apt-get update \
 
 WORKDIR /app
 ADD ./requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ADD ./constraints.txt .
+RUN PIP_CONSTRAINT=constraints.txt pip install -r requirements.txt
 
 ADD . .
 RUN rm -rf /app/ramjet/settings/prd.*
