@@ -11,7 +11,7 @@ certifi==2023.7.22
 cffi==1.15.0
 chardet==4.0.0
 click==8.0.3
-cryptography==42.0.0
+cryptography==42.0.2
 dateparser==1.1.6
 docx2txt==0.8
 docutils==0.18.1
