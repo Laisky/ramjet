@@ -1,13 +1,14 @@
-FROM python:3.10.13-bullseye
+FROM python:3.9.18-bullseye
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make gcc git build-essential ca-certificates curl \
-    libc-dev libssl-dev libffi-dev zlib1g-dev \
+    libc-dev libssl-dev libffi-dev zlib1g-dev python3-dev \
     && update-ca-certificates
 
 WORKDIR /app
 ADD ./requirements.txt .
-RUN pip install -r requirements.txt
+ADD ./constraints.txt .
+RUN PIP_CONSTRAINT=constraints.txt pip install -r requirements.txt
 
 ADD . .
 RUN rm -rf /app/ramjet/settings/prd.*

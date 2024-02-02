@@ -121,7 +121,7 @@ def _get_question_tobe_summary(
     # llm = ChatOpenAI(
     #     client=None,
     #     openai_api_key=apikey,
-    #     model="gpt-3.5-turbo",
+    #     model="gpt-3.5-turbo-1106",
     #     temperature=0,
     #     max_tokens=1000,
     #     streaming=False,
@@ -133,7 +133,7 @@ def _get_question_tobe_summary(
 def summary_docu(
     docu: Document,
     apikey: Optional[str] = None,
-    model: str = "gpt-3.5-turbo",
+    model: str = "gpt-3.5-turbo-1106",
     api_base: str = "https://api.openai.com/v1",
 ) -> str:
     """Summarize a document.
@@ -147,9 +147,9 @@ def summary_docu(
     Returns:
         The summary of the document.
     """
-    max_token = 500
+    max_token = 1000
     if apikey and re.match(r"\-\d+k$", apikey, re.I):
-        max_token = 10000
+        max_token = 2000
 
     llm = ChatOpenAI(
         client=None,

@@ -5,13 +5,13 @@ from textwrap import dedent
 
 from langchain.chat_models import ChatOpenAI
 from ramjet.settings import UserPermission
-from ramjet.utils.log import logger
+from ramjet.utils.log import setup_log
 
 from .data import load_all_prebuild_qa, prepare_data
 from .embeddings import build_user_chain, N_NEAREST_CHUNKS
 from .base import UserChain, Index
 
-logger = logger.getChild("gptchat.llm")
+logger = setup_log().getChild("gptchat.llm")
 prebuild_chains: Dict[str, UserChain] = {}
 Response = namedtuple("Response", ["question", "text", "url"])
 
@@ -67,7 +67,7 @@ def setup():
         #     llm = AzureChatOpenAI(
         #         client=None,
         #         deployment_name="gpt35",
-        #         # model_name="gpt-3.5-turbo",
+        #         # model_name="gpt-3.5-turbo-1106",
         #         temperature=0,
         #         max_tokens=1000,
         #         streaming=False,
@@ -76,7 +76,7 @@ def setup():
         #     n_chunk = 10
         #     llm = ChatOpenAI(
         #         client=None,
-        #         model="gpt-3.5-turbo-16k",
+        #         model="gpt-3.5-turbo-1106-16k",
         #         temperature=0,
         #         max_tokens=4000,
         #         streaming=False,
@@ -167,9 +167,9 @@ def classificate_query_type(
         client=None,
         openai_api_key=apikey,
         openai_api_base=api_base,
-        model="gpt-3.5-turbo",
+        model="gpt-3.5-turbo-1106",
         temperature=0,
-        max_tokens=200,
+        max_tokens=1000,
         streaming=False,
     )
     task_type = llm.predict(prompt)

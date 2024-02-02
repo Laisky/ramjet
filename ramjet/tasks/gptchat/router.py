@@ -331,12 +331,13 @@ def _embedding_chunk_worker(
     assert user_query, "query is required"
     ext = data.get("ext")
     assert ext, "ext is required, like '.html'"
-    model = data.get("model") or "gpt-3.5-turbo"
+    model = data.get("model") or "gpt-3.5-turbo-1106-1106"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
 
-    max_chunks = data.get("max_chunks", 0)
-    assert isinstance(max_chunks, int), "max_chunks must be int"
+    max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS
+    if user.is_paid:
+        max_chunks = 5000
 
     logger.debug(
         f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}, {user.info()=}"
