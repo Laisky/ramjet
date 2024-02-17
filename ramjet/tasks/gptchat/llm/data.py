@@ -5,8 +5,8 @@ from typing import Coroutine, Dict, List
 
 import aiohttp
 import faiss
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores.faiss import FAISS
+from langchain_openai import OpenAIEmbeddings
 
 from ramjet.settings import prd
 
@@ -25,7 +25,7 @@ def load_all_prebuild_qa() -> Dict[str, FAISS]:
 
     #     embedding_model = OpenAIEmbeddings(
     #         client=None,
-    #         model="text-embedding-ada-002",
+    #         model="text-embedding-3-small",
     #         deployment=azure_embeddings_deploymentid,
     #     )
     # else:
@@ -35,7 +35,7 @@ def load_all_prebuild_qa() -> Dict[str, FAISS]:
     embedding_model = OpenAIEmbeddings(
         client=None,
         openai_api_key=prd.OPENAI_TOKEN,
-        model="text-embedding-ada-002",
+        model="text-embedding-3-small",
     )
 
     for project_name in prd.OPENAI_EMBEDDING_QA:

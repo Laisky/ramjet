@@ -3,7 +3,7 @@ from collections import namedtuple
 from typing import Dict
 from textwrap import dedent
 
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from ramjet.settings import UserPermission
 from ramjet.utils.log import setup_log
 

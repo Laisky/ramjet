@@ -1,7 +1,7 @@
 from typing import Callable, List, NamedTuple, Set, Tuple
 
-from langchain.chat_models import ChatOpenAI
-from langchain.vectorstores import FAISS
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.vectorstores.faiss import FAISS
 
 
 class Index(NamedTuple):

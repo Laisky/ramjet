@@ -14,16 +14,16 @@ import faiss
 from kipp.utils import timer
 from Crypto.Cipher import AES
 from langchain.chains import LLMChain
-from langchain.chat_models import ChatOpenAI
-from langchain.document_loaders import (
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.document_loaders import (
     BSHTMLLoader,
     Docx2txtLoader,
     PyPDFLoader,
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
 )
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.document_loaders.base import BaseLoader
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.document_loaders.base import BaseLoader
 from langchain.prompts.chat import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
@@ -31,7 +31,7 @@ from langchain.prompts.chat import (
 )
 from langchain.schema.document import Document
 from langchain.text_splitter import TokenTextSplitter
-from langchain.vectorstores import FAISS
+from langchain.vectorstores.faiss import FAISS
 from minio import Minio
 
 from ramjet.engines import thread_executor
@@ -64,7 +64,7 @@ def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         client=None,
         openai_api_key=user.apikey,
-        model="text-embedding-ada-002",
+        model="text-embedding-3-small",
     )
 
 
@@ -694,7 +694,7 @@ def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index
     #     embedding_model = OpenAIEmbeddings(
     #         openai_api_key=apikey,
     #         client=None,
-    #         model="text-embedding-ada-002",
+    #         model="text-embedding-3-small",
     #         deployment=azure_embeddings_deploymentid,
     #     )
     # else:
@@ -703,7 +703,7 @@ def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index
         openai_api_key=apikey,
         openai_api_base=api_base,
         client=None,
-        model="text-embedding-ada-002",
+        model="text-embedding-3-small",
     )
 
     store = FAISS.from_texts([""], embedding_model, metadatas=[{"source": ""}])

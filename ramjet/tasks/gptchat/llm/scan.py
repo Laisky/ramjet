@@ -6,15 +6,15 @@ from concurrent.futures import Future
 from textwrap import dedent
 from typing import List, Optional
 
-from langchain.chat_models import ChatOpenAI
-from langchain.document_loaders import (
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.document_loaders import (
     BSHTMLLoader,
     PyPDFLoader,
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
 )
 from langchain.schema.document import Document
-from langchain.document_loaders.base import BaseLoader
+from langchain_community.document_loaders.base import BaseLoader
 from langchain.text_splitter import TokenTextSplitter
 
 from ramjet.engines import thread_executor
@@ -81,7 +81,9 @@ def summary_content(
 
 
 def _get_question_tobe_summary(
-    docus: List[Document], apikey: Optional[str] = None, api_base: str = "https://api.openai.com/v1"
+    docus: List[Document],
+    apikey: Optional[str] = None,
+    api_base: str = "https://api.openai.com/v1",
 ) -> str:
     """return the question can be give to LLM to summarize the documents.
 
@@ -98,7 +100,9 @@ def _get_question_tobe_summary(
     # map
     fs: List[Future] = []
     for docu in docus:
-        fs.append(thread_executor.submit(summary_docu, docu, apikey=apikey, api_base=api_base))
+        fs.append(
+            thread_executor.submit(summary_docu, docu, apikey=apikey, api_base=api_base)
+        )
     for f in fs:
         summary += f"* {f.result()}\n"
 
