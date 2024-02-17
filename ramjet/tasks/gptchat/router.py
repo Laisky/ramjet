@@ -337,7 +337,7 @@ def _embedding_chunk_worker(
     assert ext, "ext is required, like '.html'"
     model = data.get("model") or "gpt-3.5-turbo-1106"
 
-    cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
+    cache_key = "v2-"+hashlib.sha1(base64.b64decode(b64content)).hexdigest()
     max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS
     assert isinstance(max_chunks, int), "max_chunks must be int"
     if user.is_paid:
