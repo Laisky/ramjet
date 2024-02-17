@@ -6,7 +6,7 @@ from concurrent.futures import Future
 from textwrap import dedent
 from typing import List, Optional
 
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_community.document_loaders import (
     BSHTMLLoader,
     PyPDFLoader,
@@ -179,4 +179,4 @@ def summary_docu(
         CONCISE SUMMARY:
     """
     )
-    return llm.predict(query)
+    return llm.invoke(query).pretty_repr()

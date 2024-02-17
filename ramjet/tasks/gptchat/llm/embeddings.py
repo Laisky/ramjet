@@ -14,7 +14,6 @@ import faiss
 from kipp.utils import timer
 from Crypto.Cipher import AES
 from langchain.chains import LLMChain
-from langchain_community.chat_models import ChatOpenAI
 from langchain_community.document_loaders import (
     BSHTMLLoader,
     Docx2txtLoader,
@@ -22,7 +21,7 @@ from langchain_community.document_loaders import (
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
 )
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders.base import BaseLoader
 from langchain.prompts.chat import (
     ChatPromptTemplate,

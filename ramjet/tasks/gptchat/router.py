@@ -300,7 +300,11 @@ def _make_embedding_chunk(
     Returns:
         Tuple[Index, bool]: (index, is_cached)
     """
-    idx = _embedding_chunk_cache.get_cache(cache_key)
+    logger.debug(f"make embedding chunk, {cache_key=}, {ext=}, {max_chunks=}")
+    idx = Index.deserialize(
+        data=_embedding_chunk_cache.get_cache(cache_key),
+        api_key=apikey,
+    )
     if idx:
         return idx, True
 
@@ -317,7 +321,7 @@ def _make_embedding_chunk(
             api_base=api_base,
         )
         _embedding_chunk_cache.save_cache(
-            cache_key, idx, expire_at=time.time() + 3600 * 24
+            cache_key, idx.serialize(), expire_at=time.time() + 3600 * 24
         )
         return idx, False
 
@@ -335,6 +339,7 @@ def _embedding_chunk_worker(
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest()
     max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS
+    assert isinstance(max_chunks, int), "max_chunks must be int"
     if user.is_paid:
         max_chunks = 5000
 
@@ -342,7 +347,9 @@ def _embedding_chunk_worker(
         f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}, {user.info()=}"
     )
 
-    task_type = classificate_query_type(query=user_query, apikey=user.apikey, api_base=user.api_base)
+    task_type = classificate_query_type(
+        query=user_query, apikey=user.apikey, api_base=user.api_base
+    )
     if task_type == "search":
         return _chunk_search(
             cache_key=cache_key,

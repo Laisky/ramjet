@@ -3,7 +3,7 @@ from collections import namedtuple
 from typing import Dict
 from textwrap import dedent
 
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from ramjet.settings import UserPermission
 from ramjet.utils.log import setup_log
 
@@ -172,7 +172,7 @@ def classificate_query_type(
         max_tokens=1000,
         streaming=False,
     )
-    task_type = llm.predict(prompt)
+    task_type = llm.invoke(prompt).pretty_repr()
     if "scan" in task_type:
         return "scan"
     else:

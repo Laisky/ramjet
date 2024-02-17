@@ -41,7 +41,7 @@ class Cache:
     def save_cache(self, key: str, value: Any, expire_at: float = 0):
         """
         Args:
-            key (str): The key to save the cache under
+            key (str): The s3 key to save the cache
             value (Any): The value to save
             expire_at (int, optional): The epoch time to expire the cache. Defaults to 0.
         """
@@ -56,13 +56,17 @@ class Cache:
 
         # then save to remote cache
         s3key = f"{prd.OPENAI_S3_CHUNK_CACHE_PREFIX}/{key}"
-        data = gzip.compress(pickle.dumps(item))
-        self._remote_cache_store.put_object(
-            bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
-            object_name=s3key,
-            data=io.BytesIO(data),
-            length=len(data),
-        )
+        try:
+            data = gzip.compress(pickle.dumps(item))
+            self._remote_cache_store.put_object(
+                bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
+                object_name=s3key,
+                data=io.BytesIO(data),
+                length=len(data),
+            )
+        except Exception:
+            logger.exception(f"failed to save cache {key=}")
+            return
 
         logger.debug(f"save cache {key=}, ttl={(expire_at-time.time())/3600:.2f}hr")
 

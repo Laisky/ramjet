@@ -9,6 +9,7 @@ __all__ = [
 ]
 
 os.environ["OPENAI_API_BASE"] = prd.OPENAI_API + "/v1"
+os.environ["OPENAI_API_KEY"] = prd.OPENAI_TOKEN
 
 # logger.info(f"{prd.OPENAI_TYPE=}")
 # if prd.OPENAI_TYPE == "azure":
