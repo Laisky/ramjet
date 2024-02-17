@@ -4,7 +4,6 @@ from typing import Callable, List, NamedTuple, Set, Tuple
 
 from langchain_community.vectorstores.faiss import FAISS
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from pydantic import SecretStr
 
 from ramjet.settings import prd
 from ramjet.utils import logger
@@ -44,7 +43,7 @@ class Index(NamedTuple):
                         tar.extractall(tempdir)
 
                 store = FAISS.load_local(
-                    tempdir, OpenAIEmbeddings(api_key=SecretStr(api_key)), "index"
+                    tempdir, OpenAIEmbeddings(api_key=api_key), "index"
                 )
                 return cls(store, set())
         except Exception as e:
