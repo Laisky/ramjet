@@ -7,7 +7,9 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from pydantic import SecretStr
 
 from ramjet.settings import prd
+from ramjet.utils import logger
 
+logger = logger.getChild("llm.base")
 
 class Index(NamedTuple):
     """embeddings index"""
@@ -28,19 +30,26 @@ class Index(NamedTuple):
                 return tempf.read()
 
     @classmethod
-    def deserialize(cls, data: bytes, api_key: str = prd.OPENAI_TOKEN) -> "Index":
+    def deserialize(cls, data: bytes, api_key: str = prd.OPENAI_TOKEN) -> "Index | None":
         """deserialize index from bytes"""
-        with tempfile.TemporaryDirectory() as tempdir:
-            with tempfile.TemporaryFile() as tempf:
-                tempf.write(data)
-                tempf.seek(0)
-                with tarfile.open(fileobj=tempf, mode="r:gz") as tar:
-                    tar.extractall(tempdir)
+        if not data:
+            return None
 
-            store = FAISS.load_local(
-                tempdir, OpenAIEmbeddings(api_key=SecretStr(api_key)), "index"
-            )
-            return cls(store, set())
+        try:
+            with tempfile.TemporaryDirectory() as tempdir:
+                with tempfile.TemporaryFile() as tempf:
+                    tempf.write(data)
+                    tempf.seek(0)
+                    with tarfile.open(fileobj=tempf, mode="r:gz") as tar:
+                        tar.extractall(tempdir)
+
+                store = FAISS.load_local(
+                    tempdir, OpenAIEmbeddings(api_key=SecretStr(api_key)), "index"
+                )
+                return cls(store, set())
+        except Exception as e:
+            logger.exception(f"failed to deserialize index: {e}")
+            return None
 
 
 class UserChain(NamedTuple):
