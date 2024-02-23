@@ -1,3 +1,4 @@
+import os
 import tempfile
 import tarfile
 from typing import Callable, List, NamedTuple, Set, Tuple
@@ -41,6 +42,9 @@ class Index(NamedTuple):
                     tempf.seek(0)
                     with tarfile.open(fileobj=tempf, mode="r:gz") as tar:
                         tar.extractall(tempdir)
+
+                # print all files in tempdir
+                logger.debug(f"extracted files: {os.listdir(tempdir)}")
 
                 store = FAISS.load_local(
                     tempdir, OpenAIEmbeddings(api_key=api_key), "index"
