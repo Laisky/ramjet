@@ -242,7 +242,7 @@ def embedding_file(
     start_at: float = time.time()
     file_ext: str = os.path.splitext(fpath)[1].lower()
     if file_ext == ".pdf":
-        idx = _embedding_pdf(
+        idx = embedding_pdf(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
@@ -250,7 +250,7 @@ def embedding_file(
             api_base=api_base,
         )
     elif file_ext in [".md", ".txt"]:
-        idx = _embedding_markdown(
+        idx = embedding_markdown(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
@@ -258,7 +258,7 @@ def embedding_file(
             api_base=api_base,
         )
     elif file_ext in [".docx", ".doc"]:
-        idx = _embedding_msword(
+        idx = embedding_msword(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
@@ -266,7 +266,7 @@ def embedding_file(
             api_base=api_base,
         )
     elif file_ext in [".pptx", ".ppt"]:
-        idx = _embedding_msppt(
+        idx = embedding_msppt(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
@@ -274,7 +274,7 @@ def embedding_file(
             api_base=api_base,
         )
     elif file_ext == ".html":
-        idx = _embedding_html(
+        idx = embedding_html(
             fpath=fpath,
             metadata_name=metadata_name,
             max_chunks=max_chunks,
@@ -316,7 +316,7 @@ def reset_eof_of_pdf(fpath: str) -> None:
         f.write(content)
 
 
-def _embedding_pdf(
+def embedding_pdf(
     fpath: str,
     metadata_name: str,
     apikey: str,
@@ -397,7 +397,7 @@ def _embeddings_worker(
     return index.store
 
 
-def _embedding_markdown(
+def embedding_markdown(
     fpath: str,
     metadata_name: str,
     apikey: str,
@@ -474,7 +474,7 @@ def _embedding_markdown(
     return index
 
 
-def _embedding_msword(
+def embedding_msword(
     fpath: str,
     metadata_name: str,
     apikey: str,
@@ -550,7 +550,7 @@ def _embedding_msword(
     return index
 
 
-def _embedding_msppt(
+def embedding_msppt(
     fpath: str,
     metadata_name: str,
     apikey: str,
@@ -617,7 +617,7 @@ def _embedding_msppt(
     return index
 
 
-def _embedding_html(
+def embedding_html(
     fpath: str,
     metadata_name: str,
     apikey: str,
@@ -699,9 +699,8 @@ def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index
     # else:
     logger.debug(f"new faiss store {api_base=}")
     embedding_model = OpenAIEmbeddings(
-        openai_api_key=apikey,
-        openai_api_base=api_base,
-        client=None,
+        api_key=apikey,
+        base_url=api_base,
         model="text-embedding-3-small",
     )
 
@@ -756,7 +755,7 @@ def download_chatbot_index(
         try:
             resp = s3cli.get_object(
                 bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT",
+                object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/__CURRENT",
             )
             chatbot_name = resp.data.decode("utf-8")
             logger.debug(f"download current chatbot name {chatbot_name=}")
@@ -768,25 +767,25 @@ def download_chatbot_index(
     if password:
         objkeys = [
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.index"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/{chatbot_name}.index"
             ),
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.store"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/{chatbot_name}.store"
             ),
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{chatbot_name}.pkl"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/{chatbot_name}.pkl"
             ),
         ]
     else:
         objkeys = [
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{chatbot_name}.index"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{chatbot_name}.index"
             ),
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{chatbot_name}.store"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{chatbot_name}.store"
             ),
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{chatbot_name}.pkl"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{chatbot_name}.pkl"
             ),
         ]
 
@@ -880,25 +879,18 @@ def save_encrypt_store(
         List[str]: saved filepaths
     """
     key = derive_key(password)
-    store_index = index.store.index
     uid = user.uid
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # do not encrypt index
         fpath_prefix = os.path.join(tmpdir, name)
-        logger.debug(f"save index to {fpath_prefix}.index")
-        faiss.write_index(store_index, f"{fpath_prefix}.index")
-        index.store.index = None
-
+        data = index.serialize()
         with open(f"{fpath_prefix}.store", "wb") as f:
             cipher = AES.new(key, AES.MODE_EAX)
-            ciphertext, tag = cipher.encrypt_and_digest(pickle.dumps(index.store))
+            ciphertext, tag = cipher.encrypt_and_digest(data)
             for x in (cipher.nonce, tag, ciphertext):
                 f.write(x)
-        index.store.index = store_index
 
         fs = [
-            f"{fpath_prefix}.index",
             f"{fpath_prefix}.store",
         ]
 
@@ -913,7 +905,7 @@ def save_encrypt_store(
         for fpath in fs:
             if datasets:
                 objkey = quote(
-                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/{os.path.basename(fpath)}"
+                    f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/{os.path.basename(fpath)}"
                 )
             else:
                 objkey = quote(
@@ -943,19 +935,11 @@ def save_plaintext_store(
     uid = user.uid
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # do not encrypt index
         fpath_prefix = os.path.join(tmpdir, name)
-        logger.debug(f"save index to {fpath_prefix}.index")
-        faiss.write_index(index.store.index, f"{fpath_prefix}.index")
-
-        idx = index.store.index
-        index.store.index = None
         with open(f"{fpath_prefix}.store", "wb") as f:
             pickle.dump(index.store, f)
-        index.store.index = idx
 
         fs = [
-            f"{fpath_prefix}.index",
             f"{fpath_prefix}.store",
         ]
 
@@ -968,7 +952,7 @@ def save_plaintext_store(
         logger.debug(f"try to upload embedding chat store {uid=}")
         for fpath in fs:
             objkey = quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share/{os.path.basename(fpath)}"
+                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{os.path.basename(fpath)}"
             )
 
             s3cli.fput_object(
@@ -980,30 +964,21 @@ def save_plaintext_store(
 
 
 def load_plaintext_store(dirpath: str, name: str) -> Index:
-    """
+    """load plaintext store
+
     Args:
         dirpath: dirpath to store index files
         name: project/file name
     """
     fpath_prefix = os.path.join(dirpath, name)
     with open(f"{fpath_prefix}.store", "rb") as f:
-        store = pickle.load(f)
-
-    # index not encrypted
-    index = faiss.read_index(f"{os.path.join(dirpath, name)}.index")
-    store.index = index
-
-    # with open(f"{fpath_prefix}.scanedfile", "rb") as f:
-    #     index.scaned_files = pickle.load(f)
-
-    return Index(
-        store=store,
-        scaned_files=set([]),
-    )
+        data = f.read()
+        return Index.deserialize(data)
 
 
 def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
-    """
+    """load encrypted store
+
     Args:
         dirpath: dirpath to store index files
         name: project/file name
@@ -1015,18 +990,6 @@ def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
     with open(f"{fpath_prefix}.store", "rb") as f:
         nonce, tag, ciphertext = [f.read(x) for x in (16, 16, -1)]
     cipher = AES.new(key, AES.MODE_EAX, nonce)
-    store = pickle.loads(cipher.decrypt_and_verify(ciphertext, tag))
+    data = cipher.decrypt_and_verify(ciphertext, tag)
 
-    # index not encrypted
-    index = faiss.read_index(f"{os.path.join(dirpath, name)}.index")
-    store.index = index
-
-    # with open(f"{fpath_prefix}.scanedfile", "rb") as f:
-    #     nonce, tag, ciphertext = [f.read(x) for x in (16, 16, -1)]
-    # cipher = AES.new(key, AES.MODE_EAX, nonce)
-    # scaned_files = pickle.loads(cipher.decrypt_and_verify(ciphertext, tag))
-
-    return Index(
-        store=store,
-        scaned_files=set([]),
-    )
+    return Index.deserialize(data)

@@ -2,6 +2,7 @@ import os
 import tempfile
 import tarfile
 from typing import Callable, List, NamedTuple, Set, Tuple
+import pickle
 
 from langchain_community.vectorstores.faiss import FAISS
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -21,6 +22,8 @@ class Index(NamedTuple):
         """serialize index to bytes"""
         with tempfile.TemporaryDirectory() as tempdir:
             self.store.save_local(tempdir)
+            with open(os.path.join(tempdir, "scaned_files"), "wb") as f:
+                f.write(pickle.dumps(self.scaned_files))
 
             # compress dir
             with tempfile.TemporaryFile() as tempf:
@@ -30,29 +33,27 @@ class Index(NamedTuple):
                 return tempf.read()
 
     @classmethod
-    def deserialize(cls, data: bytes, api_key: str = prd.OPENAI_TOKEN) -> "Index | None":
+    def deserialize(cls, data: bytes, api_key: str = prd.OPENAI_TOKEN) -> "Index":
         """deserialize index from bytes"""
-        if not data:
-            return None
+        assert data, "data should not be empty"
+        with tempfile.TemporaryDirectory() as tempdir:
+            with tempfile.TemporaryFile() as tempf:
+                tempf.write(data)
+                tempf.seek(0)
+                with tarfile.open(fileobj=tempf, mode="r:gz") as tar:
+                    tar.extractall(tempdir)
 
-        try:
-            with tempfile.TemporaryDirectory() as tempdir:
-                with tempfile.TemporaryFile() as tempf:
-                    tempf.write(data)
-                    tempf.seek(0)
-                    with tarfile.open(fileobj=tempf, mode="r:gz") as tar:
-                        tar.extractall(tempdir)
+            # print all files in tempdir
+            logger.debug(f"extracted files: {os.listdir(tempdir)}")
 
-                # print all files in tempdir
-                logger.debug(f"extracted files: {os.listdir(tempdir)}")
+            store = FAISS.load_local(
+                tempdir, OpenAIEmbeddings(api_key=api_key), "index"
+            )
+            with open(os.path.join(tempdir, "scaned_files"), "rb") as f:
+                scaned_files = pickle.load(f)
 
-                store = FAISS.load_local(
-                    tempdir, OpenAIEmbeddings(api_key=api_key), "index"
-                )
-                return cls(store, set())
-        except Exception as e:
-            logger.exception(f"failed to deserialize index: {e}")
-            return None
+        return cls(store=store, scaned_files=scaned_files)
+
 
 
 class UserChain(NamedTuple):

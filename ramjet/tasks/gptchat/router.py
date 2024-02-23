@@ -934,7 +934,7 @@ class EmbeddingContext(aiohttp.web.View):
         chatbot_names = []
         for obj in s3cli.list_objects(
             bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
-            prefix=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/",
+            prefix=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot-v2/",
             recursive=False,
         ):
             if not obj.object_name.endswith(".store"):
@@ -949,7 +949,7 @@ class EmbeddingContext(aiohttp.web.View):
         try:
             resp = s3cli.get_object(
                 bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
-                object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot/__CURRENT",
+                object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot-v2/__CURRENT",
             )
             current_chatbot = resp.data.decode("utf-8")
         except Exception:
@@ -1126,7 +1126,7 @@ class EmbeddingContext(aiohttp.web.View):
 
         # save current chatbot
         current_chatbot_objkey = (
-            f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot/__CURRENT"
+            f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/__CURRENT"
         )
         s3cli.put_object(
             bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
