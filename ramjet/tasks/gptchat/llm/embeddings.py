@@ -767,9 +767,6 @@ def download_chatbot_index(
     if password:
         objkeys = [
             quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/{chatbot_name}.index"
-            ),
-            quote(
                 f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/{chatbot_name}.store"
             ),
             quote(
@@ -778,9 +775,6 @@ def download_chatbot_index(
         ]
     else:
         objkeys = [
-            quote(
-                f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{chatbot_name}.index"
-            ),
             quote(
                 f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{chatbot_name}.store"
             ),
@@ -973,7 +967,7 @@ def load_plaintext_store(dirpath: str, name: str) -> Index:
     fpath_prefix = os.path.join(dirpath, name)
     with open(f"{fpath_prefix}.store", "rb") as f:
         data = f.read()
-        return Index.deserialize(data)
+        return Index.deserialize(data, api_key=prd.OPENAI_TOKEN)
 
 
 def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
@@ -992,4 +986,4 @@ def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
     cipher = AES.new(key, AES.MODE_EAX, nonce)
     data = cipher.decrypt_and_verify(ciphertext, tag)
 
-    return Index.deserialize(data)
+    return Index.deserialize(data, api_key=prd.OPENAI_TOKEN)

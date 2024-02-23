@@ -34,7 +34,7 @@ def load_all_prebuild_qa() -> Dict[str, FAISS]:
     # replace embedding_funcion by my own apikey
     embedding_model = OpenAIEmbeddings(
         client=None,
-        openai_api_key=prd.OPENAI_TOKEN,
+        api_key=prd.OPENAI_TOKEN,
         model="text-embedding-3-small",
     )
 

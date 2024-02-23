@@ -1154,24 +1154,15 @@ class EmbeddingContext(aiohttp.web.View):
         uid = user.uid
         store = new_store(apikey=user.apikey, api_base=user.api_base)
         for dataset in datasets:
-            idx_key = f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.index"
             store_key = f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/{dataset}.store"
 
             with tempfile.TemporaryDirectory() as tmpdir:
-                idx_path = os.path.join(tmpdir, "dataset.index")
                 store_path = os.path.join(tmpdir, "dataset.store")
 
                 # fix bug for https://github.com/minio/minio-py/pull/1309
                 tmp_file = os.path.join(tmpdir, "tmp.part.minio")
 
-                logger.debug(f"download dataset {dataset=}, {idx_path=}")
-                s3cli.fget_object(
-                    bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
-                    object_name=idx_key,
-                    file_path=idx_path,
-                    tmp_file_path=tmp_file,
-                    # request_headers={"Cache-Control": "no-cache"},
-                )
+                logger.debug(f"download dataset {dataset=}")
                 s3cli.fget_object(
                     bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
                     object_name=store_key,
@@ -1181,7 +1172,7 @@ class EmbeddingContext(aiohttp.web.View):
                 )
 
                 store_part = load_encrypt_store(
-                    dirpath=os.path.dirname(idx_path),
+                    dirpath=tmpdir,
                     name="dataset",
                     password=password,
                 )

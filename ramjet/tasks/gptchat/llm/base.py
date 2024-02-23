@@ -10,7 +10,9 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from ramjet.settings import prd
 from ramjet.utils import logger
 
-logger = logger.getChild("llm.base")
+
+logger = logger.getChild("tasks.gptchat.llm.base")
+
 
 class Index(NamedTuple):
     """embeddings index"""
@@ -43,17 +45,14 @@ class Index(NamedTuple):
                 with tarfile.open(fileobj=tempf, mode="r:gz") as tar:
                     tar.extractall(tempdir)
 
-            # print all files in tempdir
-            logger.debug(f"extracted files: {os.listdir(tempdir)}")
-
+            tempdir = os.path.join(tempdir, "index")
             store = FAISS.load_local(
-                tempdir, OpenAIEmbeddings(api_key=api_key), "index"
+                folder_path=tempdir, embeddings=OpenAIEmbeddings(api_key=api_key)
             )
             with open(os.path.join(tempdir, "scaned_files"), "rb") as f:
                 scaned_files = pickle.load(f)
 
         return cls(store=store, scaned_files=scaned_files)
-
 
 
 class UserChain(NamedTuple):
