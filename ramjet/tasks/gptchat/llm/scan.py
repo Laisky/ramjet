@@ -42,8 +42,8 @@ def summary_content(
     #     chunk_size=500, chunk_overlap=30, separator="\n"
     # )
     text_splitter = TokenTextSplitter(
-        chunk_size=3000,
-        chunk_overlap=30,
+        chunk_size=1024,
+        chunk_overlap=20,
     )
 
     # write to file

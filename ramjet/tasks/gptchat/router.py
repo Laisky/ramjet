@@ -301,11 +301,12 @@ def _make_embedding_chunk(
         Tuple[Index, bool]: (index, is_cached)
     """
     logger.debug(f"make embedding chunk, {cache_key=}, {ext=}, {max_chunks=}")
-    idx = Index.deserialize(
-        data=_embedding_chunk_cache.get_cache(cache_key),
-        api_key=apikey,
-    )
-    if idx:
+    cache_data = _embedding_chunk_cache.get_cache(cache_key)
+    if cache_data:
+        idx = Index.deserialize(
+            data=cache_data,
+            api_key=apikey,
+        )
         return idx, True
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -498,7 +499,7 @@ class EncryptedFiles(aiohttp.web.View):
             # tmp_file = os.path.join(tmpdir, "tmp.part.minio")
 
             # s3cli.fget_object(
-            #     bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            #     bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
             #     object_name=f"{filekey}",
             #     file_path=fpath,
             #     request_headers={"Cache-Control": "no-cache"},
@@ -509,7 +510,7 @@ class EncryptedFiles(aiohttp.web.View):
             # so I use aiohttp to download file
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    url=f"https://s3.laisky.com/{settings.OPENAI_S3_EMBEDDINGS_BUCKET}/{filekey}",
+                    url=f"https://s3.laisky.com/{settings.OPENAI_S3_CHUNK_CACHE_BUCKET}/{filekey}",
                 ) as resp:
                     assert resp.status == 200, f"failed to download file {filekey}"
                     with open(fpath, "wb") as fp:
@@ -573,7 +574,7 @@ class UploadedFiles(aiohttp.web.View):
         # files.append({"name": "test.pdf", "status": "processing", "progress": 75})
 
         for obj in s3cli.list_objects(
-            bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
             prefix=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/",
             recursive=False,
         ):
@@ -652,7 +653,7 @@ class UploadedFiles(aiohttp.web.View):
                 )
                 try:
                     s3cli.remove_object(
-                        bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+                        bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                         object_name=objkey,
                     )
                     logger.info(f"deleted file on s3, {objkey=}")
@@ -776,7 +777,7 @@ class UploadedFiles(aiohttp.web.View):
 
             objs.append(encrypted_file_key)
             s3cli.fput_object(
-                bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+                bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=encrypted_file_key,
                 file_path=encrypted_file_path,
             )
@@ -933,7 +934,7 @@ class EmbeddingContext(aiohttp.web.View):
     def list_chatbots(self, user: settings.UserPermission) -> aiohttp.web.Response:
         chatbot_names = []
         for obj in s3cli.list_objects(
-            bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
             prefix=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot-v2/",
             recursive=False,
         ):
@@ -948,7 +949,7 @@ class EmbeddingContext(aiohttp.web.View):
         resp = None
         try:
             resp = s3cli.get_object(
-                bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+                bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{user.uid}/chatbot-v2/__CURRENT",
             )
             current_chatbot = resp.data.decode("utf-8")
@@ -1129,7 +1130,7 @@ class EmbeddingContext(aiohttp.web.View):
             f"{settings.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/__CURRENT"
         )
         s3cli.put_object(
-            bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+            bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
             object_name=current_chatbot_objkey,
             data=io.BytesIO(chatbot_name.encode("utf-8")),
             length=len(chatbot_name.encode("utf-8")),
@@ -1164,7 +1165,7 @@ class EmbeddingContext(aiohttp.web.View):
 
                 logger.debug(f"download dataset {dataset=}")
                 s3cli.fget_object(
-                    bucket_name=settings.OPENAI_S3_EMBEDDINGS_BUCKET,
+                    bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                     object_name=store_key,
                     file_path=store_path,
                     tmp_file_path=tmp_file,

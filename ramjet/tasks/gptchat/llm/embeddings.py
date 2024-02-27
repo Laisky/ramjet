@@ -754,7 +754,7 @@ def download_chatbot_index(
         resp: Any = None
         try:
             resp = s3cli.get_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-v2/__CURRENT",
             )
             chatbot_name = resp.data.decode("utf-8")
@@ -788,7 +788,7 @@ def download_chatbot_index(
 
     for objkey in objkeys:
         s3cli.fget_object(
-            bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+            bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
             object_name=objkey,
             file_path=os.path.join(dirpath, os.path.basename(objkey)),
             tmp_file_path=tmp_file,
@@ -907,7 +907,7 @@ def save_encrypt_store(
                 )
 
             s3cli.fput_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=objkey,
                 file_path=fpath,
             )
@@ -950,7 +950,7 @@ def save_plaintext_store(
             )
 
             s3cli.fput_object(
-                bucket_name=prd.OPENAI_S3_EMBEDDINGS_BUCKET,
+                bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=objkey,
                 file_path=fpath,
             )
