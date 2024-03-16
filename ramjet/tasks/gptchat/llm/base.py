@@ -47,7 +47,8 @@ class Index(NamedTuple):
 
             tempdir = os.path.join(tempdir, "index")
             store = FAISS.load_local(
-                folder_path=tempdir, embeddings=OpenAIEmbeddings(api_key=api_key)
+                folder_path=tempdir, embeddings=OpenAIEmbeddings(api_key=api_key),
+                allow_dangerous_deserialization=True,
             )
             with open(os.path.join(tempdir, "scaned_files"), "rb") as f:
                 scaned_files = pickle.load(f)
