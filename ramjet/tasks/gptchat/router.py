@@ -481,11 +481,13 @@ class EncryptedFiles(aiohttp.web.View):
         # get uid and password from request basic auth
         auth_header = self.request.headers.get("Authorization", "").strip()
         auth_header = auth_header.removeprefix("Basic").removeprefix("Bearer").strip()
-        if auth_header:
+        try:
+            assert auth_header, "Authorization header is required"
             decoded_credentials = base64.b64decode(auth_header).decode("utf-8")
             _, password = decoded_credentials.split(":")
-        else:
-            response = aiohttp.web.Response(status=401)
+        except Exception as err:
+            logger.exception("failed to parse auth header")
+            response = aiohttp.web.Response(status=401, text=str(err))
             response.headers["WWW-Authenticate"] = 'Basic realm="My Realm"'
             return response
 
