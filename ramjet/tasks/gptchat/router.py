@@ -1072,7 +1072,9 @@ class EmbeddingContext(aiohttp.web.View):
         assert datasets, "datasets is required"
 
         chatbot_name = data.get("chatbot_name", "")
-        assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
+        assert re.match(
+            r"^[a-zA-Z0-9_-]+$", chatbot_name
+        ), f"{chatbot_name=} is invalid"
 
         password = data.get("data_key", "")
         assert isinstance(password, str), "data_key must be string"
