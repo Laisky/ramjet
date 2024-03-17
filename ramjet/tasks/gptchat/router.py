@@ -24,7 +24,8 @@ from ramjet.utils import Cache
 
 from .base import logger
 from .llm.embeddings import (
-    DEFAULT_MAX_CHUNKS,
+    DEFAULT_MAX_CHUNKS_FOR_FREE,
+    DEFAULT_MAX_CHUNKS_FOR_PAID,
     Index,
     build_user_chain,
     derive_key,
@@ -339,10 +340,10 @@ def _embedding_chunk_worker(
     model = data.get("model") or "gpt-3.5-turbo-1106"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest() + "-v2"
-    max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS
+    max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS_FOR_FREE
     assert isinstance(max_chunks, int), "max_chunks must be int"
     if user.is_paid:
-        max_chunks = 10000
+        max_chunks = DEFAULT_MAX_CHUNKS_FOR_PAID
 
     logger.debug(
         f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}, {user.info()=}"
@@ -719,8 +720,9 @@ class UploadedFiles(aiohttp.web.View):
         assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
-        max_chunks = data.get("max_chunks", DEFAULT_MAX_CHUNKS)
-        assert isinstance(max_chunks, int), "max_chunks must be int"
+        max_chunks = DEFAULT_MAX_CHUNKS_FOR_FREE
+        if user.is_paid:
+            max_chunks = DEFAULT_MAX_CHUNKS_FOR_PAID
 
         file_ext = os.path.splitext(file.filename)[1]
 

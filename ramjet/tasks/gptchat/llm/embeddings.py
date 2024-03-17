@@ -48,8 +48,8 @@ user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
 N_BACTCH_FILES: int = 5
 N_NEAREST_CHUNKS: int = 5
-DEFAULT_MAX_CHUNKS: int = 600
-
+DEFAULT_MAX_CHUNKS_FOR_FREE: int = 600
+DEFAULT_MAX_CHUNKS_FOR_PAID: int = 10000
 
 def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
     """build llm for user
@@ -223,7 +223,7 @@ def embedding_file(
     fpath: str,
     metadata_name: str,
     apikey: str,
-    max_chunks: int = DEFAULT_MAX_CHUNKS,
+    max_chunks: int = DEFAULT_MAX_CHUNKS_FOR_FREE,
     api_base: str = "https://api.openai.com/v1/",
 ) -> Index:
     """read and parse file content, then embedding it to FAISS index
@@ -285,7 +285,7 @@ def embedding_file(
         raise ValueError(f"unsupported file type {file_ext}")
 
     logger.info(
-        f"embedding {fpath} done, {api_base=}, cost {time.time() - start_at:.2f}s"
+        f"embedding {fpath} done, {api_base=}, {max_chunks=},cost {time.time() - start_at:.2f}s"
     )
     return idx
 
@@ -321,7 +321,7 @@ def embedding_pdf(
     metadata_name: str,
     apikey: str,
     api_base: str = "https://api.openai.com/v1",
-    max_chunks: int = DEFAULT_MAX_CHUNKS,
+    max_chunks: int = DEFAULT_MAX_CHUNKS_FOR_FREE,
 ) -> Index:
     """embedding pdf file
 
@@ -402,7 +402,7 @@ def embedding_markdown(
     metadata_name: str,
     apikey: str,
     api_base: str = "https://api.openai.com/v1",
-    max_chunks=DEFAULT_MAX_CHUNKS,
+    max_chunks=DEFAULT_MAX_CHUNKS_FOR_FREE,
 ) -> Index:
     """embedding markdown file
 
@@ -482,7 +482,7 @@ def embedding_msword(
     metadata_name: str,
     apikey: str,
     api_base: str = "https://api.openai.com/v1",
-    max_chunks=DEFAULT_MAX_CHUNKS,
+    max_chunks=DEFAULT_MAX_CHUNKS_FOR_FREE,
 ) -> Index:
     """embedding word file
 
@@ -558,7 +558,7 @@ def embedding_msppt(
     metadata_name: str,
     apikey: str,
     api_base: str = "https://api.openai.com/v1",
-    max_chunks=DEFAULT_MAX_CHUNKS,
+    max_chunks=DEFAULT_MAX_CHUNKS_FOR_FREE,
 ) -> Index:
     """embedding office powerpoint file
 
@@ -625,7 +625,7 @@ def embedding_html(
     metadata_name: str,
     apikey: str,
     api_base: str = "https://api.openai.com/v1",
-    max_chunks=DEFAULT_MAX_CHUNKS,
+    max_chunks=DEFAULT_MAX_CHUNKS_FOR_FREE,
 ) -> Index:
     """embedding html file
 
