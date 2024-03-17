@@ -48,7 +48,7 @@ user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
 
 N_BACTCH_FILES: int = 5
 N_NEAREST_CHUNKS: int = 5
-DEFAULT_MAX_CHUNKS: int = 300
+DEFAULT_MAX_CHUNKS: int = 600
 
 
 def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:

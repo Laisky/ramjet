@@ -342,7 +342,7 @@ def _embedding_chunk_worker(
     max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS
     assert isinstance(max_chunks, int), "max_chunks must be int"
     if user.is_paid:
-        max_chunks = 5000
+        max_chunks = 10000
 
     logger.debug(
         f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}, {user.info()=}"
