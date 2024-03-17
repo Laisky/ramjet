@@ -424,7 +424,7 @@ def embedding_markdown(
     docs = []
     metadatas = []
     docus: Optional[List[Document]] = None
-    err: Exception
+    err: Optional[Exception] = None
     for charset in ["utf-8", "gbk", "gb2312"]:
         try:
             fp = codecs.open(fpath, "rb", charset)
@@ -436,6 +436,9 @@ def embedding_markdown(
             continue
 
     if not docus:
+        if not err:
+            err = ValueError(f"cannot parse {fpath}")
+
         raise err
 
     for ichunk, docu in enumerate(docus):
