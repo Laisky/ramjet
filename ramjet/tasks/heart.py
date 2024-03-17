@@ -4,7 +4,7 @@
 import gc
 
 from ramjet.engines import ioloop
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 
 logger = logger.getChild("tasks.heart")
 

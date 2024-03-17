@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from ramjet.settings import logger as base_logger
+from ramjet.utils.log import logger as base_logger
 
 
 class BaseWorker(object):

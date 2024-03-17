@@ -5,7 +5,7 @@ from operator import itemgetter
 
 import jieba.analyse
 from ramjet.engines import ioloop, process_executor
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 from ramjet.utils import get_conn, utcnow
 
 logger = logger.getChild("tasks.keyword")

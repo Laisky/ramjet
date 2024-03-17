@@ -32,7 +32,6 @@ logging.getLogger("tweepy").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
-logger = logging.getLogger(LOG_NAME)
 
 # web
 OK = 0

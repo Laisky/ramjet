@@ -2,7 +2,7 @@ import datetime
 import json
 import traceback
 
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 
 
 def debug_wrapper(func):

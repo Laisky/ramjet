@@ -3,7 +3,7 @@ from functools import partial
 from aiohttp import web
 from kipp.utils import EmailSender
 from ramjet.engines import ioloop, thread_executor
-from ramjet.settings import logger as root_logger
+from ramjet.utils.log import logger as root_logger
 
 logger = root_logger.getChild("tasks.email_proxy")
 

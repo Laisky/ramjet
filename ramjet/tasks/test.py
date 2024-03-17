@@ -1,6 +1,6 @@
 import aiohttp
 import aiohttp_jinja2
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 
 logger = logger.getChild("tasks.test")
 

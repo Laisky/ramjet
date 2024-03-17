@@ -5,13 +5,13 @@ from textwrap import dedent
 
 from langchain_openai import ChatOpenAI
 from ramjet.settings import UserPermission
-from ramjet.utils.log import setup_log
+from ramjet.utils.log import logger
 
 from .data import load_all_prebuild_qa, prepare_data
 from .embeddings import build_user_chain, N_NEAREST_CHUNKS
 from .base import UserChain, Index
 
-logger = setup_log().getChild("gptchat.llm")
+logger = logger.getChild("gptchat.llm")
 prebuild_chains: Dict[str, UserChain] = {}
 Response = namedtuple("Response", ["question", "text", "url"])
 

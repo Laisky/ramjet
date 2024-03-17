@@ -6,7 +6,7 @@ Web HTTP Hanle 的示例
 from aiohttp import web
 import aiohttp_jinja2
 
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 
 
 logger = logger.getChild("tasks.webapps")

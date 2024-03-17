@@ -116,7 +116,7 @@ def task(*args, **kw):
 ```py
 from aiohttp import web
 
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 
 
 logger = logger.getChild('tasks.web_demo')

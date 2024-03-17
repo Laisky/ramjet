@@ -61,7 +61,7 @@ def setup_log():
     # rf.setFormatter(formatter)
 
     # log
-    _logger.setLevel(logging.ERROR)
+    _logger.setLevel(logging.INFO)
     _logger.addHandler(MultiProcessLogHandler())
     # log = logging.getLogger()
     # log.setLevel(logging.INFO)

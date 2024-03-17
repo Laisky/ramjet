@@ -5,7 +5,7 @@ Web HTTP Hanle 的示例
 """
 from aiohttp import web
 from aiohttp_session import get_session
-from ramjet.settings import logger
+from ramjet.utils.log import logger
 
 logger = logger.getChild("tasks.web_demo")
 
