@@ -1,4 +1,4 @@
-FROM python:3.9.18-bullseye
+FROM python:3.13.0a6-bullseye
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make gcc git build-essential ca-certificates curl \
