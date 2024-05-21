@@ -34,22 +34,11 @@
 {% endblock %}
 
 {% block js %}
-<script type="module">
-    import { GraphQLClient } from 'https://cdn.skypack.dev/graphql-request';
-    window.graphql = new GraphQLClient(window.GraphqlAPI, {
-        headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': '*',
-            'Access-Control-Allow-Headers': '*'
-        }
-    });
-</script>
 <script async type="text/javascript">
     (function(){
-        $("#twitterSearch").on("submit", async (e) =>{
+        document.querySelector("#twitterSearch").addEventListener("submit", async (e) =>{
             e.preventDefault();
-            var text = $("#twitterSearch input").val();
+            var text = document.querySelector("#twitterSearch input").value;
 
             console.log(text);
 
