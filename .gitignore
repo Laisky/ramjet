@@ -75,3 +75,4 @@ tags
 dist
 notebook
 /.pytest_cache
+audio.wav
