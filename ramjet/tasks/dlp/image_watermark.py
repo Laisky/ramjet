@@ -10,8 +10,12 @@ import aiohttp
 import aiohttp_jinja2
 import requests
 from aiohttp import web
-from ramjet.settings import (TENCENT_CLOUD_SIGNATURE,
-                             TENCENT_CLOUD_WATERMARK_BUCKET_URL, logger)
+
+from ramjet.utils.log import logger as ramjet_logger
+from ramjet.settings import TENCENT_CLOUD_SIGNATURE, TENCENT_CLOUD_WATERMARK_BUCKET_URL
+
+
+logger = ramjet_logger.getChild("dlp.image_watermark")
 
 
 class ImageWaterMarkSignView(web.View):
