@@ -31,7 +31,7 @@ class ImageWaterMarkSignView(web.View):
         hasher.update(img_remote_url.encode("utf-8"))
         key = hasher.hexdigest()
 
-        imgdata = await tencent_cloud.fetch_and_sign_image(
+        imgdata = await TencentCloud().fetch_and_sign_image(
             img_remote_url, key, watermark
         )
         return web.Response(headers={"content-type": "image/jpeg"}, body=imgdata)
@@ -54,7 +54,7 @@ class ImageWaterMarkVerifyView(web.View):
 
     async def post(self):
         data = await self.request.post()
-        imgdata = await tencent_cloud.extract_watermark(data["image"])
+        imgdata = await TencentCloud().extract_watermark(data["image"])
         return web.Response(headers={"content-type": "image/jpeg"}, body=imgdata)
 
 
@@ -146,4 +146,4 @@ class TencentCloud:
         return await resp.read()
 
 
-tencent_cloud = TencentCloud()
+# tencent_cloud = TencentCloud()
