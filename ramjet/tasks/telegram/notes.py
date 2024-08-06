@@ -69,6 +69,7 @@ def upload_akord(filecontent: bytes) -> str:
             "Api-Key": apikey,
             "Content-Type": "application/json",
         },
+        timeout=30,
     )
     assert resp.status_code == 200, f"[{resp.status_code}]{resp.text}"
 
@@ -105,6 +106,7 @@ def fetch_content(notes: pymongo.collection.Collection, post_id: int):
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
             "Accept-Language": "en,zh-CN;q=0.9,zh-TW;q=0.8,zh;q=0.7,fr;q=0.6",
         },
+        timeout=30,
     )
     assert resp.status_code == 200
 
@@ -147,12 +149,12 @@ def fetch_content(notes: pymongo.collection.Collection, post_id: int):
     )
 
     # upload to akord
-    docu = notes.find_one({"post_id": post_id})
-    assert docu, f"cannot find {post_id=}"
-    txid = upload_akord(bson.json_util.dumps(docu).encode("utf-8"))
+    # docu = notes.find_one({"post_id": post_id})
+    # assert docu, f"cannot find {post_id=}"
+    # txid = upload_akord(bson.json_util.dumps(docu).encode("utf-8"))
 
-    # update db with txid
-    notes.update_one(
-        {"_id": docu["_id"]},
-        {"$set": {"arweave_id": txid}},
-    )
+    # # update db with txid
+    # notes.update_one(
+    #     {"_id": docu["_id"]},
+    #     {"$set": {"arweave_id": txid}},
+    # )

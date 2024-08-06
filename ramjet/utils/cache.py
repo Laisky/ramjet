@@ -128,7 +128,11 @@ class Cache:
                 if self.__closed:
                     return
 
-                for key, cache_item in self._local_cache_store.items():
-                    if cache_item.expire_at_epoch < time.time():
-                        logger.debug(f"remove expired cache {key=}")
-                        del self._local_cache_store[key]
+                keys_to_remove = [
+                    key
+                    for key in self._local_cache_store
+                    if self._local_cache_store[key].expire_at_epoch < time.time()
+                ]
+                for key in keys_to_remove:
+                    logger.debug(f"remove expired cache {key=}")
+                    del self._local_cache_store[key]
