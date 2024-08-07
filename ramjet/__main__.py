@@ -11,6 +11,7 @@ from kipp.utils import EmailSender
 from ramjet import settings
 from ramjet.app import setup_web_handlers
 from ramjet.utils import logger
+from ramjet.engines import thread_executor, ioloop
 
 
 def setup_template(app):
@@ -77,6 +78,7 @@ def main():
         setup_template(app)
         setup_web_handlers(app)
         logger.info(f"start web server {opt.HOST}:{opt.PORT}")
+        thread_executor.submit(lambda: ioloop.run_forever())
         web.run_app(app, host=opt.HOST, port=opt.PORT, keepalive_timeout=300)
     except Exception:
         logger.exception("ramjet got error:")
