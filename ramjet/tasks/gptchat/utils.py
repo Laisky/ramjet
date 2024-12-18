@@ -54,7 +54,7 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
     )
     assert isinstance(api_base, str), "api_base must be a string"
 
-    model: str = request.query.get("model", "") or "gpt-3.5-turbo-0125"
+    model: str = request.query.get("model", "") or "gpt-4o-mini"
 
     is_paid = False
     if apikey.startswith("sk-"):

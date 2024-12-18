@@ -67,7 +67,7 @@ def setup():
         #     llm = AzureChatOpenAI(
         #         client=None,
         #         deployment_name="gpt35",
-        #         # model_name="gpt-3.5-turbo-0125",
+        #         # model_name="gpt-4o-mini",
         #         temperature=0,
         #         max_tokens=1000,
         #         streaming=False,
@@ -76,7 +76,7 @@ def setup():
         #     n_chunk = 10
         #     llm = ChatOpenAI(
         #         client=None,
-        #         model="gpt-3.5-turbo-0125-16k",
+        #         model="gpt-4o-mini",
         #         temperature=0,
         #         max_tokens=4000,
         #         streaming=False,
@@ -167,7 +167,7 @@ def classificate_query_type(
         client=None,
         openai_api_key=apikey,
         openai_api_base=api_base,
-        model="gpt-3.5-turbo-0125",
+        model="gpt-4o-mini",
         temperature=0,
         max_tokens=1000,
         streaming=False,

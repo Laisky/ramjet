@@ -125,7 +125,7 @@ def _get_question_tobe_summary(
     # llm = ChatOpenAI(
     #     client=None,
     #     openai_api_key=apikey,
-    #     model="gpt-3.5-turbo-0125",
+    #     model="gpt-4o-mini",
     #     temperature=0,
     #     max_tokens=1000,
     #     streaming=False,
@@ -137,7 +137,7 @@ def _get_question_tobe_summary(
 def summary_docu(
     docu: Document,
     apikey: Optional[str] = None,
-    model: str = "gpt-3.5-turbo-0125",
+    model: str = "gpt-4o-mini",
     api_base: str = "https://api.openai.com/v1",
 ) -> str:
     """Summarize a document.
