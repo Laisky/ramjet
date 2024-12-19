@@ -55,13 +55,7 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
     assert isinstance(api_base, str), "api_base must be a string"
 
     model: str = request.query.get("model", "") or "gpt-4o-mini"
-
-    is_paid = False
-    if apikey.startswith("sk-"):
-        is_paid = True
-    elif apikey.startswith("laisky-"):
-        is_paid = True
-        api_base = "https://oneapi.laisky.com/"
+    is_paid = request.headers.get("X-Laisky-User-Is-Free", "").lower() != "true"
 
     userinfo = prd.UserPermission(
         is_paid=is_paid,
