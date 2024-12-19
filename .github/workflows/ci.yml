@@ -84,7 +84,7 @@ jobs:
           script: |
             docker pull ppcelery/ramjet:latest
             cd /home/ubuntu/repo/VPS
-            docker-compose -f b1-docker-compose.yml up -d --remove-orphans --force-recreate ramjet
+            docker-compose -f bj-docker-compose.yml up -d --remove-orphans --force-recreate ramjet
             docker ps
 
   # ssh_test:
