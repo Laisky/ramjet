@@ -167,7 +167,7 @@ def fetch_content(notes: pymongo.collection.Collection, post_id: int):
         # Create history entry
         history_entry = {
             "content": existing_note["content"],
-            "created_at": existing_note.get("modified_at", existing_note["created_at"]),
+            "created_at": existing_note.get("updated_at", existing_note["created_at"]),
             "digest": existing_digest,
         }
 
@@ -175,7 +175,7 @@ def fetch_content(notes: pymongo.collection.Collection, post_id: int):
         notes.update_one(
             {"post_id": post_id},
             {
-                "$set": {"content": content, "modified_at": now, "digest": new_digest},
+                "$set": {"content": content, "updated_at": now, "digest": new_digest},
                 "$push": {
                     "history": {
                         "$each": [history_entry],
@@ -192,7 +192,7 @@ def fetch_content(notes: pymongo.collection.Collection, post_id: int):
                 "$set": {
                     "post_id": post_id,
                     "content": content,
-                    "modified_at": now,
+                    "updated_at": now,
                     "digest": new_digest,
                     "history": [],
                 },
