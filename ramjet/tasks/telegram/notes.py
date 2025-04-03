@@ -3,6 +3,9 @@ from datetime import datetime
 import bson.json_util
 from random import choice
 from typing import Dict
+import hashlib
+from dataclasses import dataclass
+
 
 import pymongo
 from kipp.decorator import timer
@@ -94,6 +97,19 @@ def upload_all_posts(notes: pymongo.collection.Collection):
     wait(fs, return_when=ALL_COMPLETED)
 
 
+@dataclass
+class NoteHistory:
+    """History record for a note"""
+    content: str
+    created_at: datetime
+    digest: str
+
+
+def calculate_sha256(content: str) -> str:
+    """Calculate SHA256 hash of content"""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
+
 @timer
 def fetch_content(notes: pymongo.collection.Collection, post_id: int):
     """fetch content from telegram"""
@@ -130,31 +146,61 @@ def fetch_content(notes: pymongo.collection.Collection, post_id: int):
     #     images = soup.select("body > div > div.tgme_widget_message_bubble > div.tgme_widget_message_grouped_wrap.js-message_grouped_wrap > div > div a[style]")
     #     for img in images:
     #         image_urls.append(img.attrs["style"])
+    # Calculate digest for new content
+    new_digest = calculate_sha256(content)
 
-    # save to db
+    # Get existing note
+    existing_note = notes.find_one({"post_id": post_id})
     now = datetime.now()
-    notes.update_one(
-        {"post_id": post_id},
-        {
-            "$set": {
-                "post_id": post_id,
-                "content": content,
-                "updated_at": now,
-            },
-            "$setOnInsert": {
-                "created_at": now,
-            },
-        },
-        upsert=True,
-    )
 
-    # upload to akord
-    # docu = notes.find_one({"post_id": post_id})
-    # assert docu, f"cannot find {post_id=}"
-    # txid = upload_akord(bson.json_util.dumps(docu).encode("utf-8"))
+    if existing_note:
+        # Calculate digest for existing content if not present
+        existing_digest = existing_note.get("digest")
+        if not existing_digest:
+            existing_digest = calculate_sha256(existing_note["content"])
 
-    # # update db with txid
-    # notes.update_one(
-    #     {"_id": docu["_id"]},
-    #     {"$set": {"arweave_id": txid}},
-    # )
+        # Compare digests
+        if existing_digest == new_digest:
+            logger.info(f"Content unchanged for {post_id=}")
+            return
+
+        # Create history entry
+        history_entry = {
+            "content": existing_note["content"],
+            "created_at": existing_note.get("modified_at", existing_note["created_at"]),
+            "digest": existing_digest,
+        }
+
+        # Update with new content and add to history
+        notes.update_one(
+            {"post_id": post_id},
+            {
+                "$set": {"content": content, "modified_at": now, "digest": new_digest},
+                "$push": {
+                    "history": {
+                        "$each": [history_entry],
+                        "$position": 0
+                    }
+                },
+            },
+        )
+    else:
+        # Insert new document
+        notes.update_one(
+            {"post_id": post_id},
+            {
+                "$set": {
+                    "post_id": post_id,
+                    "content": content,
+                    "modified_at": now,
+                    "digest": new_digest,
+                    "history": [],
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+
+    logger.info(f"Updated content for {post_id=}")
