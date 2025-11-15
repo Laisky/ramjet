@@ -6,6 +6,7 @@ import re
 import tempfile
 import threading
 import time
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple, Optional, Any
 from urllib.parse import quote
 from concurrent.futures import Future
@@ -50,6 +51,66 @@ N_BACTCH_FILES: int = 5
 N_NEAREST_CHUNKS: int = 5
 DEFAULT_MAX_CHUNKS_FOR_FREE: int = 600
 DEFAULT_MAX_CHUNKS_FOR_PAID: int = 10000
+DEFAULT_CHUNK_SIZE: int = 500
+DEFAULT_CHUNK_OVERLAP: int = 30
+
+
+@dataclass
+class Chunk:
+    text: str
+    metadata: Dict[str, Any]
+
+
+ChunkList = List[Chunk]
+
+
+def _attach_default_source(
+    chunks: ChunkList,
+    metadata_name: str,
+) -> ChunkList:
+    """Ensure chunks contain a usable source reference for downstream consumers."""
+    for idx, chunk in enumerate(chunks, start=1):
+        chunk.metadata.setdefault("source", f"{metadata_name}?chunk={idx}")
+    return chunks
+
+
+def chunk_file(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    """Split a local file into chunks without invoking embeddings."""
+
+    chunks = split_file(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    return _attach_default_source(chunks, metadata_name)
+
+
+def chunk_text_content(
+    content: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    """Chunk plain text content for preview or inspection flows."""
+
+    chunks = split_text(
+        content=content,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    return _attach_default_source(chunks, metadata_name)
+
 
 def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
     """build llm for user
@@ -219,6 +280,293 @@ def build_user_chain(
     )
 
 
+def _ensure_chunk_limit(total: int, max_chunks: int) -> None:
+    assert total <= max_chunks, (
+        f"your account limit to parse at most {max_chunks} chunks, ",
+        f"but you submit {total}, consider upgrade your account",
+    )
+
+
+def embed_chunks(
+    chunks: ChunkList,
+    apikey: str,
+    api_base: str = "https://api.openai.com/v1",
+    batch_size: int = 5,
+) -> Index:
+    logger.debug(f"send chunk to LLM embeddings, {len(chunks)=}")
+    index = new_store(apikey=apikey, api_base=api_base)
+    if not chunks:
+        return index
+
+    texts = [chunk.text for chunk in chunks]
+    metadatas = [chunk.metadata for chunk in chunks]
+    futures: List[Future] = []
+    start_idx = 0
+    while start_idx < len(texts):
+        end_at = min(start_idx + batch_size, len(texts))
+        futures.append(
+            thread_executor.submit(
+                _embeddings_worker,
+                texts=texts[start_idx:end_at],
+                metadatas=metadatas[start_idx:end_at],
+                apikey=apikey,
+                api_base=api_base,
+            )
+        )
+        start_idx = end_at
+
+    index = new_store(apikey=apikey, api_base=api_base)
+    for future in futures:
+        index.store.merge_from(future.result())
+
+    return index
+
+
+def split_pdf(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    logger.info(f"split pdf {fpath=}, {metadata_name=}")
+    reset_eof_of_pdf(fpath)
+    loader = PyPDFLoader(fpath)
+    text_splitter = TokenTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    chunks: ChunkList = []
+    for page, data in enumerate(loader.load_and_split()):
+        splits = text_splitter.split_text(data.page_content)
+        logger.debug(f"split {fpath} page {page+1} into {len(splits)} chunks")
+        for idx, page_chunk in enumerate(splits):
+            chunks.append(
+                Chunk(
+                    text=page_chunk,
+                    metadata={
+                        "source": f"{metadata_name}#page={page+1}?chunk={idx+1}"
+                    },
+                )
+            )
+
+    _ensure_chunk_limit(len(chunks), max_chunks)
+    return chunks
+
+
+def split_markdown(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    logger.info(f"split markdown {fpath=}, {metadata_name=}")
+    splitter = TokenTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    docus: Optional[List[Document]] = None
+    err: Optional[Exception] = None
+    for charset in ["utf-8", "gbk", "gb2312"]:
+        try:
+            fp = codecs.open(fpath, "rb", charset)
+            docus = splitter.create_documents([fp.read()])
+            fp.close()
+            break
+        except UnicodeDecodeError as exc:
+            err = exc
+            continue
+
+    if not docus:
+        if not err:
+            err = ValueError(f"cannot parse {fpath}")
+        raise err
+
+    chunks: ChunkList = []
+    for chunk_idx, docu in enumerate(docus):
+        title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
+        chunks.append(
+            Chunk(
+                text=docu.page_content,
+                metadata={"source": f"{metadata_name}#{title}?chunk={chunk_idx+1}"},
+            )
+        )
+
+    _ensure_chunk_limit(len(chunks), max_chunks)
+    return chunks
+
+
+def split_msword(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    logger.info(f"split msword {fpath=}, {metadata_name=}")
+    text_splitter = TokenTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+
+    fileext = os.path.splitext(fpath)[1].lower()
+    loader: BaseLoader
+    if fileext == ".docx":
+        loader = Docx2txtLoader(fpath)
+    elif fileext == ".doc":
+        loader = UnstructuredWordDocumentLoader(fpath)
+    else:
+        raise ValueError(f"unsupported file type {fileext}")
+
+    chunks: ChunkList = []
+    for page, data in enumerate(loader.load_and_split()):
+        splits = text_splitter.split_text(data.page_content)
+        logger.debug(f"split {fpath} page {page+1} into {len(splits)} chunks")
+        for idx, page_chunk in enumerate(splits):
+            chunks.append(
+                Chunk(
+                    text=page_chunk,
+                    metadata={
+                        "source": f"{metadata_name}#page={page+1}?chunk={idx+1}"
+                    },
+                )
+            )
+
+    _ensure_chunk_limit(len(chunks), max_chunks)
+    return chunks
+
+
+def split_msppt(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    logger.info(f"split msppt {fpath=}, {metadata_name=}")
+    text_splitter = TokenTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    loader = UnstructuredPowerPointLoader(fpath)
+    chunks: ChunkList = []
+    for page, data in enumerate(loader.load_and_split()):
+        splits = text_splitter.split_text(data.page_content)
+        logger.debug(f"split {fpath} page {page+1} into {len(splits)} chunks")
+        for idx, page_chunk in enumerate(splits):
+            chunks.append(
+                Chunk(
+                    text=page_chunk,
+                    metadata={
+                        "source": f"{metadata_name}#page={page+1}?chunk={idx+1}"
+                    },
+                )
+            )
+
+    _ensure_chunk_limit(len(chunks), max_chunks)
+    return chunks
+
+
+def split_html(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    logger.debug(f"split html {fpath=}, {metadata_name=}")
+    loader = BSHTMLLoader(fpath)
+    page_data = loader.load()[0]
+    text_splitter = TokenTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    splits = text_splitter.split_text(page_data.page_content)
+    _ensure_chunk_limit(len(splits), max_chunks)
+    chunks: ChunkList = [
+        Chunk(text=chunk, metadata={"key_holder": "val_holder"})
+        for chunk in splits
+    ]
+    return chunks
+
+
+def split_text(
+    content: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    assert isinstance(content, str), "content must be string"
+    splitter = TokenTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+    splits = splitter.split_text(content)
+    _ensure_chunk_limit(len(splits), max_chunks)
+    chunks: ChunkList = []
+    for idx, split in enumerate(splits):
+        chunks.append(
+            Chunk(
+                text=split,
+                metadata={"source": f"{metadata_name}?chunk={idx+1}"},
+            )
+        )
+    return chunks
+
+
+def split_file(
+    fpath: str,
+    metadata_name: str,
+    max_chunks: int,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+) -> ChunkList:
+    file_ext: str = os.path.splitext(fpath)[1].lower()
+    if file_ext == ".pdf":
+        return split_pdf(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    if file_ext in [".md", ".txt"]:
+        return split_markdown(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    if file_ext in [".docx", ".doc"]:
+        return split_msword(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    if file_ext in [".pptx", ".ppt"]:
+        return split_msppt(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    if file_ext == ".html":
+        return split_html(
+            fpath=fpath,
+            metadata_name=metadata_name,
+            max_chunks=max_chunks,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    raise ValueError(f"unsupported file type {file_ext}")
+
+
 def embedding_file(
     fpath: str,
     metadata_name: str,
@@ -240,49 +588,18 @@ def embedding_file(
         Index: index
     """
     start_at: float = time.time()
-    file_ext: str = os.path.splitext(fpath)[1].lower()
-    if file_ext == ".pdf":
-        idx = embedding_pdf(
-            fpath=fpath,
-            metadata_name=metadata_name,
-            max_chunks=max_chunks,
-            apikey=apikey,
-            api_base=api_base,
-        )
-    elif file_ext in [".md", ".txt"]:
-        idx = embedding_markdown(
-            fpath=fpath,
-            metadata_name=metadata_name,
-            max_chunks=max_chunks,
-            apikey=apikey,
-            api_base=api_base,
-        )
-    elif file_ext in [".docx", ".doc"]:
-        idx = embedding_msword(
-            fpath=fpath,
-            metadata_name=metadata_name,
-            max_chunks=max_chunks,
-            apikey=apikey,
-            api_base=api_base,
-        )
-    elif file_ext in [".pptx", ".ppt"]:
-        idx = embedding_msppt(
-            fpath=fpath,
-            metadata_name=metadata_name,
-            max_chunks=max_chunks,
-            apikey=apikey,
-            api_base=api_base,
-        )
-    elif file_ext == ".html":
-        idx = embedding_html(
-            fpath=fpath,
-            metadata_name=metadata_name,
-            max_chunks=max_chunks,
-            apikey=apikey,
-            api_base=api_base,
-        )
-    else:
-        raise ValueError(f"unsupported file type {file_ext}")
+    chunks = chunk_file(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
+    )
+    idx = embed_chunks(
+        chunks=chunks,
+        apikey=apikey,
+        api_base=api_base,
+    )
 
     logger.info(
         f"embedding {fpath} done, {api_base=}, {max_chunks=},cost {time.time() - start_at:.2f}s"
@@ -337,53 +654,14 @@ def embedding_pdf(
         Index: index
     """
     logger.info(f"call embedding_pdf {fpath=}, {metadata_name=}")
-
-    reset_eof_of_pdf(fpath)
-    loader = PyPDFLoader(fpath)
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    docs: List[str] = []
-    metadatas: List[dict] = []
-    text_splitter = TokenTextSplitter(
-        chunk_size=500,
-        chunk_overlap=30,
+    chunks = split_pdf(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
     )
-    for page, data in enumerate(loader.load_and_split()):
-        splits = text_splitter.split_text(data.page_content)
-        docs.extend(splits)
-        logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
-        for i, _ in enumerate(splits):
-            metadatas.append({"source": f"{metadata_name}#page={page+1}?chunk={i+1}"})
-
-    assert len(docs) <= max_chunks, (
-        f"your account limit to parse at most {max_chunks} chunks, ",
-        f"but you submit {len(docs)}, consider upgrade your account",
-    )
-
-    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures: List[Future] = []
-    start_idx: int = 0
-    n_batch: int = 5
-    while True:
-        if start_idx >= len(docs):
-            break
-
-        end_at = min(start_idx + n_batch, len(docs))
-        f = thread_executor.submit(
-            _embeddings_worker,
-            texts=docs[start_idx:end_at],
-            metadatas=metadatas[start_idx:end_at],
-            apikey=apikey,
-            api_base=api_base,
-        )
-        futures.append(f)
-        start_idx = end_at
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    for f in futures:
-        index.store.merge_from(f.result())
-
-    return index
+    return embed_chunks(chunks=chunks, apikey=apikey, api_base=api_base)
 
 
 def _embeddings_worker(
@@ -415,66 +693,14 @@ def embedding_markdown(
         Index: index
     """
     logger.info(f"call embedding_markdown {fpath=}, {metadata_name=}")
-    # splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=50)
-    splitter = TokenTextSplitter(
-        chunk_size=500,
-        chunk_overlap=30,
+    chunks = split_markdown(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
     )
-    index = new_store(apikey=apikey, api_base=api_base)
-    docs = []
-    metadatas = []
-    docus: Optional[List[Document]] = None
-    err: Optional[Exception] = None
-    for charset in ["utf-8", "gbk", "gb2312"]:
-        try:
-            fp = codecs.open(fpath, "rb", charset)
-            docus = splitter.create_documents([fp.read()])
-            fp.close()
-            break
-        except UnicodeDecodeError as e:
-            err = e
-            continue
-
-    if not docus:
-        if not err:
-            err = ValueError(f"cannot parse {fpath}")
-
-        raise err
-
-    for ichunk, docu in enumerate(docus):
-        title = quote(docu.page_content.strip().split("\n", maxsplit=1)[0])
-        docs.append(docu.page_content)
-        metadatas.append({"source": f"{metadata_name}#{title}?chunk={ichunk+1}"})
-
-    assert len(docs) <= max_chunks, (
-        f"your account limit to parse at most {max_chunks} chunks, ",
-        f"but you submit {len(docs)}, consider upgrade your account",
-    )
-
-    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures: List[Future] = []
-    start_at = 0
-    n_batch = 5
-    while True:
-        if start_at >= len(docs):
-            break
-
-        end_at = min(start_at + n_batch, len(docs))
-        f = thread_executor.submit(
-            _embeddings_worker,
-            texts=docs[start_at:end_at],
-            metadatas=metadatas[start_at:end_at],
-            apikey=apikey,
-            api_base=api_base,
-        )
-        futures.append(f)
-        start_at = end_at
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    for f in futures:
-        index.store.merge_from(f.result())
-
-    return index
+    return embed_chunks(chunks=chunks, apikey=apikey, api_base=api_base)
 
 
 def embedding_msword(
@@ -496,61 +722,14 @@ def embedding_msword(
         Index: index
     """
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
-    index = new_store(apikey=apikey, api_base=api_base)
-    docs = []
-    metadatas = []
-    text_splitter = TokenTextSplitter(
-        chunk_size=500,
-        chunk_overlap=30,
+    chunks = split_msword(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
     )
-
-    fileext = os.path.splitext(fpath)[1].lower()
-    loader: BaseLoader
-    if fileext == ".docx":
-        loader = Docx2txtLoader(fpath)
-    elif fileext == ".doc":
-        loader = UnstructuredWordDocumentLoader(fpath)
-    else:
-        raise ValueError(f"unsupported file type {fileext}")
-
-    for page, data in enumerate(loader.load_and_split()):
-        splits = text_splitter.split_text(data.page_content)
-        docs.extend(splits)
-        logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
-        for ichunk, _ in enumerate(splits):
-            metadatas.append(
-                {"source": f"{metadata_name}#page={page+1}?chunk={ichunk+1}"}
-            )
-
-    assert len(docs) <= max_chunks, (
-        f"your account limit to parse at most {max_chunks} chunks, ",
-        f"but you submit {len(docs)}, consider upgrade your account",
-    )
-
-    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures: List[Future] = []
-    start_at = 0
-    n_batch = 5
-    while True:
-        if start_at >= len(docs):
-            break
-
-        end_at = min(start_at + n_batch, len(docs))
-        f = thread_executor.submit(
-            _embeddings_worker,
-            texts=docs[start_at:end_at],
-            metadatas=metadatas[start_at:end_at],
-            apikey=apikey,
-            api_base=api_base,
-        )
-        futures.append(f)
-        start_at = end_at
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    for f in futures:
-        index.store.merge_from(f.result())
-
-    return index
+    return embed_chunks(chunks=chunks, apikey=apikey, api_base=api_base)
 
 
 def embedding_msppt(
@@ -572,52 +751,14 @@ def embedding_msppt(
         Index: index
     """
     logger.info(f"call embeddings_word {fpath=}, {metadata_name=}")
-    text_splitter = TokenTextSplitter(
-        chunk_size=500,
-        chunk_overlap=30,
+    chunks = split_msppt(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
     )
-    index = new_store(apikey=apikey, api_base=api_base)
-    docs = []
-    metadatas = []
-    loader = UnstructuredPowerPointLoader(fpath)
-    for page, data in enumerate(loader.load_and_split()):
-        splits = text_splitter.split_text(data.page_content)
-        docs.extend(splits)
-        logger.debug(f"embedding {fpath} page {page+1} with {len(splits)} chunks")
-        for ichunk, _ in enumerate(splits):
-            metadatas.append(
-                {"source": f"{metadata_name}#page={page+1}?chunk={ichunk+1}"}
-            )
-
-    assert len(docs) <= max_chunks, (
-        f"your account limit to parse at most {max_chunks} chunks, ",
-        f"but you submit {len(docs)}, consider upgrade your account",
-    )
-
-    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(docs)} chunks")
-    futures: List[Future] = []
-    start_at = 0
-    n_batch = 5
-    while True:
-        if start_at >= len(docs):
-            break
-
-        end_at = min(start_at + n_batch, len(docs))
-        f = thread_executor.submit(
-            _embeddings_worker,
-            texts=docs[start_at:end_at],
-            metadatas=metadatas[start_at:end_at],
-            apikey=apikey,
-            api_base=api_base,
-        )
-        futures.append(f)
-        start_at = end_at
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    for f in futures:
-        index.store.merge_from(f.result())
-
-    return index
+    return embed_chunks(chunks=chunks, apikey=apikey, api_base=api_base)
 
 
 def embedding_html(
@@ -639,41 +780,14 @@ def embedding_html(
         Index: index
     """
     logger.debug(f"call embeddings_html {fpath=}, {metadata_name=}")
-
-    loader = BSHTMLLoader(fpath)
-    page_data = loader.load()[0]
-
-    text_splitter = TokenTextSplitter(
-        chunk_size=500,
-        chunk_overlap=30,
+    chunks = split_html(
+        fpath=fpath,
+        metadata_name=metadata_name,
+        max_chunks=max_chunks,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
     )
-    splits = text_splitter.split_text(page_data.page_content)
-    assert len(splits) <= max_chunks, f"too many chunks {len(splits)} > {max_chunks}"
-
-    logger.debug(f"send chunk to LLM embeddings, {fpath=}, {len(splits)} chunks")
-    futures: List[Future] = []
-    start_idx: int = 0
-    n_batch = 5
-    while True:
-        if start_idx >= len(splits):
-            break
-
-        end_at = min(start_idx + n_batch, len(splits))
-        f = thread_executor.submit(
-            _embeddings_worker,
-            texts=splits[start_idx:end_at],
-            metadatas=[{"key_holder": "val_holder"}] * (end_at - start_idx),
-            apikey=apikey,
-            api_base=api_base,
-        )
-        futures.append(f)
-        start_idx = end_at
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    for f in futures:
-        index.store.merge_from(f.result())
-
-    return index
+    return embed_chunks(chunks=chunks, apikey=apikey, api_base=api_base)
 
 
 def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index:

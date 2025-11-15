@@ -63,3 +63,9 @@ class UserChain(NamedTuple):
     datasets: List[str]
     chain: Callable[[ChatOpenAI, str], Tuple[str, List[str]]]
     search: Callable[[str], Tuple[str, List[str]]]
+
+
+def deserialize(data: bytes, api_key: str = prd.OPENAI_TOKEN) -> Index:
+    """Backward-compatible helper for legacy imports."""
+
+    return Index.deserialize(data=data, api_key=api_key)

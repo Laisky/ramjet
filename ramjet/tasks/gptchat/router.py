@@ -9,7 +9,7 @@ import threading
 import time
 import urllib.parse
 from functools import partial
-from typing import Dict, List, Set, Tuple, Callable
+from typing import Dict, List, Set, Tuple, Callable, Optional, Mapping, Any
 from uuid import uuid1
 
 import aiohttp.web
@@ -26,6 +26,10 @@ from .base import logger
 from .llm.embeddings import (
     DEFAULT_MAX_CHUNKS_FOR_FREE,
     DEFAULT_MAX_CHUNKS_FOR_PAID,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_CHUNK_OVERLAP,
+    chunk_file,
+    chunk_text_content,
     Index,
     build_user_chain,
     derive_key,
@@ -87,6 +91,7 @@ def bind_handle(add_route):
 
     add_route("", LandingPage)
     add_route("query{op:(/.*)?}", Query)
+    add_route("chunks", ChunkPreview)
     add_route("files", UploadedFiles)
     add_route("ctx{op:(/.*)?}", EmbeddingContext)
     add_route("image{op:(/.*)?}", Image)
@@ -219,6 +224,189 @@ class Image(aiohttp.web.View):
         upload_image_to_s3(
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
         )
+
+class ChunkPreview(aiohttp.web.View):
+    @recover
+    @authenticate
+    async def post(self, user: settings.UserPermission):
+        content_type = (self.request.content_type or "").lower()
+        payload: Optional[Mapping] = None
+        file_field: Optional[FileField] = None
+        raw_body: Optional[bytes] = None
+        raw_filename: Optional[str] = None
+        text_content: Optional[str] = None
+        metadata_name = (
+            self.request.headers.get("X-Laisky-Metadata-Name")
+            or self.request.query.get("metadata_name", "")
+        )
+
+        if content_type.startswith("application/json"):
+            payload = await self.request.json()
+            assert isinstance(payload, Mapping), "json body must be object"
+            text_content = payload.get("text")
+            metadata_name = payload.get("metadata_name", metadata_name)
+        elif content_type.startswith("multipart/"):
+            payload = await self.request.post()
+            candidate = payload.get("file")
+            file_field = candidate if isinstance(candidate, FileField) else None
+            text_value = payload.get("text")
+            text_content = text_value if isinstance(text_value, str) else text_content
+            metadata_name = payload.get("metadata_name", metadata_name)
+        elif content_type.startswith("text/"):
+            text_content = await self.request.text()
+        else:
+            raw_body = await self.request.read()
+            raw_filename = self.request.headers.get("X-Laisky-File-Name")
+            if not raw_body:
+                raise ValueError("request body is empty")
+
+        chunk_size = self._parse_positive_int(
+            self._pick_scalar(payload, "chunk_size"), DEFAULT_CHUNK_SIZE
+        )
+        chunk_overlap = self._parse_non_negative_int(
+            self._pick_scalar(payload, "chunk_overlap"), DEFAULT_CHUNK_OVERLAP
+        )
+        limit = (
+            DEFAULT_MAX_CHUNKS_FOR_PAID
+            if user.is_paid
+            else DEFAULT_MAX_CHUNKS_FOR_FREE
+        )
+        max_chunks = self._parse_positive_int(
+            self._pick_scalar(payload, "max_chunks"), limit
+        )
+        max_chunks = min(max_chunks, limit)
+
+        if chunk_overlap >= chunk_size:
+            raise ValueError("chunk_overlap must be smaller than chunk_size")
+
+        if file_field or raw_body is not None:
+            chunks, source_name = await self._split_file(
+                metadata_name=metadata_name,
+                file_field=file_field,
+                raw_body=raw_body,
+                raw_filename=raw_filename,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                max_chunks=max_chunks,
+            )
+            origin = "file"
+        else:
+            if text_content is None:
+                raise ValueError("either text or file content is required")
+            source_name = metadata_name or "inline-text"
+            chunks = chunk_text_content(
+                content=text_content,
+                metadata_name=source_name,
+                max_chunks=max_chunks,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+            origin = "text"
+
+        serialised = [
+            {"text": chunk.text, "metadata": chunk.metadata} for chunk in chunks
+        ]
+
+        return aiohttp.web.json_response(
+            {
+                "chunks": serialised,
+                "total": len(serialised),
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "max_chunks": max_chunks,
+                "source": source_name,
+                "origin": origin,
+            }
+        )
+
+    def _pick_scalar(
+        self, payload: Optional[Any], key: str
+    ) -> Optional[str]:
+        if payload is None:
+            return self.request.query.get(key)
+        if hasattr(payload, "get"):
+            value = payload.get(key)
+            if value is None and hasattr(payload, "getone"):
+                try:
+                    value = payload.getone(key)
+                except Exception:
+                    value = None
+        else:
+            value = None
+        if value is None:
+            return self.request.query.get(key)
+        return value
+
+    async def _split_file(
+        self,
+        metadata_name: str,
+        file_field: Optional[FileField],
+        raw_body: Optional[bytes],
+        raw_filename: Optional[str],
+        chunk_size: int,
+        chunk_overlap: int,
+        max_chunks: int,
+    ):
+        if file_field is not None:
+            filename = os.path.basename(file_field.filename or "")
+            assert filename, "filename is required"
+            reader = file_field.file
+        else:
+            assert raw_filename, "X-Laisky-File-Name header is required"
+            assert raw_body is not None, "request body is empty"
+            filename = os.path.basename(raw_filename)
+            reader = io.BytesIO(raw_body)
+
+        suffix = os.path.splitext(filename)[1]
+        assert suffix, "file extension is required"
+
+        source_name = metadata_name or filename
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = os.path.join(tmpdir, filename)
+            total = 0
+            with open(tmp_path, "wb") as target:
+                while True:
+                    chunk = reader.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    assert (
+                        total <= settings.OPENAI_EMBEDDING_FILE_SIZE_LIMIT
+                    ), "file size exceeds limit"
+                    target.write(chunk)
+
+            chunks = chunk_file(
+                fpath=tmp_path,
+                metadata_name=source_name,
+                max_chunks=max_chunks,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+
+        return chunks, source_name
+
+    def _parse_positive_int(self, raw_value: Optional[str], default: int) -> int:
+        if raw_value in (None, ""):
+            return default
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            raise ValueError("value must be an integer")
+        if value <= 0:
+            raise ValueError("value must be positive")
+        return value
+
+    def _parse_non_negative_int(self, raw_value: Optional[str], default: int) -> int:
+        if raw_value in (None, ""):
+            return default
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            raise ValueError("value must be an integer")
+        if value < 0:
+            raise ValueError("value must be non-negative")
+        return value
 
 
 class Query(aiohttp.web.View):
