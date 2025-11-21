@@ -1,5 +1,6 @@
 Ramjet
 ===
+<!-- markdownlint-disable MD003 MD042 MD045 MD007 -->
 
 [![versions](https://img.shields.io/badge/version-v1.8.5-blue.svg)]()
 [![PyPI version](https://badge.fury.io/py/ramjet.svg)](https://badge.fury.io/py/ramjet)
@@ -10,7 +11,7 @@ Ramjet
 
 | ![](http://7xjvpy.dl1.z0.glb.clouddn.com/ramjet.jpg) |
 |:--:|
-| 后台脚本的引擎 |
+| The engine for cronjob scripts |
 
 
 ## Links
@@ -22,34 +23,41 @@ Ramjet
 
 ## Install & Run
 
-Need Python3.5.x.
+Need Python 3.10+.
 
 ```sh
-# Install from pypi
+# Install from PyPI
 
 $ pip install ramjet
 ```
 
 ```sh
-# Install from source
+# Install from source for development
 
-$ python setup.py install
-$ python -m ramjet [--debug=true]
+$ pip install --user pdm
+$ pdm install
+$ pdm run python -m ramjet [--debug=true]
+
+# Optional: export pinned requirements for deployment-only environments
+$ pdm export --without-hashes --format requirements -o requirements.txt
 ```
+
+
+> Maintainers: run `pdm run update-readme-version` before tagging a release to refresh the README badge.
 
 
 ## Description
 
-基于 asyncio 和 consurrent.futures 运行脚本（`tasks`）。
+Run scripts (`tasks`) based on asyncio and concurrent.futures.
 
-每一个 task 都需要实现接口 `bind_task()`。
+Each task needs to implement the `bind_task()` interface.
 
-利用 `ioloop`、`thread_executor`、`process_executor` 自行实现运行逻辑。
+Use `ioloop`, `thread_executor`, and `process_executor` to implement your own execution logic.
 
 
 ## Demo
 
-### 异步
+### Asynchronous
 
 ```py
 import random
@@ -59,7 +67,7 @@ from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
-    # 将任务添加进事件循环中
+    # Add the task to the event loop
     asyncio.ensure_future(async_task())
 
 
@@ -75,18 +83,18 @@ async def async_child_task(n):
 
 ```
 
-### 多线程 & 多进程
+### Multithreading & Multiprocessing
 
-需要注意子进程没法回收，所以请确保 task 可以很好的结束。
+Note: Subprocesses cannot be recycled, so please ensure that the task can terminate properly.
 
 ```py
 from ramjet.engines import process_executor, thread_executor, ioloop
 
 
 def bind_task():
-    # 多线程
+    # Multithreading
     thread_executor.submit(task, your_arguments)
-    # 多进程
+    # Multiprocessing
     process_executor.submit(task, your_arguments)
 
 
@@ -95,7 +103,7 @@ def task(*args, **kw):
 
 ```
 
-### 定时任务
+### Scheduled Tasks
 
 ```py
 from ramjet.engines import process_executor, thread_executor, ioloop
@@ -107,7 +115,7 @@ def bind_task():
 
 
 def task(*args, **kw):
-    # 可以在 task 内设置下一次执行的时间
+    # You can set the next execution time inside the task
     # ioloop.call_later(delay, task, *args, **kw)
 ```
 
@@ -138,4 +146,4 @@ class DemoHandle(web.View):
 
 ## Versions
 
-[更新日志](https://github.com/Laisky/ramjet/blob/master/CHANGELOG.md)
+[Changelog](https://github.com/Laisky/ramjet/blob/master/CHANGELOG.md)

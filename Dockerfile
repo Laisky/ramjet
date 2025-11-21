@@ -5,15 +5,21 @@ RUN apt-get update \
     libc-dev libssl-dev libffi-dev zlib1g-dev python3-dev \
     && update-ca-certificates
 
+ENV PDM_VENV_IN_PROJECT=1 \
+    PDM_IGNORE_SAVED_PYTHON=1 \
+    PDM_CHECK_UPDATE=false \
+    PATH="/app/.venv/bin:${PATH}"
+
 WORKDIR /app
-ADD ./requirements.txt .
-ADD ./constraints.txt .
-RUN PIP_CONSTRAINT=constraints.txt pip install -r requirements.txt
+RUN pip install --no-cache-dir pdm
 
-ADD . .
+COPY pyproject.toml pdm.lock LICENSE ./
+RUN pdm install --prod --frozen-lockfile --no-editable --no-self \
+    && rm -rf /root/.cache
+
+COPY . .
+RUN pdm install --prod --frozen-lockfile --no-editable
 RUN rm -rf /app/ramjet/settings/prd.*
-
-RUN python setup.py install
 
 RUN adduser --disabled-password --gecos '' laisky \
     && chown -R laisky:laisky /app
