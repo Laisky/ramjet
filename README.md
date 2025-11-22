@@ -9,7 +9,7 @@ Ramjet
 
 > わが征くは星の大海
 
-| ![](http://7xjvpy.dl1.z0.glb.clouddn.com/ramjet.jpg) |
+| ![](https://s3.laisky.com/uploads/2025/11/bussard_ramjet.jpeg) |
 |:--:|
 | The engine for cronjob scripts |
 
