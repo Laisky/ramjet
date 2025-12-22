@@ -63,7 +63,7 @@ langchain-text-splitters==0.3.11
 langsmith==0.4.45
 lxml==6.0.2
 markupsafe==3.0.3
-marshmallow==3.26.1
+marshmallow==3.26.2
 maya==0.6.1
 mccabe==0.7.0
 minio==7.2.18
