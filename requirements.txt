@@ -14,7 +14,7 @@ argon2-cffi-bindings==25.1.0
 async-timeout==4.0.3; python_full_version < "3.11.3"
 attrs==25.4.0
 azure-cognitiveservices-speech==1.47.0
-azure-core==1.36.0
+azure-core==1.38.0
 bcrypt==5.0.0
 beautifulsoup4==4.14.2
 black==25.11.0
