@@ -55,7 +55,7 @@ def setup_tasks(app):
                     continue
 
             if not isinstance(taskcfg, dict):
-                raise "settings.INSTALL_TASKS syntax error"
+                raise ValueError("settings.INSTALL_TASKS syntax error")
 
             m = importlib.import_module(f".{taskcfg['task']}", "ramjet.tasks")
             handler = getattr(m, taskcfg.get("http_handle", "bind_handle"), None)

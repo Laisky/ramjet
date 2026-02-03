@@ -61,6 +61,9 @@ def prepare_data():
         )
         tasks.append(_download_index_data(project))
 
+    if not tasks:
+        return
+
     loop = asyncio.get_event_loop()
     loop.run_until_complete(asyncio.wait(tasks))
 
