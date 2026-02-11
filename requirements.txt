@@ -80,7 +80,7 @@ pathspec==0.12.1
 pdfminer-six==20251107
 pdfplumber==0.11.8
 pendulum==3.1.0
-pillow==12.0.0
+pillow==12.1.1
 platformdirs==4.5.0
 propcache==0.4.1
 pycodestyle==2.14.0
