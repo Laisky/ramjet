@@ -16,8 +16,10 @@ def validate_passwd(passwd, hashed):
 
 
 def generate_token(json_, secret=SECRET_KEY):
-    return jwt.encode(json_, secret, algorithm="HS512").decode()
+    """generate_token signs JSON claims with secret and returns an HS512 JWT string."""
+    return jwt.encode(json_, secret, algorithm="HS512")
 
 
 def validate_token(token, secret=SECRET_KEY):
-    return jwt.decode(token, secret, verify=True)
+    """validate_token verifies an HS512 JWT with secret and returns its JSON claims."""
+    return jwt.decode(token, secret, algorithms=["HS512"])

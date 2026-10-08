@@ -1,0 +1,35 @@
+name: offline tests
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      TIKTOKEN_CACHE_DIR: /tmp/ramjet-tokenizer-assets
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install runtime and test dependencies
+        run: python -m pip install -r requirements.txt pytest==8.4.2 tomli==2.3.0
+      - name: Cache public tokenizer assets before disabling test networking
+        run: python -c 'import tiktoken; tiktoken.get_encoding("gpt2")'
+      - name: Run complete suite with synthetic settings and guarded networking
+        run: python -m pytest -q tests
