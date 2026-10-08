@@ -67,6 +67,10 @@ from .utils import recover
 user_prcess_file_sema_lock = threading.RLock()
 user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
 
+# Retain workers until completion independently of the HTTP request lifetime.
+uploaded_jobs_lock = threading.RLock()
+uploaded_jobs = set()
+
 # track processing files by uid
 # {uid: [filekeys]}
 user_processing_files_lock = threading.RLock()
@@ -225,6 +229,7 @@ class Image(aiohttp.web.View):
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
         )
 
+
 class ChunkPreview(aiohttp.web.View):
     @recover
     @authenticate
@@ -235,10 +240,9 @@ class ChunkPreview(aiohttp.web.View):
         raw_body: Optional[bytes] = None
         raw_filename: Optional[str] = None
         text_content: Optional[str] = None
-        metadata_name = (
-            self.request.headers.get("X-Laisky-Metadata-Name")
-            or self.request.query.get("metadata_name", "")
-        )
+        metadata_name = self.request.headers.get(
+            "X-Laisky-Metadata-Name"
+        ) or self.request.query.get("metadata_name", "")
 
         if content_type.startswith("application/json"):
             payload = await self.request.json()
@@ -267,9 +271,7 @@ class ChunkPreview(aiohttp.web.View):
             self._pick_scalar(payload, "chunk_overlap"), DEFAULT_CHUNK_OVERLAP
         )
         limit = (
-            DEFAULT_MAX_CHUNKS_FOR_PAID
-            if user.is_paid
-            else DEFAULT_MAX_CHUNKS_FOR_FREE
+            DEFAULT_MAX_CHUNKS_FOR_PAID if user.is_paid else DEFAULT_MAX_CHUNKS_FOR_FREE
         )
         max_chunks = self._parse_positive_int(
             self._pick_scalar(payload, "max_chunks"), limit
@@ -319,9 +321,7 @@ class ChunkPreview(aiohttp.web.View):
             }
         )
 
-    def _pick_scalar(
-        self, payload: Optional[Any], key: str
-    ) -> Optional[str]:
+    def _pick_scalar(self, payload: Optional[Any], key: str) -> Optional[str]:
         if payload is None:
             return self.request.query.get(key)
         if hasattr(payload, "get"):
@@ -855,21 +855,56 @@ class UploadedFiles(aiohttp.web.View):
     @authenticate
     async def post(self, user: settings.UserPermission):
         """Upload pdf file by form"""
-        data = await self.request.post()
-
         sema = uid_ratelimiter(user, 3)
+        submitted = False
+        owned_file = None
         try:
-            ioloop = asyncio.get_event_loop()
-
-            # do not wait task done
-            ioloop.run_in_executor(
-                thread_executor, partial(self.process_file, user=user, data=data)
+            data = (await self.request.post()).copy()
+            file = data.get("file")
+            if isinstance(file, FileField):
+                # aiohttp closes request-owned files on return; the worker needs its own descriptor.
+                owned_file = os.fdopen(os.dup(file.file.fileno()), "rb")
+                data["file"] = FileField(
+                    file.name,
+                    file.filename,
+                    owned_file,
+                    file.content_type,
+                    file.headers,
+                )
+            future = thread_executor.submit(
+                partial(self.process_file, user=user, data=data)
             )
-        except Exception as e:
-            logger.exception(f"failed to process file {data.get('file', '')}")
-            return aiohttp.web.json_response({"error": str(e)}, status=400)
+            with uploaded_jobs_lock:
+                uploaded_jobs.add(future)
+
+            def finished(job):
+                """Observe worker failures and release the existing permit exactly once."""
+                try:
+                    if not job.cancelled():
+                        job.result()
+                except Exception:
+                    logger.warning("background upload processing failed")
+                finally:
+                    with uploaded_jobs_lock:
+                        uploaded_jobs.discard(job)
+                    if owned_file is not None:
+                        owned_file.close()
+                    sema.release()
+
+            future.add_done_callback(finished)
+            submitted = True
+        except aiohttp.web.HTTPException:
+            raise
+        except Exception:
+            logger.warning("upload scheduling failed")
+            return aiohttp.web.json_response(
+                {"error": "upload could not be scheduled"}, status=400
+            )
         finally:
-            sema.release()
+            if not submitted:
+                if owned_file is not None:
+                    owned_file.close()
+                sema.release()
 
         return aiohttp.web.json_response({"status": "ok"})
 
@@ -945,16 +980,14 @@ class UploadedFiles(aiohttp.web.View):
             file_ext = os.path.splitext(fp.name)[1]
 
             # index = embedding_file(fp.name, metadata_name)
-            index = thread_executor.submit(
-                partial(
-                    embedding_file,
-                    fpath=fp.name,
-                    metadata_name=metadata_name,
-                    apikey=user.apikey,
-                    max_chunks=max_chunks,
-                    api_base=user.api_base,
-                )
-            ).result()
+            # Already in a worker: avoid waiting on another job in the same executor.
+            index = embedding_file(
+                fpath=fp.name,
+                metadata_name=metadata_name,
+                apikey=user.apikey,
+                max_chunks=max_chunks,
+                api_base=user.api_base,
+            )
 
             # encrypt and upload origin pdf file
             encrypted_file_path = os.path.join(tmpdir, dataset_name + file_ext)
