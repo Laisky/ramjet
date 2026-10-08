@@ -12,14 +12,13 @@ access_token, access_token_secret = auth.get_access_token("verifier_value")
 # auth.access_token_secret
 """
 
-import urllib.parse
-
 import aiohttp_jinja2
 import tweepy
 from aiohttp import web
 from aiohttp_session import get_session
 from ramjet.settings import TWITTER_CONSUMER_KEY, TWITTER_CONSUMER_SECRET
-from ramjet.utils import generate_token, get_conn, obj2str, str2obj, utcnow
+from ramjet.utils import generate_token, get_conn, utcnow
+from ramjet.oauth_state import consume_request_token, make_request_token_state
 
 from .base import logger
 
@@ -36,8 +35,7 @@ class LoginHandle(web.View):
         auth = get_auth()
         url = auth.get_authorization_url()
         resp = web.HTTPFound(url)
-        s_token = obj2str(auth.request_token)
-        s["request_token"] = s_token
+        s["request_token"] = make_request_token_state(auth.request_token)
         return resp
 
 
@@ -51,19 +49,20 @@ class OAuthHandle(web.View):
         logger.info("GET OAuthHandle")
 
         session = await get_session(self.request)
-        if not session or not session.get("request_token"):
-            return web.Response(text="Please enable cookies!")
-
-        req_token = str2obj(session.get("request_token"))
-        auth = get_auth()
-        ql = urllib.parse.parse_qs(self.request.query_string)
         try:
-            verify = ql["oauth_verifier"][0]
-        except Exception:
+            req_token, verify = consume_request_token(
+                session, self.request.query_string
+            )
+        except (ValueError, TypeError):
             return web.Response(text="OAuth Error")
 
+        auth = get_auth()
         auth.request_token = req_token
-        access_token, access_token_secret = auth.get_access_token(verify)
+        try:
+            access_token, access_token_secret = auth.get_access_token(verify)
+        except tweepy.TweepyException:
+            logger.warning("OAuth provider exchange failed")
+            return web.Response(text="OAuth Error")
         auth.set_access_token(access_token, access_token_secret)
         self.api = tweepy.API(auth)
 
