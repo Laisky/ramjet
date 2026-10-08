@@ -83,3 +83,11 @@ class EncryptHelperTests(unittest.TestCase):
         hashed = self.helpers.generate_passwd(b"correct-password")
         self.assertTrue(self.helpers.validate_passwd(b"correct-password", hashed))
         self.assertFalse(self.helpers.validate_passwd(b"wrong-password", hashed))
+
+
+def test_public_package_token_round_trip():
+    """test_public_package_token_round_trip exercises the actual package exports."""
+    from ramjet.utils import generate_token, validate_token
+
+    claims = {"uid": "offline-user", "scope": ["read"]}
+    assert validate_token(generate_token(claims)) == claims
