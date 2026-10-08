@@ -1,0 +1,64 @@
+name: complete offline qualification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      TIKTOKEN_CACHE_DIR: /tmp/ramjet-tokenizer-assets
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install runtime and test dependencies
+        run: python -m pip install -r requirements.txt pytest==8.4.2 tomli==2.3.0
+      - name: Cache public tokenizer assets before disabling test networking
+        run: python -c 'import tiktoken; tiktoken.get_encoding("gpt2")'
+      - name: Run complete suite with synthetic settings and guarded networking
+        run: python -m pytest -q tests
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Build the real frozen production image without publishing
+        run: docker build --pull -t ramjet-acceptance .
+      - name: Prepare isolated test tools and public tokenizer assets
+        run: |
+          python -m pip install --target "$RUNNER_TEMP/ramjet-test-tools" pytest==8.4.2 packaging==25.0
+          mkdir -p "$RUNNER_TEMP/ramjet-tokenizer-assets"
+          docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev \
+            --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$RUNNER_TEMP/ramjet-tokenizer-assets,dst=/tokenizer-assets" \
+            -e TIKTOKEN_CACHE_DIR=/tokenizer-assets \
+            --entrypoint /app/.venv/bin/python ramjet-acceptance \
+            -c 'import tiktoken; tiktoken.get_encoding("gpt2")'
+      - name: Accept frozen dependencies with synthetic settings and no networking
+        run: |
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,exec,nosuid,nodev \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --mount "type=bind,src=$RUNNER_TEMP/ramjet-test-tools,dst=/test-tools,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/ramjet-tokenizer-assets,dst=/tokenizer-assets,readonly" \
+            -e PYTHONPATH=/test-tools:/app -e PYTHONNOUSERSITE=1 \
+            -e PYTHONDONTWRITEBYTECODE=1 -e PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+            -e TIKTOKEN_CACHE_DIR=/tokenizer-assets \
+            --entrypoint /app/.venv/bin/python ramjet-acceptance \
+            -m pytest -q -p no:cacheprovider tests
