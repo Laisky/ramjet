@@ -142,6 +142,29 @@ class TwitterOAuthTests(unittest.IsolatedAsyncioTestCase):
             "issued_at": int(time.time()),
         }
 
+    async def test_real_tweepy_request_token_response_keeps_provider_compatibility(
+        self,
+    ):
+        """test_real_tweepy_request_token_response_keeps_provider_compatibility mocks HTTP parsing."""
+        import tweepy
+        import requests
+
+        session = {}
+        env, _ = load_handlers(session)
+        auth = tweepy.OAuthHandler("local-consumer", "local-consumer-secret")
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b"oauth_token=local-token&oauth_token_secret=local-secret&oauth_callback_confirmed=true"
+        env["get_auth"] = lambda: auth
+        with patch.object(auth.oauth, "post", return_value=response):
+            await env["LoginHandle"].get(NS(request=NS()))
+        self.assertEqual(auth.request_token["oauth_callback_confirmed"], "true")
+        self.assertEqual(
+            set(session["request_token"]),
+            {"oauth_token", "oauth_token_secret", "issued_at"},
+        )
+        self.assertEqual(session["request_token"]["oauth_token"], "local-token")
+
     async def test_login_stores_json_primitives(self):
         """test_login_stores_json_primitives rejects pickle/base64 session state."""
         session = {}

@@ -26,7 +26,17 @@ def validate_token_fields(token):
 
 def make_request_token_state(token):
     """make_request_token_state returns validated JSON token fields with issuance time."""
-    return dict(validate_token_fields(token), issued_at=int(time.time()))
+    if not isinstance(token, dict):
+        raise ValueError("Invalid OAuth request token")
+    if "oauth_callback_confirmed" in token and token[
+        "oauth_callback_confirmed"
+    ] not in ("true", True):
+        raise ValueError("Provider did not confirm OAuth callback")
+    try:
+        fields = {name: token[name] for name in ("oauth_token", "oauth_token_secret")}
+    except KeyError as error:
+        raise ValueError("Invalid OAuth request token") from error
+    return dict(validate_token_fields(fields), issued_at=int(time.time()))
 
 
 def consume_request_token(session, query_string):
