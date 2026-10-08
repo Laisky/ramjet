@@ -1,4 +1,4 @@
-"""Run changed-file formatting and three independent packaging contracts."""
+"""Run changed-file formatting and independent packaging contracts."""
 
 import argparse
 import json
@@ -14,6 +14,7 @@ TESTS = (
     "test_pyproject_has_no_license_classifier_conflict",
     "test_production_settings_are_excluded_from_build",
     "test_dockerfile_copies_license_before_pdm_install",
+    "test_requirements_match_frozen_lock",
 )
 
 
