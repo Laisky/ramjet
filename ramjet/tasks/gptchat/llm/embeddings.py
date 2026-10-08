@@ -40,7 +40,6 @@ from ramjet.settings import prd
 from ..base import logger
 from .base import Index, UserChain
 
-
 user_embeddings_chain_mu = threading.RLock()
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 user_shared_chain_mu = threading.RLock()
@@ -300,24 +299,18 @@ def embed_chunks(
 
     texts = [chunk.text for chunk in chunks]
     metadatas = [chunk.metadata for chunk in chunks]
-    futures: List[Future] = []
-    start_idx = 0
-    while start_idx < len(texts):
+    if batch_size <= 0:
+        raise ValueError("embedding batch size must be positive")
+    # Synchronous batches preserve order without waiting on this worker's executor.
+    for start_idx in range(0, len(texts), batch_size):
         end_at = min(start_idx + batch_size, len(texts))
-        futures.append(
-            thread_executor.submit(
-                _embeddings_worker,
-                texts=texts[start_idx:end_at],
-                metadatas=metadatas[start_idx:end_at],
-                apikey=apikey,
-                api_base=api_base,
-            )
+        store = _embeddings_worker(
+            texts=texts[start_idx:end_at],
+            metadatas=metadatas[start_idx:end_at],
+            apikey=apikey,
+            api_base=api_base,
         )
-        start_idx = end_at
-
-    index = new_store(apikey=apikey, api_base=api_base)
-    for future in futures:
-        index.store.merge_from(future.result())
+        index.store.merge_from(store)
 
     return index
 
@@ -344,9 +337,7 @@ def split_pdf(
             chunks.append(
                 Chunk(
                     text=page_chunk,
-                    metadata={
-                        "source": f"{metadata_name}#page={page+1}?chunk={idx+1}"
-                    },
+                    metadata={"source": f"{metadata_name}#page={page+1}?chunk={idx+1}"},
                 )
             )
 
@@ -427,9 +418,7 @@ def split_msword(
             chunks.append(
                 Chunk(
                     text=page_chunk,
-                    metadata={
-                        "source": f"{metadata_name}#page={page+1}?chunk={idx+1}"
-                    },
+                    metadata={"source": f"{metadata_name}#page={page+1}?chunk={idx+1}"},
                 )
             )
 
@@ -458,9 +447,7 @@ def split_msppt(
             chunks.append(
                 Chunk(
                     text=page_chunk,
-                    metadata={
-                        "source": f"{metadata_name}#page={page+1}?chunk={idx+1}"
-                    },
+                    metadata={"source": f"{metadata_name}#page={page+1}?chunk={idx+1}"},
                 )
             )
 
@@ -485,8 +472,7 @@ def split_html(
     splits = text_splitter.split_text(page_data.page_content)
     _ensure_chunk_limit(len(splits), max_chunks)
     chunks: ChunkList = [
-        Chunk(text=chunk, metadata={"key_holder": "val_holder"})
-        for chunk in splits
+        Chunk(text=chunk, metadata={"key_holder": "val_holder"}) for chunk in splits
     ]
     return chunks
 
