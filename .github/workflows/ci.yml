@@ -91,57 +91,19 @@ jobs:
           port: ${{ secrets.TARGET_HOST_SSH_PORT }}
           script: |
             set -eu
-            cd /home/ubuntu/repo/VPS
-            image="${{ needs.build_hash.outputs.image }}@${{ needs.build_hash.outputs.digest }}"
-            previous=""
-            cid="$(docker-compose -f bj-docker-compose.yml ps -q ramjet)"
-            if [ -n "$cid" ]; then
-              previous="$(docker inspect -f '{{.Image}}' "$cid")"
-            fi
-            docker pull "$image"
-            expected="$(docker image inspect -f '{{.Id}}' "$image")"
-            health_code="$(docker run --rm --network none --read-only --entrypoint cat "$image" /app/scripts/check_container_health.py)"
-            override="$(mktemp)"
-            trap 'rm -f "$override"' EXIT HUP INT TERM
-            printf 'services:\n  ramjet:\n    image: "%s"\n' "$image" > "$override"
+            cd /home/laisky/repo/laisky/VPS
+            docker compose -f home-docker-compose.yml pull ramjet
+            docker compose -f home-docker-compose.yml up -d --no-deps --force-recreate ramjet
             accepted=false
-            if docker-compose -f bj-docker-compose.yml -f "$override" up -d --no-deps --force-recreate ramjet; then
-              cid="$(docker-compose -f bj-docker-compose.yml ps -q ramjet)"
-              if [ -n "$cid" ] && [ "$(docker inspect -f '{{.Image}}' "$cid")" = "$expected" ]; then
-                for _attempt in $(seq 1 30); do
-                  if docker exec "$cid" python -c "$health_code"; then
-                    accepted=true
-                    break
-                  fi
-                  sleep 2
-                done
+            for _attempt in $(seq 1 30); do
+              if docker compose -f home-docker-compose.yml exec -T ramjet python /app/scripts/check_container_health.py; then
+                accepted=true
+                break
               fi
-            fi
-            if [ "$accepted" != true ]; then
-              echo "Ramjet candidate was not accepted; restoring the previous immutable image."
-              if [ -n "$previous" ]; then
-                printf 'services:\n  ramjet:\n    image: "%s"\n' "$previous" > "$override"
-                docker-compose -f bj-docker-compose.yml -f "$override" up -d --no-deps --force-recreate ramjet
-                restored="$(docker-compose -f bj-docker-compose.yml ps -q ramjet)"
-                test -n "$restored"
-                test "$(docker inspect -f '{{.Image}}' "$restored")" = "$previous"
-                recovered=false
-                for _attempt in $(seq 1 30); do
-                  if docker exec "$restored" python -c "$health_code"; then
-                    recovered=true
-                    break
-                  fi
-                  sleep 2
-                done
-                test "$recovered" = true
-                echo "Previous Ramjet image and health restored."
-              else
-                echo "No previous Ramjet container was available for automatic rollback." >&2
-                if [ -n "$cid" ]; then docker stop "$cid"; fi
-              fi
-              exit 1
-            fi
-            echo "Ramjet immutable image and service health accepted."
+              sleep 2
+            done
+            test "$accepted" = true
+            echo "Ramjet latest image and service health accepted."
 
   # ssh_test:
   #     runs-on: ubuntu-latest
