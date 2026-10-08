@@ -49,10 +49,14 @@ def test_dockerfile_copies_license_before_pdm_install() -> None:
         if line.startswith("run") and "pdm install" in line:
             pdm_install_line = idx
             # Ensure the first pdm install uses --no-self to avoid needing README/source
-            assert "--no-self" in line, "First pdm install must use --no-self to skip project build"
+            assert (
+                "--no-self" in line
+            ), "First pdm install must use --no-self to skip project build"
             break
 
-    assert license_copy_line is not None, "Dockerfile must copy LICENSE before installing dependencies"
+    assert (
+        license_copy_line is not None
+    ), "Dockerfile must copy LICENSE before installing dependencies"
     assert pdm_install_line is not None, "Dockerfile must invoke pdm install"
     assert (
         license_copy_line < pdm_install_line

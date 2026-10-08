@@ -5,63 +5,45 @@ on:
     branches: [master]
   push:
     branches: [master]
+  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: offline-fast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.10", "3.12"]
+    timeout-minutes: 5
     env:
-      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      TIKTOKEN_CACHE_DIR: /tmp/ramjet-tokenizer-assets
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-          cache-dependency-path: requirements.txt
-      - name: Install runtime and test dependencies
-        run: python -m pip install -r requirements.txt pytest==8.4.2 tomli==2.3.0
-      - name: Cache public tokenizer assets before disabling test networking
-        run: python -c 'import tiktoken; tiktoken.get_encoding("gpt2")'
-      - name: Run complete suite with synthetic settings and guarded networking
-        run: python -m pytest -q tests
-
-  image:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+          python-version: '3.12'
+      - name: Install only quick-gate tools
+        run: python -m pip install black==26.1.0 pytest==8.4.2
+      - name: Verify failure reporting
+        run: python -m unittest discover -s .scripts -p test_fast_ci.py -v
+      - name: Changed Python formatting and packaging contracts
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then base="$(git rev-parse HEAD^)"; fi
+          python .scripts/fast_ci.py --base "$base" --evidence "$RUNNER_TEMP/fast-ci"
+      - name: Retain exact discovery, exits and timing
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          python-version: "3.10"
-      - name: Build the real frozen production image without publishing
-        run: docker build --pull -t ramjet-acceptance .
-      - name: Prepare isolated test tools and public tokenizer assets
-        run: |
-          python -m pip install --target "$RUNNER_TEMP/ramjet-test-tools" pytest==8.4.2 packaging==25.0
-          mkdir -p "$RUNNER_TEMP/ramjet-tokenizer-assets"
-          docker run --rm --read-only --tmpfs /tmp:rw,nosuid,nodev \
-            --user "$(id -u):$(id -g)" \
-            --mount "type=bind,src=$RUNNER_TEMP/ramjet-tokenizer-assets,dst=/tokenizer-assets" \
-            -e TIKTOKEN_CACHE_DIR=/tokenizer-assets \
-            --entrypoint /app/.venv/bin/python ramjet-acceptance \
-            -c 'import tiktoken; tiktoken.get_encoding("gpt2")'
-      - name: Accept frozen dependencies with synthetic settings and no networking
-        run: |
-          docker run --rm --network none --read-only --tmpfs /tmp:rw,exec,nosuid,nodev \
-            --cap-drop ALL --security-opt no-new-privileges \
-            --mount "type=bind,src=$RUNNER_TEMP/ramjet-test-tools,dst=/test-tools,readonly" \
-            --mount "type=bind,src=$RUNNER_TEMP/ramjet-tokenizer-assets,dst=/tokenizer-assets,readonly" \
-            -e PYTHONPATH=/test-tools:/app -e PYTHONNOUSERSITE=1 \
-            -e PYTHONDONTWRITEBYTECODE=1 -e PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-            -e TIKTOKEN_CACHE_DIR=/tokenizer-assets \
-            --entrypoint /app/.venv/bin/python ramjet-acceptance \
-            -m pytest -q -p no:cacheprovider tests
+          name: fast-ci-${{ github.sha }}
+          path: ${{ runner.temp }}/fast-ci
+          if-no-files-found: error
+          retention-days: 14
