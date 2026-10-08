@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const template = fs.readFileSync('ramjet/tasks/templates/twitter/search.html', 'utf8');
-const callback = template.match(/<script[^>]*>([\s\S]*?)<\/script>/i)[1];
 const browser = await chromium.launch({
     headless: true, executablePath: process.env.CHROME_EXECUTABLE || '/usr/bin/google-chrome',
     args: ['--no-sandbox'],
@@ -13,6 +12,13 @@ try {
     const context = await browser.newContext({serviceWorkers: 'block'});
     await context.route('**/*', route => route.abort());
     const page = await context.newPage();
+    // Parse trusted checked-in template source without executing it or filtering HTML.
+    const callback = await page.evaluate(markup => {
+        const document = new DOMParser().parseFromString(markup, 'text/html');
+        return [...document.querySelectorAll('script')]
+            .find(script => !script.src && script.textContent.includes('twitterSearch'))?.textContent;
+    }, template);
+    assert.ok(callback, 'search callback missing from the actual template');
     await page.setContent('<form id="twitterSearch"><input value="fixture"></form><article id="tweets"></article>');
     const payload = '<img src="https://invalid.local/fixture" onerror="window.__tweetCanary=(window.__tweetCanary||0)+1">';
     await page.evaluate(({payload}) => {
