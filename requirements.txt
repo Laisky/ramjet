@@ -67,7 +67,7 @@ marshmallow==3.26.2
 maya==0.6.1
 mccabe==0.7.0
 minio==7.2.18
-multidict==6.7.0
+multidict==6.9.1
 mypy==1.18.2
 mypy-extensions==1.1.0
 numpy==2.2.6
