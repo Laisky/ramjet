@@ -57,23 +57,31 @@
             }`)
 
 
-            var tweets = resp.TwitterStatues;
-            var html = "";
-            for(var i = 0; i < tweets.length; i++){
-                var tweet = tweets[i];
-                html += `
-                    <div class="list-group">
-                        <a href="/twitter/status/${tweet.id}/" class="list-group-item">
-                            <div class="d-flex w-100 justify-content-between">
-                                <h4 class="list-group-item-heading">${tweet.user && tweet.user.name || '佚名'}:</h4>
-                                <small>${tweet.created_at}</small>
-                            </div>
-                            <p class="list-group-item-text">${tweet.text}</p>
-                        </a>
-                    </div>`;
+            const fragment = document.createDocumentFragment();
+            // GraphQL tweet fields are plain text, never trusted markup.
+            function appendText(parent, tag, className, value) {
+                const element = document.createElement(tag);
+                element.className = className;
+                element.textContent = value;
+                parent.appendChild(element);
             }
-
-            $("#tweets").html(html);
+            for (const tweet of resp.TwitterStatues) {
+                const group = document.createElement("div");
+                group.className = "list-group";
+                const link = document.createElement("a");
+                link.className = "list-group-item";
+                link.href = "/twitter/status/" + encodeURIComponent(String(tweet.id)) + "/";
+                const heading = document.createElement("div");
+                heading.className = "d-flex w-100 justify-content-between";
+                appendText(heading, "h4", "list-group-item-heading",
+                    String(tweet.user && tweet.user.name || "佚名") + ":");
+                appendText(heading, "small", "", tweet.created_at);
+                link.appendChild(heading);
+                appendText(link, "p", "list-group-item-text", tweet.text);
+                group.appendChild(link);
+                fragment.appendChild(group);
+            }
+            document.querySelector("#tweets").replaceChildren(fragment);
             return false;
         });
     }());
