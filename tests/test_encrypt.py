@@ -41,7 +41,9 @@ class EncryptHelperTests(unittest.TestCase):
                 self.assertIsInstance(token, str)
                 self.assertEqual(jwt.get_unverified_header(token)["alg"], "HS512")
                 key = self.default_key if secret is None else secret
-                self.assertEqual(jwt.decode(token, key, algorithms=["HS512"]), self.claims)
+                self.assertEqual(
+                    jwt.decode(token, key, algorithms=["HS512"]), self.claims
+                )
 
     def test_validate_token_accepts_signed_claims(self):
         """test_validate_token_accepts_signed_claims verifies the signing contract."""
