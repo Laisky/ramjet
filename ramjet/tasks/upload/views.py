@@ -52,8 +52,10 @@ class UploadFileView(aiohttp.web.View):
             submitted = True
             try:
                 await asyncio.shield(future)
-            except ValueError as exc:
-                raise aiohttp.web.HTTPBadRequest(text=str(exc)) from exc
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(
+                    text="invalid or oversized ZIP archive"
+                ) from None
         finally:
             if not submitted:
                 UPLOAD_SLOT.release()
