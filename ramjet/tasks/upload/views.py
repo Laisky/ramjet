@@ -1,18 +1,27 @@
 import asyncio
-import codecs
 import os
 import shutil
 import tempfile
-import zipfile
-from pathlib import Path
 
 import aiohttp
 import aiohttp_jinja2
+from ramjet.archive import bounded_extract
 from ramjet.engines import thread_executor
 from ramjet.utils import logger
 
 # DEST_DIR_PATH = "/home/laisky/test/zip"
 DEST_DIR_PATH = "/opt/cwpp/prototype/oogway"
+
+
+# One admitted upload retains its slot until background extraction finishes.
+UPLOAD_SLOT = asyncio.BoundedSemaphore(1)
+ARCHIVE_LIMITS = dict(
+    max_compressed=100 * 1024**2,
+    max_expanded=500 * 1024**2,
+    max_entries=10000,
+    max_ratio=1000,
+    timeout=30,
+)
 
 
 class UploadFileView(aiohttp.web.View):
@@ -21,41 +30,40 @@ class UploadFileView(aiohttp.web.View):
         return
 
     async def post(self):
-        data = await self.request.post()
-        assert data["file"], "must post file"
-        await asyncio.get_event_loop().run_in_executor(
-            thread_executor, self.parse_and_update_proto, data
-        )
+        if UPLOAD_SLOT.locked():
+            raise aiohttp.web.HTTPTooManyRequests(text="another upload is in progress")
+        await UPLOAD_SLOT.acquire()
+        submitted = False
+        try:
+            data = await self.request.post()
+            if not isinstance(data.get("file"), aiohttp.web.FileField):
+                raise aiohttp.web.HTTPBadRequest(text="must post a ZIP file")
+            future = asyncio.get_running_loop().run_in_executor(
+                thread_executor, self.parse_and_update_proto, data
+            )
+
+            def finished(done):
+                """Release admission only after the worker completes, including cancellation."""
+                UPLOAD_SLOT.release()
+                if not done.cancelled():
+                    done.exception()
+
+            future.add_done_callback(finished)
+            submitted = True
+            try:
+                await asyncio.shield(future)
+            except ValueError as exc:
+                raise aiohttp.web.HTTPBadRequest(text=str(exc)) from exc
+        finally:
+            if not submitted:
+                UPLOAD_SLOT.release()
         return aiohttp.web.HTTPFound("http://10.217.57.164:8888/云甲/")
 
     def parse_and_update_proto(self, post_data):
         logger.info("updating uploaded proto file")
-        zip_fname = "uploaded.zip"
         with tempfile.TemporaryDirectory() as tmpdir:
-            zip_fpath = os.path.join(tmpdir, zip_fname)
-            with open(zip_fpath, "wb") as fp:
-                fp.write(post_data["file"].file.read())
-
             extract_dir = os.path.join(tmpdir, "extracted")
-            with zipfile.ZipFile(zip_fpath) as fp:
-                for fname in fp.namelist():
-                    extract_fpath = Path(fp.extract(fname, extract_dir))
-
-                    # zipfile 会用 cp437 对待 non-ascii 文件名，需要手动转码
-                    try:
-                        new_fpath = os.path.join(
-                            extract_dir, fname.encode("cp437").decode("utf-8")
-                        )
-                    except:
-                        new_fpath = os.path.join(
-                            extract_dir, fname.encode("cp437").decode("gbk")
-                        )
-
-                    new_dir = os.path.dirname(new_fpath)
-                    if not os.path.exists(new_dir):
-                        os.mkdir(new_dir)
-
-                    extract_fpath.rename(new_fpath)
+            bounded_extract(post_data["file"].file, extract_dir, **ARCHIVE_LIMITS)
 
             logger.info(f"remove dir {DEST_DIR_PATH}")
             if os.path.isdir(DEST_DIR_PATH):
