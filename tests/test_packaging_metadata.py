@@ -61,3 +61,26 @@ def test_dockerfile_copies_license_before_pdm_install() -> None:
     assert (
         license_copy_line < pdm_install_line
     ), "COPY LICENSE must come before the pdm install RUN layer"
+
+
+def test_requirements_match_frozen_lock() -> None:
+    """test_requirements_match_frozen_lock rejects exports that bypass production pins."""
+    project_root = Path(__file__).resolve().parents[1]
+    with (project_root / "pdm.lock").open("rb") as fp:
+        lock = tomllib.load(fp)
+    locked = {
+        package["name"].lower().replace("_", "-").replace(".", "-"): package["version"]
+        for package in lock["package"]
+        if "default" in package.get("groups", [])
+    }
+    exported = {}
+    for raw_line in (project_root / "requirements.txt").read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        requirement = line.split(";", 1)[0].strip()
+        name, version = requirement.split("==", 1)
+        exported[name.lower().replace("_", "-").replace(".", "-")] = version
+    assert (
+        exported == locked
+    ), "requirements.txt must be regenerated from production pdm.lock"
