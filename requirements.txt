@@ -91,7 +91,7 @@ pydantic-core==2.41.5
 pydantic-settings==2.12.0
 pyflakes==3.4.0
 pyjwt==2.10.1
-pymongo==4.15.4
+pymongo==4.18.2
 pypdf==6.7.1
 pypdfium2==5.0.0
 python-dateutil==2.9.0.post0
