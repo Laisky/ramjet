@@ -71,7 +71,7 @@ def main():
         from ramjet.tasks import setup_tasks
 
         app = web.Application(
-            client_max_size=100 * 1024**3,  # 100MB
+            client_max_size=100 * 1024**2,  # 100 MiB
         )
         app.router.add_get("/health", health)
         setup_tasks(app)
