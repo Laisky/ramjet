@@ -19,7 +19,7 @@ jobs:
         python: ["3.10", "3.12"]
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      TIKTOKEN_CACHE_DIR: ${{ runner.temp }}/ramjet-tokenizer-assets
+      TIKTOKEN_CACHE_DIR: /tmp/ramjet-tokenizer-assets
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
