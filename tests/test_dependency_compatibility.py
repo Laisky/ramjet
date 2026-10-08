@@ -4,6 +4,11 @@ from importlib import metadata
 from io import BytesIO
 from pathlib import Path
 
+import jwt
+from bson import BSON, ObjectId
+from multidict import CIMultiDict
+from pymongo import MongoClient
+from urllib3.response import HTTPResponse
 from cryptography.fernet import Fernet
 from packaging.requirements import Requirement
 from PIL import Image
@@ -100,3 +105,46 @@ def test_pdf_ingestion_preserves_text_and_source(tmp_path) -> None:
     assert len(chunks) == 1
     assert chunks[0].text.strip() == "Ramjet dependency qualification"
     assert chunks[0].metadata["source"] == "offline-document#page=1?chunk=1"
+
+
+def test_http_headers_and_streaming_keep_duplicate_values() -> None:
+    """test_http_headers_and_streaming_keep_duplicate_values checks HTTP dependencies."""
+    headers = CIMultiDict()
+    headers.add("X-Trace", "first")
+    headers.add("x-trace", "second")
+    assert headers.getall("X-TRACE") == ["first", "second"]
+    response = HTTPResponse(body=BytesIO(b"abcdef"), preload_content=False)
+    assert b"".join(response.stream(amt=2)) == b"abcdef"
+
+
+def test_bson_and_lazy_database_client_preserve_data() -> None:
+    """test_bson_and_lazy_database_client_preserve_data checks supported MongoDB APIs."""
+    document = {"_id": ObjectId(), "label": "offline", "nested": {"count": 3}}
+    assert BSON.encode(document).decode() == document
+    with MongoClient(
+        "mongodb://user:pass%40word@localhost:27017/test", connect=False
+    ) as client:
+        assert client["test"]["notes"].name == "notes"
+        assert client.options.pool_options.max_pool_size == 100
+
+
+def test_padded_jwt_segments_remain_valid() -> None:
+    """test_padded_jwt_segments_remain_valid prevents the PyJWT 2.15.0 padding regression."""
+    import base64
+    import hashlib
+    import hmac
+    import json
+
+    key = "public-padding-compatibility-key-" * 4
+    header = base64.urlsafe_b64encode(
+        json.dumps({"alg": "HS512", "typ": "JWT"}).encode()
+    )
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"sub": "offline-user", "scope": ["read"]}).encode()
+    )
+    signed = header + b"." + payload
+    signature = base64.urlsafe_b64encode(
+        hmac.new(key.encode(), signed, hashlib.sha512).digest()
+    )
+    token = (signed + b"." + signature).decode()
+    assert jwt.decode(token, key, algorithms=["HS512"])["sub"] == "offline-user"
