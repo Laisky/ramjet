@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const template = fs.readFileSync('ramjet/tasks/templates/twitter/search.html', 'utf8');
-const callback = template.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1];
+const callback = template.match(/<script[^>]*>([\s\S]*?)<\/script>/i)[1];
 const browser = await chromium.launch({
     headless: true, executablePath: process.env.CHROME_EXECUTABLE || '/usr/bin/google-chrome',
     args: ['--no-sandbox'],
