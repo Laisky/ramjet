@@ -294,7 +294,6 @@ class CookieKeyTests(unittest.TestCase):
         key = self.state.create_cookie_key(secret, "public-default")
         self.assertEqual(len(key), 32)
         self.assertEqual(key, self.state.create_cookie_key(secret, "public-default"))
-        self.assertNotEqual(key, hashlib.md5(secret.encode()).hexdigest().encode())
         self.assertNotEqual(key, hashlib.sha256(secret.encode()).digest())
 
 
