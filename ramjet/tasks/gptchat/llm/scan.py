@@ -13,9 +13,9 @@ from langchain_community.document_loaders import (
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
 )
-from langchain.schema.document import Document
+from langchain_core.documents import Document
 from langchain_community.document_loaders.base import BaseLoader
-from langchain.text_splitter import TokenTextSplitter
+from langchain_text_splitters import TokenTextSplitter
 
 from ramjet.engines import thread_executor
 
@@ -107,16 +107,14 @@ def _get_question_tobe_summary(
         summary += f"* {f.result()}\n"
 
     # reduce
-    query = dedent(
-        f"""
+    query = dedent(f"""
         The following is set of summaries:
 
         {summary}
 
         Take these and distill it into a final, consolidated summary of the main themes.
         Helpful Answer:
-        """
-    )
+        """)
     return query
 
     # reduce by go-ramjet, do not use it for now
@@ -165,8 +163,7 @@ def summary_docu(
         streaming=False,
     )
 
-    query = dedent(
-        f"""
+    query = dedent(f"""
         Write a concise summary of the following content between "@>>>>>" and "@<<<<<",
         just response the summary text in a single {'short ' if max_token <= 500 else ' '}line,
         just contains necessary key informations,
@@ -177,6 +174,5 @@ def summary_docu(
         @<<<<<
 
         CONCISE SUMMARY:
-    """
-    )
+    """)
     return llm.invoke(query).pretty_repr()

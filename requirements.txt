@@ -29,7 +29,6 @@ charset-normalizer==3.4.4
 click==8.3.1
 colorama==0.4.6; platform_system == "Windows"
 cryptography==50.0.2
-dataclasses-json==0.6.7
 dateparser==1.2.2
 distro==1.9.0
 dnspython==2.8.0
@@ -55,15 +54,15 @@ jmespath==1.0.1
 jsonpatch==1.33
 jsonpointer==3.0.0
 kipp==0.3.2
-langchain==0.3.30
-langchain-community==0.3.31
-langchain-core==0.3.86
-langchain-openai==0.3.35
-langchain-text-splitters==0.3.11
+langchain-classic==1.0.8
+langchain-community==0.4.2
+langchain-core==1.4.6
+langchain-openai==1.1.14
+langchain-protocol==0.0.19
+langchain-text-splitters==1.1.2
 langsmith==0.6.3
 lxml==6.1.0
 markupsafe==3.0.3
-marshmallow==3.26.2
 maya==0.6.1
 mccabe==0.7.0
 minio==7.2.18
@@ -72,7 +71,7 @@ mypy==1.18.2
 mypy-extensions==1.1.0
 numpy==2.2.6
 oauthlib==3.3.1
-openai==2.8.1
+openai==2.26.0
 openapi-schema-pydantic==1.2.4
 orjson==3.11.6; platform_python_implementation != "PyPy"
 packaging==25.0
@@ -121,7 +120,6 @@ tqdm==4.67.1
 tweepy==4.16.0
 types-pytz==2025.2.0.20251108
 typing-extensions==4.15.0
-typing-inspect==0.9.0
 typing-inspection==0.4.2
 tzdata==2025.2
 tzlocal==5.3.1
