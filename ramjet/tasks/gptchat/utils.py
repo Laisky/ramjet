@@ -106,6 +106,8 @@ def recover(func):
     async def wrapper(self, *args, **kwargs):
         try:
             return await func(self, *args, **kwargs)
+        except aiohttp.web.HTTPException:
+            raise
         except Exception as e:
             logger.exception("handler error")
             return aiohttp.web.HTTPBadRequest(text=str(e))
