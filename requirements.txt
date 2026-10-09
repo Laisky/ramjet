@@ -28,7 +28,7 @@ cffi==2.0.0
 charset-normalizer==3.4.4
 click==8.3.1
 colorama==0.4.6; platform_system == "Windows"
-cryptography==46.0.5
+cryptography==50.0.0
 dataclasses-json==0.6.7
 dateparser==1.2.2
 distro==1.9.0
