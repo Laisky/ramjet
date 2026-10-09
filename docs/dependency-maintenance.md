@@ -59,3 +59,18 @@ approved app/service decision and export integration; it has not been installed.
 Migrating to Dependabot-supported `uv.lock` is another separately reviewed package
 manager migration. Neither alternative is required for the current local route,
 and neither justifies removing existing security coverage.
+
+## Existing retrieval SDK compatibility
+
+Ramjet uses legacy retrieval chains and document loaders. The supported
+[LangChain v1 compatibility route](https://docs.langchain.com/oss/python/migrate/langchain-v1#langchain-classic)
+provides these through langchain-classic, alongside direct core, splitter and
+community imports. The agent-oriented langchain/LangGraph package is not needed
+by these application paths. Preserve the retrieval answer/reference flow and
+OpenAI-compatible endpoint behavior when reviewing coupled SDK changes.
+
+Kipp remains at its latest published 0.3.2 with xxhash~=1.3. LangSmith 0.8.18's
+xxhash>=3 requirement is incompatible with that supported graph; keep its
+security proposal visible until a supported Kipp release or a separately
+qualified replacement is available. Do not bypass the declared cap with PDM
+overrides.

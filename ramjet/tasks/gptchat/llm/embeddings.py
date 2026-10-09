@@ -14,7 +14,7 @@ from concurrent.futures import Future
 import faiss
 from kipp.utils import timer
 from Crypto.Cipher import AES
-from langchain.chains import LLMChain
+from langchain_classic.chains import LLMChain
 from langchain_community.document_loaders import (
     BSHTMLLoader,
     Docx2txtLoader,
@@ -24,14 +24,14 @@ from langchain_community.document_loaders import (
 )
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders.base import BaseLoader
-from langchain.prompts.chat import (
+from langchain_core.prompts import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
     SystemMessagePromptTemplate,
 )
-from langchain.schema.document import Document
-from langchain.text_splitter import TokenTextSplitter
-from langchain.vectorstores.faiss import FAISS
+from langchain_core.documents import Document
+from langchain_text_splitters import TokenTextSplitter
+from langchain_community.vectorstores.faiss import FAISS
 from minio import Minio
 
 from ramjet.engines import thread_executor
