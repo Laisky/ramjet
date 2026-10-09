@@ -98,11 +98,12 @@ Confirmed caller work is independently reviewable:
   It depends on this shared resolver.
 
 The complete account census contains 108 repositories with readable default
-heads, including private repositories. The source audit uses exact default-head
-snapshots and explicit per-file exclusions; large repository source gaps are
-still being resolved. The full private-safe inventory and local evidence remain
-outside this public document. Other branches, excluded credential/generated/
-binary files and deployed endpoint aliases are not exhaustively verified.
+heads, including private repositories. Eligible source at all 108 exact default
+heads has been checked, including selected-source complements for all initially
+truncated repositories. No eligible source paths remain unread in those scopes.
+The full private-safe inventory and local evidence remain outside this public
+document. Other branches, excluded credential/generated/binary files and
+deployed endpoint aliases remain unverified.
 
 Tracked-source checks of Blog v2, GraphQL and the Cloudflare Workers found no
 direct executable Ramjet caller. GraphQL contains API documentation; the speech
@@ -157,9 +158,9 @@ python -m pytest -q -p no:cacheprovider tests
 ```
 
 The expanded focused suite passes 21 tests with real SDK/mock transport and no
-external requests. Full offline validation before the last regression additions
-passed 100 tests on Python 3.12, including exact dependency-export checks.
-Final exact-commit qualification is recorded in the PR.
+external requests. The full offline suite passes 108 tests on both Python 3.10
+and Python 3.12, including exact dependency-export checks. Final exact-commit
+qualification is recorded in the PR.
 
 The shared nonblocking heavy-validation lock serializes suites on dev.
 Qualification containers use CPU/memory/time bounds and no network. Pytest tooling
