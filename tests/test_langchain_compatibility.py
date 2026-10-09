@@ -120,11 +120,12 @@ def test_real_embeddings_client_preserves_public_sdk_behavior():
         model = OpenAIEmbeddings(
             api_key="public-offline-key",
             model="text-embedding-3-small",
+            base_url="https://offline.invalid/embedding/v1",
             http_client=client,
         )
         assert model.embed_documents(["offline text"]) == [[0.1, 0.2, 0.3]]
     assert len(requests) == 1
-    assert str(requests[0].url) == "https://api.openai.com/v1/embeddings"
+    assert str(requests[0].url) == "https://offline.invalid/embedding/v1/embeddings"
     body = json.loads(requests[0].content)
     assert body["model"] == "text-embedding-3-small"
     assert len(body["input"]) == 1
