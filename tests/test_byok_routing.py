@@ -25,7 +25,7 @@ from Crypto.Cipher import AES
 import httpx
 from langchain_openai.chat_models.base import ChatOpenAI
 from langchain_openai.embeddings.base import OpenAIEmbeddings
-from openai import DefaultHttpxClient
+from openai import DefaultAsyncHttpxClient, DefaultHttpxClient
 
 ROOT = Path(__file__).resolve().parents[1]
 CALLER_KEY = "synthetic-byok-key-never-valid"
@@ -87,6 +87,30 @@ class ByokRoutingTests(unittest.TestCase):
         self.addCleanup(self.logger.removeHandler, handler)
         self.client = DefaultHttpxClient(transport=httpx.MockTransport(self.respond))
         self.addCleanup(self.client.close)
+
+        def sdk_sync_client(**kwargs):
+            client = DefaultHttpxClient(
+                transport=httpx.MockTransport(self.respond), **kwargs
+            )
+            self.addCleanup(client.close)
+            return client
+
+        def sdk_async_client(**kwargs):
+            import asyncio
+
+            client = DefaultAsyncHttpxClient(
+                transport=httpx.MockTransport(self.respond), **kwargs
+            )
+            self.addCleanup(lambda: asyncio.run(client.aclose()))
+            return client
+
+        for name, factory in (
+            ("DefaultHttpxClient", sdk_sync_client),
+            ("DefaultAsyncHttpxClient", sdk_async_client),
+        ):
+            client_patch = patch("openai." + name, new=factory)
+            client_patch.start()
+            self.addCleanup(client_patch.stop)
         self.prd = NS(
             OPENAI_TOKEN=SERVER_KEY,
             OPENAI_S3_CHUNK_CACHE_BUCKET="fixture",
@@ -115,6 +139,14 @@ class ByokRoutingTests(unittest.TestCase):
             "urllib.parse", fromlist=["urlunsplit"]
         ).urlunsplit
         self.env["DEFAULT_API_BASE"] = "https://api.openai.com/v1"
+        self.env["logging"] = logging
+        load_function(
+            "ramjet/tasks/gptchat/credentials.py", "ModelDiagnosticFilter", self.env
+        )
+        for logger_name in ("httpx", "openai._base_client"):
+            diagnostic_logger = logging.getLogger(logger_name)
+            original_filters = list(diagnostic_logger.filters)
+            self.addCleanup(setattr, diagnostic_logger, "filters", original_filters)
         for name in (
             "require_api_key",
             "resolve_model_credentials",
@@ -174,9 +206,9 @@ class ByokRoutingTests(unittest.TestCase):
 
     def embeddings(self, **kwargs):
         """embeddings creates the real LangChain client with a socket-free transport."""
+        kwargs.setdefault("http_client", self.client)
         return OpenAIEmbeddings(
             **kwargs,
-            http_client=self.client,
             max_retries=0,
             check_embedding_ctx_length=False,
         )
@@ -749,21 +781,6 @@ class ByokRoutingTests(unittest.TestCase):
                 request_resolver("Bearer " + CALLER_KEY, base)
             self.assertNotIn(base, str(caught.exception))
         self.assertEqual(self.requests, [])
-
-    def test_selected_backend_query_reaches_embedding_request(self):
-        """test_selected_backend_query keeps provider query routing outside SDK paths."""
-        for query in ("tenant=fixture", "tenant=one&tenant=two&flag="):
-            with self.subTest(query=query):
-                model = load_function(
-                    "ramjet/tasks/gptchat/llm/embeddings.py",
-                    "build_embeddings_llm_for_user",
-                    self.env,
-                )(NS(apikey=CALLER_KEY, api_base=BASE + "?" + query))
-                model.embed_query("synthetic query")
-                url, key, model_name = self.requests[-1]
-                self.assertEqual(url, BASE + "/embeddings?" + query)
-                self.assertTrue(key == "Bearer " + CALLER_KEY)
-                self.assertEqual(model_name, "text-embedding-3-small")
 
 
 if __name__ == "__main__":

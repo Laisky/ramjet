@@ -1,7 +1,8 @@
 """Resolve explicit client model credentials without process-global key fallback."""
 
+import logging
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 DEFAULT_API_BASE = "https://api.openai.com/v1"
 
@@ -68,29 +69,78 @@ def resolve_request_credentials(
     return options
 
 
+class ModelDiagnosticFilter(logging.Filter):
+    """Keep model-library diagnostics free of URLs, payloads and exception bodies."""
+
+    _ramjet_model_diagnostic_filter = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Retain diagnostic severity and HTTP status without credential-bearing data."""
+        if record.levelno < logging.INFO:
+            return False
+        args = record.args
+        if record.name == "httpx" and isinstance(args, tuple) and len(args) >= 4:
+            method = (
+                args[0]
+                if isinstance(args[0], str)
+                and args[0]
+                in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+                else "request"
+            )
+            status = args[3] if isinstance(args[3], int) else "unknown"
+            record.msg = "HTTP client request: %s (status %s)"
+            record.args = (method, status)
+        else:
+            record.msg = "Model client diagnostic"
+            record.args = ()
+        record.exc_info = None
+        record.exc_text = None
+        record.stack_info = None
+        return True
+
+
 def resolve_sdk_credentials(
     api_key: str | None, api_base: str | None = DEFAULT_API_BASE
 ) -> dict[str, Any]:
-    """Resolve model options without appending SDK operation paths to URL queries.
+    """Bind explicit SDK credentials while preserving provider URL query bytes.
 
-    The public canonical resolver preserves the selected URL for callers. SDK
-    options move its query into explicit request parameters; duplicate values are
-    preserved as lists, and URL fragments are omitted from the HTTP destination.
+    SDK clients otherwise append operation paths after URL queries or rewrite
+    repeated/blank parameters. Public HTTPX hooks restore the selected query
+    after SDK path construction for both synchronous and asynchronous requests.
+    Imports remain local so the canonical resolver needs only the standard library.
     """
     options: dict[str, Any] = resolve_model_credentials(api_key, api_base)
+    for name in ("httpx", "openai._base_client"):
+        diagnostic_logger = logging.getLogger(name)
+        if not any(
+            getattr(item, "_ramjet_model_diagnostic_filter", False)
+            for item in diagnostic_logger.filters
+        ):
+            diagnostic_logger.addFilter(ModelDiagnosticFilter())
     parsed = urlsplit(options["base_url"])
-    if parsed.query:
-        query: dict[str, Any] = {}
-        for name, value in parse_qsl(parsed.query, keep_blank_values=True):
-            if name in query:
-                previous = query[name]
-                query[name] = (
-                    previous + [value]
-                    if isinstance(previous, list)
-                    else [previous, value]
-                )
-            else:
-                query[name] = value
-        options["default_query"] = query
     options["base_url"] = urlunsplit(parsed._replace(query="", fragment=""))
+    if parsed.query:
+        import httpx
+        from openai import DefaultAsyncHttpxClient, DefaultHttpxClient
+
+        provider_query = httpx.URL(api_base).query
+
+        def attach_query(request: httpx.Request) -> None:
+            """Preserve the selected provider query and any operation parameters."""
+            operation_query = request.url.query
+            query = provider_query
+            if operation_query:
+                query += b"&" + operation_query
+            request.url = request.url.copy_with(query=query)
+
+        async def attach_async_query(request: httpx.Request) -> None:
+            """Apply the same selected provider query on asynchronous SDK requests."""
+            attach_query(request)
+
+        options["http_client"] = DefaultHttpxClient(
+            event_hooks={"request": [attach_query]}
+        )
+        options["http_async_client"] = DefaultAsyncHttpxClient(
+            event_hooks={"request": [attach_async_query]}
+        )
     return options

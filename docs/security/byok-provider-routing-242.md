@@ -33,7 +33,7 @@ No production key, model request, live account action or external socket was use
 | Encrypted/shared chatbot restoration | Server key, SDK default backend/model selected | Explicit caller options required |
 | Cached private chain | Prior request key and provider reused | Request-local embedding client |
 | Prebuilt query and search | Startup/server embedding credentials used | Request-local embedding client |
-| Provider query components | SDK appended operation path after query values | Explicit SDK query parameters |
+| Provider query components | SDK appended operation path after query values | Explicit SDK request query hooks |
 | User embedding helper | Selected provider omitted | Shared explicit options |
 | Missing index/new-store key | SDK environment key fallback | Rejected before model construction |
 | Summary background work | Credential validation was deferred | Rejected before jobs are queued |
@@ -59,9 +59,10 @@ bearer and legacy raw-key forms. A root provider URL gains `/v1` once; an existi
 preserved. Syntax failures do not fall back to another backend or echo the URL.
 
 Chat, classification, summarization and embedding constructors use the shared
-SDK adapter `resolve_sdk_credentials`. It separates provider query parameters
-from SDK operation paths, preserves duplicate/blank values, and excludes fragments
-from the HTTP destination. The canonical caller resolver retains the selected URL. Index restoration requires an explicit key. Startup prebuilt data has
+SDK adapter `resolve_sdk_credentials`. It separates provider query components
+from SDK operation paths and uses public HTTPX request hooks to preserve raw query
+bytes, including duplicate/blank values, for synchronous and asynchronous calls.
+Fragments are excluded from the HTTP destination. The canonical caller resolver retains the selected URL. Index restoration requires an explicit key. Startup prebuilt data has
 an unbound embedding guard instead of a server-key client. Retrieval copies the
 FAISS store and binds a fresh request client without mutating cached vectors or
 another caller's embedding client. Restored user indices retain
@@ -74,7 +75,10 @@ secret store or persistent credential storage is introduced. Stored index data
 contains vectors, documents, index mappings and scanned-file metadata, not the
 embedding client.
 
-Handler failures return a generic error and log the exception category.
+Handler failures return a generic error and log the exception category. Known
+HTTPX/OpenAI model diagnostics retain severity and HTTP status while omitting
+URLs, SDK payloads and exception bodies; reflected-key headers and provider-query
+credentials are covered by actual SDK logging regressions.
 Image background errors likewise omit upstream text from logs and stored error
 objects. Health/static route behavior is unchanged.
 
@@ -87,7 +91,7 @@ archive format; the previous plaintext loader already expected that archive.
 Confirmed caller work is independently reviewable:
 
 - Go Ramjet frontend/proxy: isolated BYOK gate, explicit provider propagation and
-  synthetic caller-to-actual-Ramjet-resolver contracts; PR publication is pending.
+  synthetic caller-to-actual-Ramjet-resolver contracts; [Draft PR 80](https://github.com/Laisky/go-ramjet/pull/80).
 - [HelloWorld Draft PR 97](https://github.com/Laisky/HelloWorld/pull/97):
   both PDF scanners explicitly pass their existing configured key and provider,
   reject missing keys before store work, and avoid reflected-key error logging.
@@ -148,11 +152,11 @@ No host-key, ACL, network-security or production setting was changed.
 Retained tests:
 
 ```sh
-python -m unittest tests.test_byok_routing -v
+python -m unittest tests.test_byok_routing tests.test_byok_provider_components -v
 python -m pytest -q -p no:cacheprovider tests
 ```
 
-The expanded focused suite passes 19 tests with real SDK/mock transport and no
+The expanded focused suite passes 21 tests with real SDK/mock transport and no
 external requests. Full offline validation before the last regression additions
 passed 100 tests on Python 3.12, including exact dependency-export checks.
 Final exact-commit qualification is recorded in the PR.
