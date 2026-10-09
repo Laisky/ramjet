@@ -4,6 +4,10 @@ from importlib import metadata
 from io import BytesIO
 from pathlib import Path
 
+import anyio
+import pytest
+from bs4 import BeautifulSoup
+from tornado.httputil import HTTPHeaders
 import jwt
 from bson import BSON, ObjectId
 from multidict import CIMultiDict
@@ -39,12 +43,13 @@ def test_installed_dependencies_match_export() -> None:
             ), f"{requirement.name}: {dependency_line}"
 
 
-def test_pdf_reader_preserves_encrypted_document() -> None:
+@pytest.mark.parametrize("algorithm", ["RC4-40", "RC4-128", "AES-128", "AES-256"])
+def test_pdf_reader_preserves_encrypted_document(algorithm) -> None:
     """test_pdf_reader_preserves_encrypted_document checks the supported PDF parser API."""
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=144)
     writer.add_metadata({"/Title": "Ramjet offline PDF"})
-    writer.encrypt("offline-password", algorithm="AES-256")
+    writer.encrypt("offline-password", algorithm=algorithm)
     data = BytesIO()
     writer.write(data)
     data.seek(0)
@@ -148,3 +153,41 @@ def test_padded_jwt_segments_remain_valid() -> None:
     )
     token = (signed + b"." + signature).decode()
     assert jwt.decode(token, key, algorithms=["HS512"])["sub"] == "offline-user"
+
+
+def test_async_dependency_preserves_streaming_and_cancellation() -> None:
+    """test_async_dependency_preserves_streaming_and_cancellation checks AnyIO runtime APIs."""
+
+    async def exchange():
+        """exchange returns streamed data and confirms bounded cancellation."""
+        sender, receiver = anyio.create_memory_object_stream(1)
+        async with sender, receiver:
+            await sender.send("offline")
+            assert await receiver.receive() == "offline"
+        with anyio.move_on_after(0) as scope:
+            await anyio.sleep_forever()
+        assert scope.cancelled_caught
+
+    anyio.run(exchange)
+
+
+def test_html_selector_dependencies_preserve_matches() -> None:
+    """test_html_selector_dependencies_preserve_matches checks real BeautifulSoup integration."""
+    soup = BeautifulSoup(
+        '<article><a href="/first">first</a></article><div class="post"><a href="/second">second</a></div>',
+        "html.parser",
+    )
+    assert [a["href"] for a in soup.select(":is(article, .post) > a[href]")] == [
+        "/first",
+        "/second",
+    ]
+    assert soup.select('[href^=""]') == []
+
+
+def test_tornado_headers_preserve_repeated_fields() -> None:
+    """test_tornado_headers_preserve_repeated_fields checks the retained HTTP utility API."""
+    headers = HTTPHeaders.parse(
+        "Content-Type: text/plain\r\nSet-Cookie: one=1\r\nSet-Cookie: two=2\r\n"
+    )
+    assert headers["content-type"] == "text/plain"
+    assert headers.get_list("set-cookie") == ["one=1", "two=2"]
