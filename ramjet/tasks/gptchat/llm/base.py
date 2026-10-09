@@ -10,7 +10,6 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from ramjet.settings import prd
 from ramjet.utils import logger
 
-
 logger = logger.getChild("tasks.gptchat.llm.base")
 
 
@@ -35,8 +34,18 @@ class Index(NamedTuple):
                 return tempf.read()
 
     @classmethod
-    def deserialize(cls, data: bytes, api_key: str = prd.OPENAI_TOKEN) -> "Index":
-        """deserialize index from bytes"""
+    def deserialize(
+        cls,
+        data: bytes,
+        api_key: str = prd.OPENAI_TOKEN,
+        api_base: str | None = None,
+        embedding_model: str | None = None,
+    ) -> "Index":
+        """deserialize restores an index with explicit request credentials when supplied.
+
+        api_base and embedding_model preserve the caller's embedding provider.
+        Omitted options retain legacy defaults for server-owned indices.
+        """
         assert data, "data should not be empty"
         with tempfile.TemporaryDirectory() as tempdir:
             with tempfile.TemporaryFile() as tempf:
@@ -46,8 +55,14 @@ class Index(NamedTuple):
                     tar.extractall(tempdir)
 
             tempdir = os.path.join(tempdir, "index")
+            embedding_options = {"api_key": api_key}
+            if api_base is not None:
+                embedding_options["base_url"] = api_base
+            if embedding_model is not None:
+                embedding_options["model"] = embedding_model
             store = FAISS.load_local(
-                folder_path=tempdir, embeddings=OpenAIEmbeddings(api_key=api_key),
+                folder_path=tempdir,
+                embeddings=OpenAIEmbeddings(**embedding_options),
                 allow_dangerous_deserialization=True,
             )
             with open(os.path.join(tempdir, "scaned_files"), "rb") as f:

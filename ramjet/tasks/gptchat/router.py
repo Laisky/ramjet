@@ -32,6 +32,7 @@ from .llm.embeddings import (
     chunk_text_content,
     Index,
     build_user_chain,
+    bind_user_chain,
     derive_key,
     download_chatbot_index,
     embedding_file,
@@ -495,6 +496,8 @@ def _make_embedding_chunk(
         idx = Index.deserialize(
             data=cache_data,
             api_key=apikey,
+            api_base=api_base,
+            embedding_model="text-embedding-3-small",
         )
         return idx, True
 
@@ -637,7 +640,7 @@ def _chunk_search(
         aiohttp.web.Response: json response
     """
     cache_key = f"chunksearch/{cache_key[:2]}/{cache_key[2:4]}/{cache_key}"
-    logger.debug(f"search embedding chunk, {query=}, {ext=}, {api_base=}, {cache_key=}")
+    logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     idx, cached = _make_embedding_chunk(
         cache_key=cache_key,
@@ -1072,6 +1075,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_shared_chain_mu:
             chatbot = user_shared_chain[user.uid + chatbot_name]
 
+        chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
@@ -1106,6 +1110,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]
 
+        chatbot = bind_user_chain(chatbot, user)
         sema = uid_ratelimiter(user=user)
         try:
             resp, refs = chatbot.search(user_query)
@@ -1140,6 +1145,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]
 
+        chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
@@ -1403,6 +1409,9 @@ class EmbeddingContext(aiohttp.web.View):
                     dirpath=tmpdir,
                     name="dataset",
                     password=password,
+                    api_key=user.apikey,
+                    api_base=user.api_base,
+                    embedding_model="text-embedding-3-small",
                 )
 
             store.store.merge_from(store_part.store)
