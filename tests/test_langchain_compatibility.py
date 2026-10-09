@@ -174,3 +174,27 @@ def test_real_docx_ingestion_preserves_text_and_sources(tmp_path):
     assert all(
         chunk.metadata["source"].startswith("offline://docx#page=") for chunk in chunks
     )
+
+
+def test_legacy_vector_store_remains_readable():
+    """test_legacy_vector_store_remains_readable preserves existing serialized index compatibility."""
+    import hashlib
+    from pathlib import Path
+
+    folder = Path(__file__).parent / "fixtures" / "legacy_vector_store"
+    expected = {
+        "index.faiss": "41e1888f62a020a33abcc286d20c56cb971155711259f09b7a9fa6c8b2cc55a0",
+        "index.pkl": "b3b5316fc2c5508188d2e8869a3f2c2a335c0ea8785fe28ec6f1337decbe461d",
+    }
+    for name, digest in expected.items():
+        assert hashlib.sha256((folder / name).read_bytes()).hexdigest() == digest
+    # Only the hash-verified repository fixture is trusted for this offline load.
+    store = embeddings.FAISS.load_local(
+        str(folder),
+        embeddings.OpenAIEmbeddings(),
+        allow_dangerous_deserialization=True,
+    )
+    documents = store.similarity_search("Legacy offline context", k=1)
+    assert len(documents) == 1
+    assert documents[0].page_content == "Legacy offline context"
+    assert documents[0].metadata["source"] == "offline://legacy-vector"
