@@ -1,4 +1,4 @@
-FROM python:3.12.15-bookworm
+FROM python:3.12.15-bookworm@sha256:5560e9ab8709f459489e5b8aa696eda8a07ef821e14bb122be62d91234bfa98b
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends g++ make gcc git build-essential ca-certificates curl \
@@ -11,7 +11,8 @@ ENV PDM_VENV_IN_PROJECT=1 \
     PATH="/app/.venv/bin:${PATH}"
 
 WORKDIR /app
-RUN pip install --no-cache-dir pdm==2.26.2
+COPY .scripts/pdm-bootstrap.txt /tmp/pdm-bootstrap.txt
+RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/pdm-bootstrap.txt
 
 COPY pyproject.toml pdm.lock LICENSE ./
 RUN pdm install --prod --frozen-lockfile --no-editable --no-self \
