@@ -107,6 +107,40 @@ class DependencyUpdateTests(unittest.TestCase):
             UPDATE.update(self.root, {"unknown": "2.0.0"}, apply=True, run=self.runner)
         self.assertEqual(self.commands, [])
 
+    def test_override_conflict_is_rejected_and_metadata_restored(self):
+        """test_override_conflict_is_rejected_and_metadata_restored prevents invalid locks."""
+        before = {name: (self.root / name).read_bytes() for name in UPDATE.FILES}
+
+        def conflicting(command, **kwargs):
+            """conflicting simulates PDM overriding an upstream dependency cap."""
+            result = self.runner(command, **kwargs)
+            if "update" in command:
+                with (self.root / "pdm.lock").open("a") as fp:
+                    fp.write(
+                        "[[package]]\nname = 'consumer'\nversion = '1.0.0'\n"
+                        "groups = ['default']\ndependencies = ['example<2']\n"
+                    )
+            return result
+
+        with self.assertRaisesRegex(ValueError, "consumer: example<2"):
+            UPDATE.update(self.root, {"example": "2.0.0"}, apply=True, run=conflicting)
+        self.assertEqual(
+            before, {name: (self.root / name).read_bytes() for name in before}
+        )
+
+    def test_python310_marker_constraints_are_checked_on_newer_interpreters(self):
+        """test_python310_marker_constraints_are_checked_on_newer_interpreters guards baseline support."""
+        self.lock("2.0.0")
+        requirement = 'example<2; python_version < "3.11"'
+        with (self.root / "pdm.lock").open("a") as fp:
+            fp.write(
+                "[[package]]\nname = 'consumer'\nversion = '1.0.0'\n"
+                "groups = ['default']\n"
+                f"dependencies = [{requirement!r}]\n"
+            )
+        with self.assertRaisesRegex(ValueError, "on Python 3.10"):
+            UPDATE.validate_locked_constraints(self.root)
+
     def test_only_unique_stable_pins_are_accepted(self):
         """test_only_unique_stable_pins_are_accepted rejects URLs and prereleases."""
         for pins in (

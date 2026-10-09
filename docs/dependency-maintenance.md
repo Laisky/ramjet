@@ -30,7 +30,9 @@ uvx --from pdm==2.26.2 python .scripts/update_dependencies.py --apply \
 ```
 
 The command refuses dirty dependency metadata and unknown production packages,
-does not sync/install runtime dependencies, restores metadata after a failed
+checks declared lock dependencies across Python 3.10–3.14 before export (PDM overrides
+can otherwise bypass upstream version caps), does not sync/install runtime
+dependencies, and restores metadata after a failed
 resolver/export/check, and preserves the checkout's saved interpreter selection.
 It uses supported [PDM targeted updates and overrides](https://pdm-project.org/en/latest/reference/cli/#update)
 and [production export](https://pdm-project.org/en/latest/usage/lockfile/#export-locked-packages-to-alternative-formats).

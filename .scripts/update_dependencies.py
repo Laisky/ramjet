@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 
+from packaging.requirements import Requirement
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -49,6 +51,30 @@ def production_pins(root):
         for package in lock["package"]
         if "default" in package.get("groups", [])
     }
+
+
+def validate_locked_constraints(root):
+    """validate_locked_constraints rejects override conflicts on supported Python versions."""
+    lock = tomllib.loads((root / "pdm.lock").read_text())
+    versions = production_pins(root)
+    for package in lock["package"]:
+        if "default" not in package.get("groups", []):
+            continue
+        for line in package.get("dependencies", []):
+            dependency = Requirement(line)
+            name = normalize(dependency.name)
+            for python in ("3.10", "3.11", "3.12", "3.13", "3.14"):
+                environment = {
+                    "extra": "",
+                    "python_version": python,
+                    "python_full_version": python + ".0",
+                }
+                if dependency.marker and not dependency.marker.evaluate(environment):
+                    continue
+                if name not in versions or versions[name] not in dependency.specifier:
+                    raise ValueError(
+                        f"{package['name']}: {line} conflicts with {name}=={versions.get(name)} on Python {python}"
+                    )
 
 
 def update(root, pins, apply=False, run=subprocess.run):
@@ -104,6 +130,7 @@ def update(root, pins, apply=False, run=subprocess.run):
                 check=True,
                 timeout=900,
             )
+            validate_locked_constraints(root)
             run(
                 [
                     *pdm,
