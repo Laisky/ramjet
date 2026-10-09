@@ -8,6 +8,7 @@ import pymongo
 import requests
 import tweepy
 from aiohttp import web
+from ramjet.operator_auth import require_operator
 from ramjet.engines import ioloop, thread_executor
 from ramjet.settings import (
     TWITTER_ACCESS_TOKEN,
@@ -57,6 +58,7 @@ class FetchView(web.View):
         )
 
     async def post(self):
+        require_operator(self.request)
         tweet_id = str((await self.request.post())["tweet_id"])
         tweet_id = tweet_id.strip("/")
         if "/" in tweet_id:
