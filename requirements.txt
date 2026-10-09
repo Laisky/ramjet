@@ -59,7 +59,7 @@ langchain==0.3.30
 langchain-community==0.3.31
 langchain-core==0.3.86
 langchain-openai==0.3.35
-langchain-text-splitters==0.3.11
+langchain-text-splitters==1.1.2
 langsmith==0.6.3
 lxml==6.1.0
 markupsafe==3.0.3
