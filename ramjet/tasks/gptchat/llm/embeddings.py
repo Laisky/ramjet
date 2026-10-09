@@ -37,6 +37,7 @@ from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
+from ..credentials import resolve_sdk_credentials
 
 from ..base import logger
 from .base import Index, UserChain
@@ -123,7 +124,7 @@ def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
     """
     return OpenAIEmbeddings(
         client=None,
-        openai_api_key=user.apikey,
+        **resolve_sdk_credentials(user.apikey, user.api_base),
         model="text-embedding-3-small",
     )
 
@@ -268,8 +269,7 @@ def bind_user_chain(chain: UserChain, user: prd.UserPermission) -> UserChain:
     """
     store = copy.copy(chain.user_index.store)
     store.embedding_function = OpenAIEmbeddings(
-        api_key=user.apikey,
-        base_url=user.api_base,
+        **resolve_sdk_credentials(user.apikey, user.api_base),
         model="text-embedding-3-small",
     )
     index = Index(store=store, scaned_files=chain.user_index.scaned_files)
@@ -820,8 +820,7 @@ def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index
     # else:
     logger.debug("new faiss store")
     embedding_model = OpenAIEmbeddings(
-        api_key=apikey,
-        base_url=api_base,
+        **resolve_sdk_credentials(apikey, api_base),
         model="text-embedding-3-small",
     )
 
@@ -1058,7 +1057,7 @@ def save_plaintext_store(
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath_prefix = os.path.join(tmpdir, name)
         with open(f"{fpath_prefix}.store", "wb") as f:
-            pickle.dump(index.store, f)
+            f.write(index.serialize())
 
         fs = [
             f"{fpath_prefix}.store",
@@ -1087,7 +1086,7 @@ def save_plaintext_store(
 def load_plaintext_store(
     dirpath: str,
     name: str,
-    api_key: str = prd.OPENAI_TOKEN,
+    api_key: str | None = None,
     api_base: str | None = None,
     embedding_model: str | None = None,
 ) -> Index:
@@ -1096,7 +1095,7 @@ def load_plaintext_store(
     Args:
         dirpath: dirpath to store index files
         name: project/file name
-        api_key: embedding credential; omitted for legacy server-owned stores.
+        api_key: explicit caller embedding credential; a missing key is rejected.
         api_base: explicit provider URL, or None to retain the SDK default.
         embedding_model: explicit model, or None to retain the SDK default.
 
@@ -1115,7 +1114,7 @@ def load_encrypt_store(
     dirpath: str,
     name: str,
     password: str,
-    api_key: str = prd.OPENAI_TOKEN,
+    api_key: str | None = None,
     api_base: str | None = None,
     embedding_model: str | None = None,
 ) -> Index:
@@ -1125,7 +1124,7 @@ def load_encrypt_store(
         dirpath: dirpath to store index files
         name: project/file name
         password: password used to derive the AES256 decryption key.
-        api_key: embedding credential; omitted for legacy server-owned stores.
+        api_key: explicit caller embedding credential; a missing key is rejected.
         api_base: explicit provider URL, or None to retain the SDK default.
         embedding_model: explicit model, or None to retain the SDK default.
 

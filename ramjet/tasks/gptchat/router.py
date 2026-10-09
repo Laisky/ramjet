@@ -191,8 +191,8 @@ class Image(aiohttp.web.View):
             return func()
         except Exception as err:
             objkey = f"{os.path.splitext(image_objkey(task_id=task_id))[0]}.err.txt"
-            logger.exception(f"catch and upload image drawing error, {objkey=}")
-            errmsg = str(err).encode("utf-8")
+            logger.error("image drawing failed (%s)", type(err).__name__)
+            errmsg = b"Image generation failed"
             s3cli.put_object(
                 bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=objkey,
@@ -436,7 +436,7 @@ class Query(aiohttp.web.View):
         elif op == "/search":
             resp = await ioloop.run_in_executor(
                 thread_executor,
-                partial(self.search, project=project, question=question),
+                partial(self.search, user=user, project=project, question=question),
             )
         else:
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
@@ -446,10 +446,10 @@ class Query(aiohttp.web.View):
     @uid_method_ratelimiter()
     def query(self, user: settings.UserPermission, project: str, question: str):
         llm = build_llm_for_user(user)
-        return query_for_prebuild_qa(project, question, llm)
+        return query_for_prebuild_qa(project, question, llm, user)
 
-    def search(self, project: str, question: str):
-        return search_for_prebuild_qa(project, question)
+    def search(self, user: settings.UserPermission, project: str, question: str):
+        return search_for_prebuild_qa(project, question, user)
 
     @recover
     @authenticate

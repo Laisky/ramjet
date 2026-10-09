@@ -1,114 +1,163 @@
-# Ramjet BYOK routing audit for issue 242
+# Ramjet BYOK routing and credential audit
 
-Audited Ramjet master `34e2a014a1c61e2e457690c1719de33421b378d6`.
-This change preserves the internal Tailscale architecture and caller API-key
-forwarding. It does not decide which caller-selected provider destinations should
-be permitted.
+Base: Ramjet master `34e2a014a1c61e2e457690c1719de33421b378d6`.
+Related report: [issue 242](https://github.com/Laisky/ramjet/issues/242).
 
-## Historical and current behavior
+## Product decision and scope
 
-- `e42f616` (2023-09-14) constructs the user profile from the supplied bearer key
-  and derives the default user identifier from its hash.
-- `0e04183` (2023-09-23) adds `X-Laisky-Openai-Api-Base`; the parser appends
-  `/v1` to the supplied root URL.
-- Scanned `9e495a9` and current master retain this BYOK and provider override.
-  Neither parser verifies the key with the provider before constructing the
-  profile. The upstream provider validates the key when an operation calls it.
-- Current root-URL normalization also appends another `/v1` when callers supply
-  a URL already ending in `/v1`. This pre-existing compatibility behavior is
-  unchanged.
-- A direct caller that can reach Ramjet can select an arbitrary HTTP(S)
-  provider through the header. Internal placement alone does not establish that
-  every selected destination is trusted. No new destination allowlist, gateway
-  requirement or private-address prohibition is introduced here.
+Every client-triggered Ramjet model operation must carry an explicit client API
+key. Server settings and SDK environment variables must not provide a replacement.
+The selected backend is request data and must remain consistent through chat,
+embedding, restoration, retrieval and request-triggered background work.
 
-## Confirmed routing defects and fix
+The internal Tailscale architecture and key forwarding are retained. This audit
+does not introduce a provider allowlist, a gateway-only trust requirement or a
+private-address prohibition. The issue's arbitrary-provider finding is therefore
+not resolved by silently restricting intentional backends. User identifiers,
+entitlement headers and dataset ownership rules are not migrated here.
 
-Retained tests execute the repository parser, cache restoration and request
-methods with synthetic settings. They use actual LangChain/OpenAI SDK clients
-and an HTTPX mock transport; no socket or production credential is used.
+## Historical behavior and confirmed defects
 
-1. Fresh chat correctly sends the caller's key to the selected provider.
-2. A chunk-cache hit keeps the key but drops the provider URL and embedding model.
-3. Encrypted and shared chatbot restoration explicitly selects the server
-   `OPENAI_TOKEN`, loses the provider URL and falls back to the SDK embedding model.
-4. An already cached private chain retains the previous request's embedding
-   credential and destination.
-5. Provider URL diagnostics can expose credentials embedded in URL user info.
+BYOK profiles date to `e42f616` (2023-09-14). Provider overrides through
+`X-Laisky-Openai-Api-Base` date to `0e04183` (2023-09-23).
+The reported scan `9e495a9` and the audited current master retain this design.
 
-Cache and user-index restoration now retain the caller key, provider and
-`text-embedding-3-small`, matching the existing fresh embedding path. A request
-uses a shallow store copy with its own embedding client; it shares stored vectors
-and documents without modifying the shared cached client. User data identifiers,
-dataset selection, quotas, provider normalization and authorization policy stay
-unchanged. Legacy server-owned index deserialization retains its existing
-server-key, SDK provider and model defaults when caller options are omitted.
-Diagnostic messages omit raw provider URLs.
+Behavioral reproduction used actual repository functions and actual installed
+LangChain/OpenAI SDK clients, with synthetic credentials and HTTPX mock transport.
+No production key, model request, live account action or external socket was used.
 
-The model fix restores the model already used for new user indices. Legacy
-indices created with different embedding dimensions/models are not migrated by
-this change.
+| Path | Reproduced behavior before the fix | Result |
+| --- | --- | --- |
+| Fresh chat | Caller key and chosen provider are preserved | Preserved |
+| Chunk-cache restoration | Caller key retained; backend and embedding model dropped | Request options retained |
+| Encrypted/shared chatbot restoration | Server key, SDK default backend/model selected | Explicit caller options required |
+| Cached private chain | Prior request key and provider reused | Request-local embedding client |
+| Prebuilt query and search | Startup/server embedding credentials used | Request-local embedding client |
+| Provider query components | SDK appended operation path after query values | Explicit SDK query parameters |
+| User embedding helper | Selected provider omitted | Shared explicit options |
+| Missing index/new-store key | SDK environment key fallback | Rejected before model construction |
+| Summary background work | Credential validation was deferred | Rejected before jobs are queued |
+| Diagnostics | Provider URL or reflected SDK error could expose a synthetic key | Raw values omitted |
+| Shared-index persistence | A serializable embedding adapter's key was included in a pickle | Vector/document archive only |
 
-## Caller tracing
+The plaintext persistence reproduction used a serializable legacy/custom adapter.
+It is not evidence that today's SDK client can itself be pickled: current clients
+contain non-picklable locks. A separate actual-FAISS regression verifies that its
+vector/document archive excludes the real SDK object's synthetic credential.
 
-The current Go Ramjet frontend and proxy are the concrete callers:
-`go-ramjet` master `bb26ec77f68fe5a28535f6def19635dc6014b8bb`.
+## Shared resolver and request binding
 
-- Modern frontend `web/src/pages/gptchat/utils/api.ts` sends the supplied API
-  token in Authorization for upload/list/delete/chatbot operations and sends
-  an optional `X-Laisky-Api-Base`.
-- The legacy `templates/js/chat.js` also passes its configured API token.
-- `getUserByToken` recognizes BYOK keys, keeps the supplied OpenAI and image
-  credentials, and defaults to the configured OneAPI provider. A valid BYOK
-  override accepts HTTP(S), while rejecting user info, query and fragment.
-- `setUserAuth` forwards the resolved key and maps the provider into
-  `X-Laisky-Openai-Api-Base`. `RamjetProxyHandler` sends the request to its
-  server-configured `RamjetURL`; the provider header is not the proxy destination.
-  The embedding chunk caller also applies this helper.
-- Freetier intentionally uses the configured server credential and ignores BYOK
-  provider overrides. This is distinct from accidental substitution during
-  restored BYOK retrieval.
-- Go's existing BYOK identifier is the first 15 key characters. Changing it
-  would migrate dataset/quota identities, so this patch does not change it.
-  Separate Go logging/error regressions are being qualified.
+`ramjet.tasks.gptchat.credentials.resolve_model_credentials(api_key, api_base)`
+returns explicit `api_key` and `base_url` SDK options. Keys must be nonempty,
+opaque printable ASCII without whitespace; missing values, placeholder sentinels
+and control characters fail with generic errors. No provider-specific key prefix
+or minimum length is imposed by Ramjet.
 
-Tracked-source searches found no executable Ramjet caller in Blog v2
-`d6f59f62fc91ccc86e41b32aad0aa4169e7ece2b`, GraphQL
-`3952e43041eebd117321030ea3615143690d51ea`, or Cloudflare Workers
-`4d57b1e67f576319c9389bf859b588aa1f5eeb75`. GraphQL has a Ramjet API reference
-document. The speech Worker uses a Cloudflare AI binding, not a Ramjet API.
+`resolve_request_credentials(authorization, api_base)` accepts the existing
+bearer and legacy raw-key forms. A root provider URL gains `/v1` once; an existing
+`/v1` suffix is retained. HTTP(S) internal hosts and provider URL components are
+preserved. Syntax failures do not fall back to another backend or echo the URL.
 
-## Redirects and topology limits
+Chat, classification, summarization and embedding constructors use the shared
+SDK adapter `resolve_sdk_credentials`. It separates provider query parameters
+from SDK operation paths, preserves duplicate/blank values, and excludes fragments
+from the HTTP destination. The canonical caller resolver retains the selected URL. Index restoration requires an explicit key. Startup prebuilt data has
+an unbound embedding guard instead of a server-key client. Retrieval copies the
+FAISS store and binds a fresh request client without mutating cached vectors or
+another caller's embedding client. Restored user indices retain
+`text-embedding-3-small`, matching new user indices.
 
-The installed SDK's default HTTP client follows redirects. A retained synthetic
-307 test confirms that a cross-origin redirect strips Authorization but forwards
-the embedding query body. Redirect policy is characterized here, not changed.
+Package initialization no longer installs model key/backend settings into
+process-global SDK environment variables. Request-triggered jobs carry the
+existing user profile in the in-memory executor; no new credential file, queue
+secret store or persistent credential storage is introduced. Stored index data
+contains vectors, documents, index mappings and scanned-file metadata, not the
+embedding client.
 
-Earlier read-only deployment checks found the Ramjet host listener bound to
-Tailscale address `100.69.166.78:22280`, with no wildcard/IPv6 host listener, and a
-harmless dev-to-tailnet health request succeeded. This confirms the observed
-internal service endpoint, not tailnet-wide ACL authorization or absence of
-every external gateway.
+Handler failures return a generic error and log the exception category.
+Image background errors likewise omit upstream text from logs and stored error
+objects. Health/static route behavior is unchanged.
 
-A new read-only attempt to inspect home2's effective Tailscale packet filter was
-blocked by SSH host-key verification. No host-key, network-security or ACL setting
-was changed. Tailnet ACL scope remains unverified.
+Legacy indices with different vector dimensions/models are not migrated. Existing
+plaintext whole-store pickle objects also are not automatically migrated to the
+archive format; the previous plaintext loader already expected that archive.
+
+## Caller qualification and rollout dependencies
+
+Confirmed caller work is independently reviewable:
+
+- Go Ramjet frontend/proxy: isolated BYOK gate, explicit provider propagation and
+  synthetic caller-to-actual-Ramjet-resolver contracts; PR publication is pending.
+- [HelloWorld Draft PR 97](https://github.com/Laisky/HelloWorld/pull/97):
+  both PDF scanners explicitly pass their existing configured key and provider,
+  reject missing keys before store work, and avoid reflected-key error logging.
+  It depends on this shared resolver.
+
+The complete account census contains 108 repositories with readable default
+heads, including private repositories. The source audit uses exact default-head
+snapshots and explicit per-file exclusions; large repository source gaps are
+still being resolved. The full private-safe inventory and local evidence remain
+outside this public document. Other branches, excluded credential/generated/
+binary files and deployed endpoint aliases are not exhaustively verified.
+
+Tracked-source checks of Blog v2, GraphQL and the Cloudflare Workers found no
+direct executable Ramjet caller. GraphQL contains API documentation; the speech
+Worker uses its own Cloudflare AI binding. Configured service endpoints and
+external/compiled alternate clients require runtime route mapping before they
+can be excluded as indirect Ramjet callers. No global Ramjet key is substituted
+to make such a dependency appear complete.
+
+Caller-first rollout, after all dependencies and product decisions are resolved:
+
+1. Qualify and publish caller changes and resolver dependency as Draft PRs.
+2. Review the full caller inventory, configured aliases, existing key routes and
+   push-triggered delivery effects before any merge.
+3. In a separately authorized rollout, install the resolver API compatibly before
+   dependent notebooks and update callers to send their existing explicit keys
+   and selected backends.
+4. Confirm synthetic propagation and missing-key rejection through each deployed
+   caller route, then enable server enforcement.
+
+This task performs no merge, production rollout or deployment. Go and Ramjet
+master-push delivery triggers make unqualified merges consequential.
+
+## Remaining decisions and topology limits
+
+Image generation still uses the removed legacy SDK API and a default hardcoded
+Azure route. Its error disclosure is fixed here, but image backend modernization
+is pending a product decision: caller-selected OpenAI-compatible generation with
+existing request parameters, or explicitly configured Azure deployment/version
+handling. This PR remains Draft until that path and caller/system review finish.
+
+Go's legacy BYOK identifier contains the first 15 key characters and its accepted
+key formats are narrower than Ramjet's opaque-key resolver. Changing those
+dataset/quota identities requires a separate migration decision; no UID migration
+is performed here. Redirect behavior also remains characterized rather than
+changed: a mocked SDK 307 cross-origin redirect strips Authorization but forwards
+the embedding query body.
+
+Earlier read-only checks observed the service listener at the internal Tailscale
+endpoint with no wildcard/IPv6 host listener, and a harmless health request from
+dev succeeded. Repository nginx configuration also declares a forwarded route to
+that endpoint; configuration alone is not proof of current public exposure.
+A fresh effective-ACL inspection was blocked by SSH host-key verification.
+No host-key, ACL, network-security or production setting was changed.
 
 ## Validation
 
-The original cache/restore reproduction produced three failing assertions
-(cache, encrypted restore and shared restore), with fresh chat passing.
-The additional cached-private-chain reproduction failed before request binding.
-The raw-URL log reproduction observed the synthetic credential in the actual
-diagnostic function before redaction.
-
-Run retained transport contracts with:
+Retained tests:
 
 ```sh
 python -m unittest tests.test_byok_routing -v
+python -m pytest -q -p no:cacheprovider tests
 ```
 
-The test suite uses synthetic defaults, checks that caller credentials are not
-replaced, verifies diagnostic privacy, preserves legacy defaults, and records
-redirect behavior. Full offline tests run separately under the shared
-nonblocking heavy-validation lock. No automatic CI suite is enlarged.
+The expanded focused suite passes 19 tests with real SDK/mock transport and no
+external requests. Full offline validation before the last regression additions
+passed 100 tests on Python 3.12, including exact dependency-export checks.
+Final exact-commit qualification is recorded in the PR.
+
+The shared nonblocking heavy-validation lock serializes suites on dev.
+Qualification containers use CPU/memory/time bounds and no network. Pytest tooling
+is scoped to its own packages so it cannot override production dependency pins.
+No automatic CI suite or production dependency manifest is enlarged.

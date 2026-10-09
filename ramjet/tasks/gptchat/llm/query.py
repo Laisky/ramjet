@@ -5,10 +5,11 @@ from textwrap import dedent
 
 from langchain_openai import ChatOpenAI
 from ramjet.settings import UserPermission
+from ..credentials import resolve_sdk_credentials
 from ramjet.utils.log import logger
 
 from .data import load_all_prebuild_qa, prepare_data
-from .embeddings import build_user_chain, N_NEAREST_CHUNKS
+from .embeddings import bind_user_chain, build_user_chain, N_NEAREST_CHUNKS
 from .base import UserChain, Index
 
 logger = logger.getChild("gptchat.llm")
@@ -31,8 +32,7 @@ def build_llm_for_user(user: UserPermission) -> ChatOpenAI:
 
     return ChatOpenAI(
         client=None,
-        openai_api_key=user.apikey,
-        openai_api_base=user.api_base,
+        **resolve_sdk_credentials(user.apikey, user.api_base),
         model=user.chat_model,
         temperature=0,
         max_tokens=max_token,
@@ -102,7 +102,7 @@ def setup():
 
 
 def query_for_prebuild_qa(
-    project_name: str, question: str, llm: ChatOpenAI
+    project_name: str, question: str, llm: ChatOpenAI, user: UserPermission
 ) -> Response:
     """ask llm depends prebuild qa index
 
@@ -110,16 +110,20 @@ def query_for_prebuild_qa(
         project_name (str): project name
         question (str): user's question
         llm (ChatOpenAI): llm
+        user (UserPermission): explicit request credentials and provider
 
     Returns:
         Response: response consists of question, text and reference urls
     """
-    resp, refs = prebuild_chains[project_name].chain(llm, question)
+    chain = bind_user_chain(prebuild_chains[project_name], user)
+    resp, refs = chain.chain(llm, question)
     return Response(question=question, text=resp, url=list(set(refs)))
 
 
-def search_for_prebuild_qa(project_name: str, question: str) -> Response:
-    """search related docs for user's question in prebuild qa index
+def search_for_prebuild_qa(
+    project_name: str, question: str, user: UserPermission
+) -> Response:
+    """search related docs with the current user's embedding credentials
 
     Args:
         project_name (str): project name
@@ -128,7 +132,8 @@ def search_for_prebuild_qa(project_name: str, question: str) -> Response:
     Returns:
         Response: response consists of question, text and reference urls
     """
-    resp, refs = prebuild_chains[project_name].search(question)
+    chain = bind_user_chain(prebuild_chains[project_name], user)
+    resp, refs = chain.search(question)
     return Response(question=question, text=resp, url=list(set(refs)))
 
 
@@ -147,8 +152,7 @@ def classificate_query_type(
     Returns:
         str: query type, 'search' or 'scan'
     """
-    prompt = dedent(
-        f"""
+    prompt = dedent(f"""
             there are some types of task, including search and scan.
             you should judge the task type by user's query and answer the exact type of task in your opinion,
             do not answer any other words.
@@ -161,12 +165,10 @@ def classificate_query_type(
             @>>>>>
             {query}
             @<<<<<
-            your answer is:"""
-    )
+            your answer is:""")
     llm = ChatOpenAI(
         client=None,
-        openai_api_key=apikey,
-        openai_api_base=api_base,
+        **resolve_sdk_credentials(apikey, api_base),
         model="gpt-4o-mini",
         temperature=0,
         max_tokens=1000,

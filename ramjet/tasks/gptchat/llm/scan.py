@@ -18,6 +18,7 @@ from langchain_community.document_loaders.base import BaseLoader
 from langchain_text_splitters import TokenTextSplitter
 
 from ramjet.engines import thread_executor
+from ..credentials import resolve_model_credentials, resolve_sdk_credentials
 
 
 def summary_content(
@@ -38,6 +39,7 @@ def summary_content(
     Returns:
         The summary of the document.
     """
+    resolve_model_credentials(apikey, api_base)
     # text_splitter = CharacterTextSplitter(
     #     chunk_size=500, chunk_overlap=30, separator="\n"
     # )
@@ -96,6 +98,7 @@ def _get_question_tobe_summary(
         str: The question to be summarized
     """
 
+    resolve_model_credentials(apikey, api_base)
     summary: str = ""
     # map
     fs: List[Future] = []
@@ -155,8 +158,7 @@ def summary_docu(
 
     llm = ChatOpenAI(
         client=None,
-        openai_api_key=apikey,
-        openai_api_base=api_base,
+        **resolve_sdk_credentials(apikey, api_base),
         model=model,
         temperature=0,
         max_tokens=max_token,
