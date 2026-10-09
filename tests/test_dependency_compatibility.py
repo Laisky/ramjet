@@ -191,3 +191,42 @@ def test_tornado_headers_preserve_repeated_fields() -> None:
     )
     assert headers["content-type"] == "text/plain"
     assert headers.get_list("set-cookie") == ["one=1", "two=2"]
+
+
+def test_chinese_keyword_dependency_keeps_dictionary_resources(tmp_path) -> None:
+    """test_chinese_keyword_dependency_keeps_dictionary_resources preserves Chinese segmentation."""
+    import jieba
+
+    tokenizer = jieba.Tokenizer()
+    tokenizer.tmp_dir = str(tmp_path)
+    assert tokenizer.lcut("中文分词测试", HMM=False) == ["中文", "分词", "测试"]
+
+
+def test_compressed_websocket_accepts_control_frame_before_data() -> None:
+    """test_compressed_websocket_accepts_control_frame_before_data prevents the aiohttp 3.14.3 regression."""
+    import asyncio
+    from aiohttp import ClientSession, WSMsgType, web
+    from aiohttp.test_utils import TestServer
+
+    async def handler(request):
+        """handler sends a ping before its first compressed application message."""
+        socket = web.WebSocketResponse(compress=True)
+        await socket.prepare(request)
+        await socket.ping(b"offline-control")
+        await socket.send_str("offline compressed text", compress=15)
+        await socket.close()
+        return socket
+
+    async def exchange():
+        """exchange returns a compressed message using the disposable test server."""
+        app = web.Application()
+        app.router.add_get("/ws", handler)
+        async with TestServer(app) as server, ClientSession() as session:
+            async with session.ws_connect(
+                server.make_url("/ws"), compress=15
+            ) as socket:
+                message = await socket.receive(timeout=5)
+                assert message.type == WSMsgType.TEXT
+                assert message.data == "offline compressed text"
+
+    asyncio.run(exchange())
