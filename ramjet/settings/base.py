@@ -7,6 +7,9 @@ import multiprocessing
 HOST = "0.0.0.0"
 PORT = 37851
 
+# Set privately in settings/prd.py; empty disables privileged HTTP dispatch.
+OPERATOR_API_TOKEN = ""
+
 
 MAIL_HOST = ""
 MAIL_USERNAME = ""
