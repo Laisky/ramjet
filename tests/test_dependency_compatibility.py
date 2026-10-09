@@ -230,3 +230,46 @@ def test_compressed_websocket_accepts_control_frame_before_data() -> None:
                 assert message.data == "offline compressed text"
 
     asyncio.run(exchange())
+
+
+def test_serialization_settings_and_international_names(tmp_path):
+    """test_serialization_settings_and_international_names preserves runtime data contracts."""
+    import idna
+    import orjson
+    import ujson
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+
+    values = {"text": "中文", "numbers": [1, 2.5], "empty": None}
+    assert ujson.loads(ujson.dumps(values, ensure_ascii=False)) == values
+    assert orjson.loads(orjson.dumps(values)) == values
+    assert idna.decode(idna.encode("例子.测试")) == "例子.测试"
+    dotenv = tmp_path / "offline.env"
+    dotenv.write_text("RAMJET_TEST_COUNT=3\n", encoding="utf-8")
+
+    class OfflineSettings(BaseSettings):
+        """OfflineSettings parses only a synthetic test configuration."""
+
+        model_config = SettingsConfigDict(env_prefix="RAMJET_TEST_", env_file=dotenv)
+        count: int
+
+    assert OfflineSettings().count == 3
+
+
+def test_xml_and_requests_json_contracts():
+    """test_xml_and_requests_json_contracts preserves Unicode XML and prepared HTTP bodies."""
+    import json
+    from lxml import etree
+    import requests
+
+    root = etree.fromstring("<offline><text>中文</text></offline>".encode("utf-8"))
+    assert root.xpath("string(text)") == "中文"
+    prepared = requests.Request(
+        "POST",
+        "https://offline.invalid/path",
+        json={"text": "中文"},
+        headers={"X-Offline": "test"},
+    ).prepare()
+    assert prepared.method == "POST"
+    assert prepared.headers["Content-Type"] == "application/json"
+    assert prepared.headers["X-Offline"] == "test"
+    assert json.loads(prepared.body) == {"text": "中文"}
