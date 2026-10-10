@@ -171,8 +171,14 @@ class Image(aiohttp.web.View):
                     data.get("model"),
                     data.get("image_profile"),
                 )
-            except ValueError as err:
-                raise aiohttp.web.HTTPBadRequest(text=str(err)) from None
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(
+                    text=(
+                        "Invalid image configuration. Custom providers require an "
+                        "explicit model; unknown models require image_profile "
+                        "gpt-image or legacy. OpenAI requires a supported GPT Image model."
+                    )
+                ) from None
             task_id = str(uuid1())
             thread_executor.submit(
                 self.catch_and_upload_err,

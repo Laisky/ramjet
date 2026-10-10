@@ -383,8 +383,8 @@ class ImageByokTests(unittest.TestCase):
                 )
             )
         self.assertEqual(raised.exception.status, 400)
-        self.assertEqual(
-            raised.exception.text, "Custom image providers require an explicit model"
+        self.assertIn(
+            "Custom providers require an explicit model", raised.exception.text
         )
         self.assertEqual(queued, [])
         self.assertEqual(self.outbound, [])
@@ -449,6 +449,24 @@ class ImageByokTests(unittest.TestCase):
         for request in requests:
             self.assertNotIn("Authorization", request.headers)
             self.assertNotIn(routing.CALLER_KEY, str(request.url))
+
+    def test_configuration_error_never_reflects_exception_details(self):
+        """test_configuration_error excludes key, provider URL and trace details."""
+        reflected = "synthetic-secret-key https://private.fixture/?token=synthetic-secret-key Traceback"
+
+        def fail(*args, **kwargs):
+            """fail simulates exception details from a configuration dependency."""
+            raise ValueError(reflected)
+
+        self.env["resolve_image_parameters"] = fail
+        view, queued = self.view()
+        user = NS(apikey=routing.CALLER_KEY, api_base=IMAGE_BASE)
+        with self.assertRaises(web.HTTPBadRequest) as raised:
+            asyncio.run(self.method("post")(view, user))
+        self.assertNotIn(reflected, raised.exception.text)
+        self.assertNotIn("synthetic-secret-key", raised.exception.text)
+        self.assertNotIn("Traceback", raised.exception.text)
+        self.assertEqual(queued, [])
 
 
 if __name__ == "__main__":
