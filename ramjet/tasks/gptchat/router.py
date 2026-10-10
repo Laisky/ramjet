@@ -48,6 +48,7 @@ from .llm.embeddings import (
 )
 from .llm.image import (
     draw_image_by_dalle,
+    resolve_image_parameters,
     upload_image_to_s3,
     image_objkey,
 )
@@ -163,7 +164,15 @@ class Image(aiohttp.web.View):
         logger.debug(f"post image api, {op=}")
 
         if op == "/dalle":
-            resolve_model_credentials(user.apikey, user.api_base)
+            credentials = resolve_model_credentials(user.apikey, user.api_base)
+            try:
+                resolve_image_parameters(
+                    credentials["base_url"],
+                    data.get("model"),
+                    data.get("image_profile"),
+                )
+            except ValueError as err:
+                raise aiohttp.web.HTTPBadRequest(text=str(err)) from None
             task_id = str(uuid1())
             thread_executor.submit(
                 self.catch_and_upload_err,
@@ -207,7 +216,7 @@ class Image(aiohttp.web.View):
         data: dict,
         task_id: str,
     ) -> None:
-        """draw image by openai dalle-2 and upload to s3
+        """_draw_by_dalle generates the selected image model and uploads its bytes
 
         Args:
             user (settings.UserPermission): user info
@@ -223,7 +232,11 @@ class Image(aiohttp.web.View):
         if model_type not in {"azure", "openai"}:
             raise ValueError("Unknown image model type")
         img_content = draw_image_by_dalle(
-            prompt=prompt, apikey=user.apikey, api_base=user.api_base
+            prompt=prompt,
+            apikey=user.apikey,
+            api_base=user.api_base,
+            model=data.get("model"),
+            image_profile=data.get("image_profile"),
         )
 
         upload_image_to_s3(

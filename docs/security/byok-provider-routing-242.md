@@ -135,16 +135,47 @@ compatible responses still produce image bytes, and the public task response
 retains its existing image_url array. URL downloads do not inherit model keys.
 Invalid resolved credentials fail before the background image job is queued.
 
-The existing DALL-E2 request parameters are retained for configured compatible
-backends. OpenAI's official deprecation page lists DALL-E2 and DALL-E3 shutdown
-on 2026-05-12:
-https://developers.openai.com/api/docs/deprecations .
-A current OpenAI default needs a replacement model and different generation
-parameters. That capability/default decision remains pending; the credential
-and selected-provider policy is already resolved. Native Azure deployment or
-version configuration is not invented from a legacy token label. This PR stays
-Draft pending that capability choice, the open required CodeQL check and
-caller/system review.
+Image generation accepts optional JSON fields model and image_profile. For the
+standard HTTPS api.openai.com/v1 endpoint, omitted model selects the currently
+supported pinned snapshot gpt-image-2-2026-04-21, requesting one 1024x1024 PNG at
+low quality. The GPT Image profile omits the unsupported response_format field.
+An explicit GPT Image model uses that same profile; no alternate model, provider
+or credential is tried after an upstream failure.
+
+A custom endpoint requires an explicit model. Known GPT Image model names infer
+image_profile=gpt-image; dall-e-2/dall-e-3 infer image_profile=legacy only for
+custom compatible endpoints. An unknown custom model requires an explicit profile:
+gpt-image sends output_format=png and quality=low; legacy requests b64_json with
+the existing n=1 and size=1024x1024. Unsupported/conflicting configuration returns
+an actionable HTTP400 before any background task is queued. Retired DALL-E
+models are rejected on the standard OpenAI endpoint. Internal HTTP(S) providers
+remain permitted, with the caller key and selected URL unchanged.
+
+Examples of request bodies:
+
+- Standard OpenAI: {"prompt":"..."} or {"prompt":"...","model":"gpt-image-2.5-flare"}.
+- Configured legacy provider: {"prompt":"...","model":"dall-e-2"}.
+- Other custom compatible model: {"prompt":"...","model":"custom/image-v4","image_profile":"legacy"}.
+
+This is a documented behavior change: custom prompt-only clients must configure
+their model; standard prompt-only clients switch from retired DALL-E2 to the
+pinned GPT Image default, with different image behavior and provider billing.
+The response remains {"task_id":"...","image_url":["..."]}. Caller-selected models
+remain subject to their provider's capabilities and account access, which local
+synthetic tests do not establish. No account changes or live image spend occurred.
+
+Official sources checked on 2026-10-10:
+
+- [GPT Image 2 model and snapshot](https://developers.openai.com/api/docs/models/gpt-image-2).
+- [Images API parameters](https://developers.openai.com/api/reference/python/resources/images/methods/generate).
+- [Deprecations](https://developers.openai.com/api/docs/deprecations): DALL-E2/3
+  removed 2026-05-12; GPT Image 1 mini is also scheduled for removal, so it is not
+  selected as a new default.
+
+Native Azure deployment/version configuration is not invented from a legacy
+token label; custom backends must expose the declared compatible protocol.
+The capability/default decision is resolved. This PR remains Draft for the
+inherited required CodeQL failure and caller/system review.
 
 Go's legacy BYOK identifier contains the first 15 key characters and its accepted
 key formats are narrower than Ramjet's opaque-key resolver. Changing those
@@ -173,8 +204,10 @@ The existing focused suite passes 21 tests with real SDK/mock transport and no
 external requests. The full offline suite passes 108 tests on both Python 3.10
 and Python 3.12 before the image addition, including exact dependency-export
 checks. A separate installed-SDK probe reproduces APIRemovedInV1 with no outbound
-request. Nine retained image contracts fail before the migration and pass with
-the supported SDK, selected-provider routing and preserved public response. Final
+request. Nine retained image contracts fail before the SDK migration and pass after it.
+Additional model/profile regressions cover the supported default, explicit custom
+models, omitted/conflicting configuration, retired official models and caller
+propagation, preserving selected-provider routing and the public response. Final
 expanded exact-commit qualification is recorded in the PR.
 
 The shared nonblocking heavy-validation lock serializes suites on dev.
