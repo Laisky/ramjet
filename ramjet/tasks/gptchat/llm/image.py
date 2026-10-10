@@ -3,11 +3,12 @@ from base64 import b64decode
 from io import BytesIO
 
 import openai
-import requests
+import httpx
 from minio import Minio
 
 from ramjet.settings import prd
 from ramjet.tasks.gptchat.utils import logger
+from ramjet.tasks.gptchat.credentials import DEFAULT_API_BASE, resolve_sdk_credentials
 
 logger = logger.getChild("image")
 
@@ -63,58 +64,48 @@ def upload_image_to_s3(
     return f"{prd.S3_SERVER}/{prd.OPENAI_S3_CHUNK_CACHE_BUCKET}/{objkey_prefix}.png"
 
 
-def draw_image_by_dalle(prompt: str, apikey: str) -> bytes:
-    """generate image from prompt by openai dalle
+def draw_image_by_dalle(
+    prompt: str, apikey: str, api_base: str = DEFAULT_API_BASE
+) -> bytes:
+    """draw_image_by_dalle returns image bytes from the caller's selected provider.
 
-    ref: https://platform.openai.com/docs/api-reference/images/create
-
-    Args:
-        prompt (str): description to draw the image
-        apikey (str): openai api key
-
-    Returns:
-        bytes: the image in bytes, can be save as png file
+    The installed SDK receives an explicit key and backend through the shared
+    resolver. DALL-E2 parameters and the public image-byte contract are retained.
     """
-    response: dict = openai.Image.create(
-        api_base="https://api.openai.com/v1/",  # only openai support dalle
-        prompt=prompt,
-        api_key=apikey,
-        n=1,
-        size="1024x1024",
-        # size="512x512",
-        response_format="b64_json",
-    )
+    options = resolve_sdk_credentials(apikey, api_base, include_async_client=False)
+    with openai.OpenAI(**options) as client:
+        response = client.images.generate(
+            model="dall-e-2",
+            prompt=prompt,
+            n=1,
+            size="1024x1024",
+            response_format="b64_json",
+        )
 
-    logger.debug(f"succeed draw image by dalle-2, {prompt=}")
-    return b64decode(response["data"][0]["b64_json"])
+    if not response.data:
+        raise ValueError("The model provider returned no image")
+    image = response.data[0]
+    if image.b64_json:
+        content = b64decode(image.b64_json)
+    elif image.url:
+        # Keep URL-only provider responses without forwarding the model key.
+        downloaded = httpx.get(image.url, timeout=30, follow_redirects=True)
+        downloaded.raise_for_status()
+        content = downloaded.content
+    else:
+        raise ValueError("The model provider returned no image")
+    logger.debug("Image generation completed")
+    return content
 
 
-def draw_image_by_dalle_azure(prompt: str, apikey: str) -> bytes:
-    """generate image from prompt by azure dalle
+def draw_image_by_dalle_azure(
+    prompt: str, apikey: str, api_base: str | None = None
+) -> bytes:
+    """draw_image_by_dalle_azure retains the legacy name with an explicit backend.
 
-    ref: https://platform.openai.com/docs/api-reference/images/create
-
-    Args:
-        prompt (str): description to draw the image
-        apikey (str): openai api key
-
-    Returns:
-        bytes: the image in bytes, can be save as png file
+    This compatibility helper never invents Azure configuration or a server key.
+    Its backend must expose the same compatible image-generation operation.
     """
-    response: dict = openai.Image.create(
-        api_type="azure",
-        api_base="https://laisky-openai.openai.azure.com/",
-        api_version="2023-06-01-preview",
-        prompt=prompt,
-        api_key=apikey,
-        n=1,
-        size="1024x1024",
-        # size="512x512",
-        # response_format="b64_json",
-    )
-
-    # azure only support url
-    resp = requests.get(url=response["data"][0]["url"], timeout=30)
-
-    logger.debug(f"succeed draw image by dalle-2, {prompt=}")
-    return resp.content
+    if api_base is None:
+        raise ValueError("An explicit image provider URL is required")
+    return draw_image_by_dalle(prompt=prompt, apikey=apikey, api_base=api_base)

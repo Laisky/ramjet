@@ -50,8 +50,8 @@ from .llm.image import (
     draw_image_by_dalle,
     upload_image_to_s3,
     image_objkey,
-    draw_image_by_dalle_azure,
 )
+from .credentials import resolve_model_credentials
 from .llm.query import (
     build_llm_for_user,
     classificate_query_type,
@@ -163,6 +163,7 @@ class Image(aiohttp.web.View):
         logger.debug(f"post image api, {op=}")
 
         if op == "/dalle":
+            resolve_model_credentials(user.apikey, user.api_base)
             task_id = str(uuid1())
             thread_executor.submit(
                 self.catch_and_upload_err,
@@ -219,12 +220,11 @@ class Image(aiohttp.web.View):
         logger.debug(f"draw image by dalle, user={user.uid}, {task_id=}")
 
         model_type = self.request.headers.getone("X-Laisky-Image-Token-Type", "azure")
-        if model_type == "azure":
-            img_content = draw_image_by_dalle_azure(prompt=prompt, apikey=user.apikey)
-        elif model_type == "openai":
-            img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
-        else:
-            raise Exception(f"unknown image model type {model_type}")
+        if model_type not in {"azure", "openai"}:
+            raise ValueError("Unknown image model type")
+        img_content = draw_image_by_dalle(
+            prompt=prompt, apikey=user.apikey, api_base=user.api_base
+        )
 
         upload_image_to_s3(
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt

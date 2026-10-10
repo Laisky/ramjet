@@ -100,7 +100,10 @@ class ModelDiagnosticFilter(logging.Filter):
 
 
 def resolve_sdk_credentials(
-    api_key: str | None, api_base: str | None = DEFAULT_API_BASE
+    api_key: str | None,
+    api_base: str | None = DEFAULT_API_BASE,
+    *,
+    include_async_client: bool = True,
 ) -> dict[str, Any]:
     """Bind explicit SDK credentials while preserving provider URL query bytes.
 
@@ -108,6 +111,7 @@ def resolve_sdk_credentials(
     repeated/blank parameters. Public HTTPX hooks restore the selected query
     after SDK path construction for both synchronous and asynchronous requests.
     Imports remain local so the canonical resolver needs only the standard library.
+    Synchronous callers can omit creation of an unused asynchronous transport.
     """
     options: dict[str, Any] = resolve_model_credentials(api_key, api_base)
     for name in ("httpx", "openai._base_client"):
@@ -140,7 +144,8 @@ def resolve_sdk_credentials(
         options["http_client"] = DefaultHttpxClient(
             event_hooks={"request": [attach_query]}
         )
-        options["http_async_client"] = DefaultAsyncHttpxClient(
-            event_hooks={"request": [attach_async_query]}
-        )
+        if include_async_client:
+            options["http_async_client"] = DefaultAsyncHttpxClient(
+                event_hooks={"request": [attach_async_query]}
+            )
     return options

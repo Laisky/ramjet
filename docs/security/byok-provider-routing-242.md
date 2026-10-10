@@ -128,11 +128,23 @@ master-push delivery triggers make unqualified merges consequential.
 
 ## Remaining decisions and topology limits
 
-Image generation still uses the removed legacy SDK API and a default hardcoded
-Azure route. Its error disclosure is fixed here, but image backend modernization
-is pending a product decision: caller-selected OpenAI-compatible generation with
-existing request parameters, or explicitly configured Azure deployment/version
-handling. This PR remains Draft until that path and caller/system review finish.
+Image generation uses the installed SDK's supported images.generate operation
+with the same explicit-key/provider resolver. Legacy azure/openai token labels
+remain accepted without overriding the selected backend. Base64 and URL-only
+compatible responses still produce image bytes, and the public task response
+retains its existing image_url array. URL downloads do not inherit model keys.
+Invalid resolved credentials fail before the background image job is queued.
+
+The existing DALL-E2 request parameters are retained for configured compatible
+backends. OpenAI's official deprecation page lists DALL-E2 and DALL-E3 shutdown
+on 2026-05-12:
+https://developers.openai.com/api/docs/deprecations .
+A current OpenAI default needs a replacement model and different generation
+parameters. That capability/default decision remains pending; the credential
+and selected-provider policy is already resolved. Native Azure deployment or
+version configuration is not invented from a legacy token label. This PR stays
+Draft pending that capability choice, the open required CodeQL check and
+caller/system review.
 
 Go's legacy BYOK identifier contains the first 15 key characters and its accepted
 key formats are narrower than Ramjet's opaque-key resolver. Changing those
@@ -157,12 +169,30 @@ python -m unittest tests.test_byok_routing tests.test_byok_provider_components -
 python -m pytest -q -p no:cacheprovider tests
 ```
 
-The expanded focused suite passes 21 tests with real SDK/mock transport and no
+The existing focused suite passes 21 tests with real SDK/mock transport and no
 external requests. The full offline suite passes 108 tests on both Python 3.10
-and Python 3.12, including exact dependency-export checks. Final exact-commit
-qualification is recorded in the PR.
+and Python 3.12 before the image addition, including exact dependency-export
+checks. A separate installed-SDK probe reproduces APIRemovedInV1 with no outbound
+request. Nine retained image contracts fail before the migration and pass with
+the supported SDK, selected-provider routing and preserved public response. Final
+expanded exact-commit qualification is recorded in the PR.
 
 The shared nonblocking heavy-validation lock serializes suites on dev.
 Qualification containers use CPU/memory/time bounds and no network. Pytest tooling
 is scoped to its own packages so it cannot override production dependency pins.
 No automatic CI suite or production dependency manifest is enlarged.
+
+## UID compatibility and the open CodeQL finding
+
+The required CodeQL failure remains visible. Alert13 was first recorded on
+2025-08-11 and reports the unchanged SHA-1 API-key-derived fallback UID.
+Dataset/cache/quota identifiers retain their existing values. Encryption uses
+a separate password argument through PBKDF2-HMAC-SHA256, not this fallback UID.
+
+Replacing the digest would shift persisted identities. Marking the operation
+nonsecurity or reshaping taint solely to clear a check is not justified while
+runtime permission-constructor behavior and access-control reliance are
+unverified. A separate verified-principal/capability design could preserve
+authorized legacy-ID lookup and key rotation, but the current source/mocked
+evidence does not establish that contract. No migration, new secret store,
+suppression, dismissal or waiver is applied.
