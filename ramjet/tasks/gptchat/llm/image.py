@@ -101,7 +101,18 @@ def resolve_image_parameters(
     ):
         raise ValueError("A valid image model is required")
     legacy = model in {"dall-e-2", "dall-e-3"}
-    gpt_image = model.startswith("gpt-image-") or model == "chatgpt-image-latest"
+    gpt_image = model in {
+        "gpt-image-1",
+        "gpt-image-1-mini",
+        "gpt-image-1.5",
+        "gpt-image-2",
+        "gpt-image-2-2026-04-21",
+        "gpt-image-2.5-sunburst",
+        "gpt-image-2.5-sunburst-2026-09-08",
+        "gpt-image-2.5-flare",
+        "gpt-image-2.5-flare-2026-09-08",
+        "chatgpt-image-latest",
+    }
     if standard and legacy:
         raise ValueError("Retired DALL-E models are unsupported on OpenAI")
     if image_profile is None:

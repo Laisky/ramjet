@@ -330,6 +330,7 @@ class ImageByokTests(unittest.TestCase):
         for model, profile, response_format in (
             ("custom/image-v4", "legacy", True),
             ("custom/image-v4", "gpt-image", False),
+            ("gpt-image-custom-fixture", "gpt-image", False),
             ("gpt-image-2.5-flare", None, False),
             ("dall-e-3", None, True),
         ):
@@ -352,6 +353,7 @@ class ImageByokTests(unittest.TestCase):
             (42, None),
             ("secret model", None),
             ("custom-model", None),
+            ("gpt-image-custom-fixture", None),
             ("custom-model", "invalid"),
             ("custom-model", {}),
             ("gpt-image-2", "legacy"),
