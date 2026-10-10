@@ -39,6 +39,7 @@ from ramjet.settings import prd
 
 from ..base import logger
 from .base import Index, UserChain
+from .private_cache import PasswordProtectedCache
 
 user_embeddings_chain_mu = threading.RLock()
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
@@ -828,6 +829,27 @@ def derive_key(password: str) -> bytes:
     return key
 
 
+private_user_chain_cache = PasswordProtectedCache(
+    user_embeddings_chain, user_embeddings_chain_mu, derive_key
+)
+
+
+def get_private_user_chain(
+    s3cli: Minio, user: prd.UserPermission, password: str
+) -> UserChain:
+    """get_private_user_chain checks the cold-path password before cached access.
+
+    Cached proof is bound to the exact selected chain, including an explicitly
+    activated chatbot. An unproven entry takes the existing authenticated cold
+    restore instead. The result is local to this request, not a subsequent UID
+    lookup that another caller could replace.
+    """
+    chain = private_user_chain_cache.get(user.uid, password)
+    if chain is not None:
+        return chain
+    return restore_user_chain(s3cli, user, password)
+
+
 def download_chatbot_index(
     dirpath: str,
     s3cli: Minio,
@@ -919,9 +941,8 @@ def download_chatbot_index(
 
 def restore_user_chain(
     s3cli: Minio, user: prd.UserPermission, password: str = "", chatbot_name: str = ""
-) -> None:
-    """
-    load and restore user chain from s3
+) -> UserChain:
+    """restore_user_chain decrypts the selected store and returns its exact chain.
 
     Args:
         s3cli (Minio): s3 client
@@ -946,12 +967,13 @@ def restore_user_chain(
 
     if password:
         logger.info(f"load encrypted user chain, {uid=}, {chatbot_name=}")
-        with user_embeddings_chain_mu:
-            user_embeddings_chain[uid] = chain
+        private_user_chain_cache.save(uid, chain, password)
     else:
         logger.info(f"load shared user chain, {uid=}, {chatbot_name=}")
         with user_shared_chain_mu:
             user_shared_chain[uid + chatbot_name] = chain
+
+    return chain
 
 
 def save_encrypt_store(
