@@ -9,6 +9,7 @@ import jwt
 from ramjet.settings import prd
 
 from .base import logger
+from .credentials import resolve_request_credentials
 
 
 async def verify_user(request) -> Mapping:
@@ -42,17 +43,17 @@ def authenticate(func):
 
 
 def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
-    apikey: str = request.headers.get("Authorization", "")
-    apikey = apikey.removeprefix("Bearer ")
-    assert apikey, "apikey is required"
-
+    try:
+        credentials = resolve_request_credentials(
+            request.headers.get("Authorization", ""),
+            request.headers.get("X-Laisky-Openai-Api-Base", ""),
+        )
+    except ValueError as error:
+        raise aiohttp.web.HTTPUnauthorized(reason=str(error)) from None
+    apikey = credentials["api_key"]
+    api_base = credentials["base_url"]
     uid: str = request.headers.get("X-Laisky-User-Id", "")
     assert isinstance(uid, str), "uid must be a string"
-
-    api_base: str = (
-        request.headers.get("X-Laisky-Openai-Api-Base", "") or "https://api.openai.com/"
-    )
-    assert isinstance(api_base, str), "api_base must be a string"
 
     model: str = request.query.get("model", "") or "gpt-4o-mini"
     is_paid = request.headers.get("X-Laisky-User-Is-Free", "").lower() != "true"
@@ -63,7 +64,7 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
         n_concurrent=100,
         chat_model=model,
         apikey=apikey,
-        api_base=api_base.strip("/") + "/v1",
+        api_base=api_base,
     )
 
     return userinfo
@@ -106,8 +107,10 @@ def recover(func):
     async def wrapper(self, *args, **kwargs):
         try:
             return await func(self, *args, **kwargs)
+        except aiohttp.web.HTTPException:
+            raise
         except Exception as e:
-            logger.exception("handler error")
-            return aiohttp.web.HTTPBadRequest(text=str(e))
+            logger.error("handler error (%s)", type(e).__name__)
+            return aiohttp.web.HTTPBadRequest(text="Request could not be completed")
 
     return wrapper

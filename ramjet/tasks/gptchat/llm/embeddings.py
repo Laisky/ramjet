@@ -1,3 +1,4 @@
+import copy
 import codecs
 import hashlib
 import os
@@ -36,6 +37,7 @@ from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
+from ..credentials import resolve_sdk_credentials
 
 from ..base import logger
 from .base import Index, UserChain
@@ -122,7 +124,7 @@ def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
     """
     return OpenAIEmbeddings(
         client=None,
-        openai_api_key=user.apikey,
+        **resolve_sdk_credentials(user.apikey, user.api_base),
         model="text-embedding-3-small",
     )
 
@@ -256,6 +258,22 @@ def build_chain(
         return resp, all_refs
 
     return chain
+
+
+def bind_user_chain(chain: UserChain, user: prd.UserPermission) -> UserChain:
+    """bind_user_chain returns a request-local retriever using the caller's provider.
+
+    The shallow store copy shares stored vectors and documents but keeps the
+    embedding client separate, so concurrent callers cannot replace each other's
+    credentials. The returned chain uses the existing dataset selection.
+    """
+    store = copy.copy(chain.user_index.store)
+    store.embedding_function = OpenAIEmbeddings(
+        **resolve_sdk_credentials(user.apikey, user.api_base),
+        model="text-embedding-3-small",
+    )
+    index = Index(store=store, scaned_files=chain.user_index.scaned_files)
+    return build_user_chain(index=index, datasets=chain.datasets)
 
 
 def build_user_chain(
@@ -588,7 +606,7 @@ def embedding_file(
     )
 
     logger.info(
-        f"embedding {fpath} done, {api_base=}, {max_chunks=},cost {time.time() - start_at:.2f}s"
+        f"embedding {fpath} done, {max_chunks=},cost {time.time() - start_at:.2f}s"
     )
     return idx
 
@@ -800,10 +818,9 @@ def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index
     #         deployment=azure_embeddings_deploymentid,
     #     )
     # else:
-    logger.debug(f"new faiss store {api_base=}")
+    logger.debug("new faiss store")
     embedding_model = OpenAIEmbeddings(
-        api_key=apikey,
-        base_url=api_base,
+        **resolve_sdk_credentials(apikey, api_base),
         model="text-embedding-3-small",
     )
 
@@ -903,11 +920,17 @@ def download_chatbot_index(
             dirpath=dirpath,
             name=chatbot_name,
             password=password,
+            api_key=user.apikey,
+            api_base=user.api_base,
+            embedding_model="text-embedding-3-small",
         )
     else:
         index = load_plaintext_store(
             dirpath=dirpath,
             name=chatbot_name,
+            api_key=user.apikey,
+            api_base=user.api_base,
+            embedding_model="text-embedding-3-small",
         )
 
     # read datasets file
@@ -1034,7 +1057,7 @@ def save_plaintext_store(
     with tempfile.TemporaryDirectory() as tmpdir:
         fpath_prefix = os.path.join(tmpdir, name)
         with open(f"{fpath_prefix}.store", "wb") as f:
-            pickle.dump(index.store, f)
+            f.write(index.serialize())
 
         fs = [
             f"{fpath_prefix}.store",
@@ -1060,26 +1083,53 @@ def save_plaintext_store(
             logger.info(f"upload plaintext {objkey} to s3")
 
 
-def load_plaintext_store(dirpath: str, name: str) -> Index:
-    """load plaintext store
+def load_plaintext_store(
+    dirpath: str,
+    name: str,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    embedding_model: str | None = None,
+) -> Index:
+    """load_plaintext_store restores a store with caller credentials when provided.
 
     Args:
         dirpath: dirpath to store index files
         name: project/file name
+        api_key: explicit caller embedding credential; a missing key is rejected.
+        api_base: explicit provider URL, or None to retain the SDK default.
+        embedding_model: explicit model, or None to retain the SDK default.
+
+    Returns:
+        Index: the restored vector store and scanned file names.
     """
     fpath_prefix = os.path.join(dirpath, name)
     with open(f"{fpath_prefix}.store", "rb") as f:
         data = f.read()
-        return Index.deserialize(data, api_key=prd.OPENAI_TOKEN)
+        return Index.deserialize(
+            data, api_key=api_key, api_base=api_base, embedding_model=embedding_model
+        )
 
 
-def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
-    """load encrypted store
+def load_encrypt_store(
+    dirpath: str,
+    name: str,
+    password: str,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    embedding_model: str | None = None,
+) -> Index:
+    """load_encrypt_store decrypts a store and restores the caller's provider.
 
     Args:
         dirpath: dirpath to store index files
         name: project/file name
-        key: AES256 key used to decrypt the index files
+        password: password used to derive the AES256 decryption key.
+        api_key: explicit caller embedding credential; a missing key is rejected.
+        api_base: explicit provider URL, or None to retain the SDK default.
+        embedding_model: explicit model, or None to retain the SDK default.
+
+    Returns:
+        Index: the decrypted vector store and scanned file names.
     """
     key = derive_key(password)
 
@@ -1089,4 +1139,6 @@ def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
     cipher = AES.new(key, AES.MODE_EAX, nonce)
     data = cipher.decrypt_and_verify(ciphertext, tag)
 
-    return Index.deserialize(data, api_key=prd.OPENAI_TOKEN)
+    return Index.deserialize(
+        data, api_key=api_key, api_base=api_base, embedding_model=embedding_model
+    )

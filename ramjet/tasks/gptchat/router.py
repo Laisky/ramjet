@@ -32,6 +32,7 @@ from .llm.embeddings import (
     chunk_text_content,
     Index,
     build_user_chain,
+    bind_user_chain,
     derive_key,
     download_chatbot_index,
     embedding_file,
@@ -47,10 +48,11 @@ from .llm.embeddings import (
 )
 from .llm.image import (
     draw_image_by_dalle,
+    resolve_image_parameters,
     upload_image_to_s3,
     image_objkey,
-    draw_image_by_dalle_azure,
 )
+from .credentials import resolve_model_credentials
 from .llm.query import (
     build_llm_for_user,
     classificate_query_type,
@@ -162,6 +164,21 @@ class Image(aiohttp.web.View):
         logger.debug(f"post image api, {op=}")
 
         if op == "/dalle":
+            credentials = resolve_model_credentials(user.apikey, user.api_base)
+            try:
+                resolve_image_parameters(
+                    credentials["base_url"],
+                    data.get("model"),
+                    data.get("image_profile"),
+                )
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(
+                    text=(
+                        "Invalid image configuration. Custom providers require an "
+                        "explicit model; unknown models require image_profile "
+                        "gpt-image or legacy. OpenAI requires a supported GPT Image model."
+                    )
+                ) from None
             task_id = str(uuid1())
             thread_executor.submit(
                 self.catch_and_upload_err,
@@ -190,8 +207,8 @@ class Image(aiohttp.web.View):
             return func()
         except Exception as err:
             objkey = f"{os.path.splitext(image_objkey(task_id=task_id))[0]}.err.txt"
-            logger.exception(f"catch and upload image drawing error, {objkey=}")
-            errmsg = str(err).encode("utf-8")
+            logger.error("image drawing failed (%s)", type(err).__name__)
+            errmsg = b"Image generation failed"
             s3cli.put_object(
                 bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=objkey,
@@ -205,7 +222,7 @@ class Image(aiohttp.web.View):
         data: dict,
         task_id: str,
     ) -> None:
-        """draw image by openai dalle-2 and upload to s3
+        """_draw_by_dalle generates the selected image model and uploads its bytes
 
         Args:
             user (settings.UserPermission): user info
@@ -218,12 +235,15 @@ class Image(aiohttp.web.View):
         logger.debug(f"draw image by dalle, user={user.uid}, {task_id=}")
 
         model_type = self.request.headers.getone("X-Laisky-Image-Token-Type", "azure")
-        if model_type == "azure":
-            img_content = draw_image_by_dalle_azure(prompt=prompt, apikey=user.apikey)
-        elif model_type == "openai":
-            img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
-        else:
-            raise Exception(f"unknown image model type {model_type}")
+        if model_type not in {"azure", "openai"}:
+            raise ValueError("Unknown image model type")
+        img_content = draw_image_by_dalle(
+            prompt=prompt,
+            apikey=user.apikey,
+            api_base=user.api_base,
+            model=data.get("model"),
+            image_profile=data.get("image_profile"),
+        )
 
         upload_image_to_s3(
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
@@ -435,7 +455,7 @@ class Query(aiohttp.web.View):
         elif op == "/search":
             resp = await ioloop.run_in_executor(
                 thread_executor,
-                partial(self.search, project=project, question=question),
+                partial(self.search, user=user, project=project, question=question),
             )
         else:
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
@@ -445,10 +465,10 @@ class Query(aiohttp.web.View):
     @uid_method_ratelimiter()
     def query(self, user: settings.UserPermission, project: str, question: str):
         llm = build_llm_for_user(user)
-        return query_for_prebuild_qa(project, question, llm)
+        return query_for_prebuild_qa(project, question, llm, user)
 
-    def search(self, project: str, question: str):
-        return search_for_prebuild_qa(project, question)
+    def search(self, user: settings.UserPermission, project: str, question: str):
+        return search_for_prebuild_qa(project, question, user)
 
     @recover
     @authenticate
@@ -495,6 +515,8 @@ def _make_embedding_chunk(
         idx = Index.deserialize(
             data=cache_data,
             api_key=apikey,
+            api_base=api_base,
+            embedding_model="text-embedding-3-small",
         )
         return idx, True
 
@@ -637,7 +659,7 @@ def _chunk_search(
         aiohttp.web.Response: json response
     """
     cache_key = f"chunksearch/{cache_key[:2]}/{cache_key[2:4]}/{cache_key}"
-    logger.debug(f"search embedding chunk, {query=}, {ext=}, {api_base=}, {cache_key=}")
+    logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     idx, cached = _make_embedding_chunk(
         cache_key=cache_key,
@@ -1072,6 +1094,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_shared_chain_mu:
             chatbot = user_shared_chain[user.uid + chatbot_name]
 
+        chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
@@ -1106,6 +1129,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]
 
+        chatbot = bind_user_chain(chatbot, user)
         sema = uid_ratelimiter(user=user)
         try:
             resp, refs = chatbot.search(user_query)
@@ -1140,6 +1164,7 @@ class EmbeddingContext(aiohttp.web.View):
         with user_embeddings_chain_mu:
             chatbot = user_embeddings_chain[uid]
 
+        chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
@@ -1403,6 +1428,9 @@ class EmbeddingContext(aiohttp.web.View):
                     dirpath=tmpdir,
                     name="dataset",
                     password=password,
+                    api_key=user.apikey,
+                    api_base=user.api_base,
+                    embedding_model="text-embedding-3-small",
                 )
 
             store.store.merge_from(store_part.store)
