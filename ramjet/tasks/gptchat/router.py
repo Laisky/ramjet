@@ -70,6 +70,8 @@ user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
 # Retain workers until completion independently of the HTTP request lifetime.
 uploaded_jobs_lock = threading.RLock()
 uploaded_jobs = set()
+# Bound all queued/running uploads before multipart parsing, regardless of UID.
+uploaded_job_slots = threading.BoundedSemaphore(8)
 
 # track processing files by uid
 # {uid: [filekeys]}
@@ -855,10 +857,15 @@ class UploadedFiles(aiohttp.web.View):
     @authenticate
     async def post(self, user: settings.UserPermission):
         """Upload pdf file by form"""
-        sema = uid_ratelimiter(user, 3)
+        if not uploaded_job_slots.acquire(blocking=False):
+            raise aiohttp.web.HTTPTooManyRequests(
+                reason="upload process capacity reached"
+            )
+        sema = None
         submitted = False
         owned_file = None
         try:
+            sema = uid_ratelimiter(user, 3)
             data = (await self.request.post()).copy()
             file = data.get("file")
             if isinstance(file, FileField):
@@ -890,6 +897,7 @@ class UploadedFiles(aiohttp.web.View):
                     if owned_file is not None:
                         owned_file.close()
                     sema.release()
+                    uploaded_job_slots.release()
 
             future.add_done_callback(finished)
             submitted = True
@@ -904,7 +912,9 @@ class UploadedFiles(aiohttp.web.View):
             if not submitted:
                 if owned_file is not None:
                     owned_file.close()
-                sema.release()
+                if sema is not None:
+                    sema.release()
+                uploaded_job_slots.release()
 
         return aiohttp.web.json_response({"status": "ok"})
 
