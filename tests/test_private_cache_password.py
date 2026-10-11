@@ -18,7 +18,7 @@ from types import SimpleNamespace as NS
 import unittest
 from urllib.parse import quote
 
-import aiohttp
+import aiohttp.web
 from Crypto.Cipher import AES
 from multidict import CIMultiDict
 
