@@ -16,12 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def load_upload(executor):
     """Load actual limiter/post methods with inert scheduling and local forms."""
 
-    class TooMany(RuntimeError):
-        """Represent rejection without importing deployment configuration."""
+    from aiohttp import web
 
-        def __init__(self, reason="", **kwargs):
-            """Accept the actual handler's HTTP reason argument."""
-            super().__init__(reason)
+    TooMany = web.HTTPTooManyRequests
 
     class Loop:
         """Model executor submission while retaining unresolved jobs."""
@@ -46,14 +43,29 @@ def load_upload(executor):
             web=NS(
                 HTTPTooManyRequests=TooMany,
                 HTTPException=web.HTTPException,
+                HTTPBadRequest=web.HTTPBadRequest,
                 json_response=lambda value, **kw: value,
             )
         ),
         asyncio=NS(get_event_loop=lambda: Loop()),
         thread_executor=executor,
         partial=partial,
+        functools=__import__("functools"),
     )
     tree = ast.parse((ROOT / "ramjet/tasks/gptchat/router.py").read_text())
+    declarations = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "uploaded_job_slots"
+            for target in node.targets
+        )
+    ]
+    for declaration in declarations:
+        exec(
+            compile(ast.unparse(declaration), "<actual process capacity>", "exec"), env
+        )
     limiter = next(
         n
         for n in tree.body
@@ -67,7 +79,14 @@ def load_upload(executor):
     post = next(
         n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "post"
     )
-    post.decorator_list = []
+    recover_tree = ast.parse((ROOT / "ramjet/tasks/gptchat/utils.py").read_text())
+    recover_fn = next(
+        node
+        for node in recover_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "recover"
+    )
+    exec(compile(ast.unparse(recover_fn), "<actual HTTP recovery>", "exec"), env)
+    post.decorator_list = [ast.Name(id="recover", ctx=ast.Load())]
     source = (
         "from __future__ import annotations\n"
         + ast.unparse(limiter)
@@ -120,9 +139,48 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
             if not future.done():
                 future.cancel()
 
+    def assert_process_capacity_available(self):
+        """assert_process_capacity_available verifies all eight permits are reusable."""
+        slots = self.env["uploaded_job_slots"]
+        acquired = []
+        try:
+            for _ in range(8):
+                self.assertTrue(slots.acquire(blocking=False))
+                acquired.append(True)
+            self.assertFalse(slots.acquire(blocking=False))
+        finally:
+            for _ in acquired:
+                slots.release()
+
     async def post(self, user=None):
         """Call the actual handler with an inert identity fixture."""
         return await self.env["post"](self.view, user or self.user)
+
+    async def test_process_capacity_rejects_rotating_users_before_form(self):
+        """test_process_capacity rejects the ninth distinct user before form retention."""
+        for index in range(8):
+            user = NS(uid=f"local-{index}", is_paid=True, n_concurrent=100)
+            self.assertEqual(await self.post(user), {"status": "ok"})
+        with self.assertRaises(self.TooMany) as rejected:
+            await self.post(NS(uid="local-overflow", is_paid=True, n_concurrent=100))
+        self.assertEqual(rejected.exception.status, 429)
+        self.assertEqual(self.forms, 8)
+        self.assertEqual(len(self.scheduler.jobs), 8)
+        self.scheduler.jobs[0].set_result([])
+        self.assertEqual(
+            await self.post(NS(uid="local-reused", is_paid=True, n_concurrent=100)),
+            {"status": "ok"},
+        )
+
+    async def test_user_rejection_preserves_process_capacity(self):
+        """test_user_rejection returns the global slot when the user limiter rejects."""
+        await self.post()
+        for _ in range(10):
+            with self.assertRaises(self.TooMany):
+                await self.post()
+        for index in range(7):
+            await self.post(NS(uid=f"other-{index}", is_paid=True, n_concurrent=100))
+        self.assertEqual(self.forms, 8)
 
     async def test_permit_covers_unresolved_worker(self):
         """Reject a second job until the first has actually completed."""
@@ -147,12 +205,14 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
             sema = self.env["user_prcess_file_sema"][self.user.uid]
             self.assertTrue(sema.acquire(blocking=False))
             sema.release()
+            self.assert_process_capacity_available()
         self.assertEqual(len(self.env["uploaded_jobs"]), 0)
 
     async def test_submission_and_form_failures_release_capacity(self):
         """Admission is rolled back when no background worker was submitted."""
         self.scheduler.fail = True
         self.assertIn("error", await self.post())
+        self.assert_process_capacity_available()
         self.scheduler.fail = False
 
         async def bad_form():
@@ -162,6 +222,7 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         good_form = self.view.request.post
         self.view.request.post = bad_form
         self.assertIn("error", await self.post())
+        self.assert_process_capacity_available()
         self.view.request.post = good_form
         self.assertEqual(await self.post(), {"status": "ok"})
 
@@ -180,6 +241,7 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assertEqual(self.scheduler.jobs, [])
+        self.assert_process_capacity_available()
 
     async def test_request_file_cleanup_does_not_close_worker_file(self):
         """Give the background worker a descriptor independent of request cleanup."""
@@ -226,6 +288,7 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assertEqual(self.scheduler.jobs, [])
+        self.assert_process_capacity_available()
 
 
 class UploadedFileProcessingTests(unittest.TestCase):
