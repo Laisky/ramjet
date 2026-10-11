@@ -1,0 +1,13 @@
+/* Keep the operator form readable without third-party resources. */
+#twitterFetch {
+    max-width: 36rem;
+}
+#twitterFetch label,
+#twitterFetch input,
+#twitterFetch button {
+    display: block;
+    margin: 0.5rem 0;
+}
+#twitterFetchStatus {
+    min-height: 1.5rem;
+}

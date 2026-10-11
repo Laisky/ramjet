@@ -42,7 +42,7 @@
     {% block body %}
     {% endblock %}
 
-    <script type="module">
+    {% block shared_modules %}<script type="module">
         (async () => {
             // modules need to load before main.js
             window.libs = await import("https://s3.laisky.com/static/laisky/libs.js");
@@ -74,7 +74,7 @@
                 }
             });
         })();
-    </script>
+    </script>{% endblock %}
 </body>
 
 <script type="text/javascript">
