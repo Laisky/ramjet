@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Twitter Utils{% endblock %}
+{% block head %}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Twitter Utils</title>
+<link rel="stylesheet" href="/static/twitter-operator.css">
+{% endblock %}
+{% block shared_modules %}{% endblock %}
 {% block body %}
     <article>
         <p>一个爬取推特备份，提供查询和分享的小工具</p>
@@ -20,14 +27,21 @@
 
         <h2>四、收录指定推文</h2>
         <p>建议贴入最末一条的 id，可以读取整个 thread</p>
-        <form action="/twitter/fetch/" method="post" accept-charset="utf-8" enctype="multipart/form-data">
+        <form id="twitterFetch" action="fetch/" method="post" accept-charset="utf-8" enctype="multipart/form-data" autocomplete="off">
             <div class="form-group">
                 <label for="text">Twitter Status ID:</label>
                 <input type="text" name="tweet_id" />
 
-                <input type="submit" value="Submit" />
+                <label for="twitterOperatorToken">Operator credential:</label>
+                <input id="twitterOperatorToken" type="password" autocomplete="off" required />
+                <button id="twitterFetchSubmit" type="submit">Submit</button>
+                <p id="twitterFetchStatus" role="status" aria-live="polite"></p>
             </div>
         </form>
 
     </article>
+{% endblock %}
+
+{% block js %}
+<script src="/static/twitter-operator-fetch.js" defer></script>
 {% endblock %}

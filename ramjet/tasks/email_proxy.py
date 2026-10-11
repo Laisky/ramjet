@@ -1,6 +1,7 @@
 from functools import partial
 
 from aiohttp import web
+from ramjet.operator_auth import require_operator
 from kipp.utils import EmailSender
 from ramjet.engines import ioloop, thread_executor
 from ramjet.utils.log import logger as root_logger
@@ -22,6 +23,7 @@ class EmailProxyHandle(web.View):
         return web.Response(text="email proxy")
 
     async def post(self):
+        require_operator(self.request)
         data = await self.request.json()
         sender = EmailSender(
             host=data.pop("host"),
