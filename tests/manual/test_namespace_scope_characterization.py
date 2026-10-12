@@ -1,4 +1,4 @@
-"""Opt-in request-scope characterization, not ownership repair or acceptance.
+"""Opt-in request-scope controls for the repaired private capability selectors.
 
 Only public tracked functions run. Permission construction is mocked to capture
 selected arguments; no private configuration, provider or storage is loaded.
@@ -63,10 +63,17 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         )
         credentials = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(credentials)
+        specification = importlib.util.spec_from_file_location(
+            "namespace_scope_controls", ROOT / "ramjet/tasks/gptchat/namespace.py"
+        )
+        namespace = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(namespace)
+        self.scope = namespace.credential_scope
         self.permission = Mock(side_effect=lambda **fields: NS(**fields))
         self.buckets = {}
         environment = {
             "hashlib": hashlib,
+            "credential_scope": self.scope,
             "resolve_request_credentials": credentials.resolve_request_credentials,
             "prd": NS(UserPermission=self.permission),
             "aiohttp": NS(
@@ -100,32 +107,32 @@ class NamespaceScopeCharacterization(unittest.TestCase):
             headers["X-Laisky-User-Is-Free"] = free
         return self.select(NS(headers=headers, query={}))
 
-    def test_free_header_changes_selected_paid_argument(self):
+    def test_free_header_cannot_grant_paid_capacity(self):
         """test_free_header records argument selection, not constructor authority."""
         for value, paid in [
-            (None, True),
-            ("false", True),
+            (None, False),
+            ("false", False),
             ("true", False),
             ("TrUe", False),
-            ("unrecognized", True),
+            ("unrecognized", False),
         ]:
             with self.subTest(value=value):
                 user = self.user("synthetic-requested-scope", value)
-                self.assertEqual(user.uid, "synthetic-requested-scope")
+                self.assertEqual(user.uid, self.scope(user.apikey))
                 self.assertEqual(user.is_paid, paid)
-                self.assertEqual(user.n_concurrent, 100)
+                self.assertEqual(user.n_concurrent, 3)
                 self.assertEqual(self.permission.call_args.kwargs["is_paid"], paid)
 
-    def test_supplied_uid_overrides_key_but_distinct_uid_stays_distinct(self):
+    def test_supplied_uid_cannot_override_complete_key(self):
         """test_supplied_uid distinguishes scope selection from key validation."""
         first = self.user("synthetic-scope-A", key="sk-synthetic-owner-A")
         second = self.user("synthetic-scope-A", key="sk-synthetic-owner-B")
         other = self.user("synthetic-scope-B", key="sk-synthetic-owner-B")
         self.assertNotEqual(first.apikey, second.apikey)
-        self.assertEqual(first.uid, second.uid)
-        self.assertNotEqual(first.uid, other.uid)
+        self.assertNotEqual(first.uid, second.uid)
+        self.assertEqual(second.uid, other.uid)
         fallback = self.user(None)
-        self.assertEqual(fallback.uid, hashlib.sha1(first.apikey.encode()).hexdigest())
+        self.assertEqual(fallback.uid, self.scope(first.apikey))
 
     def test_empty_key_rejects_before_permission_construction(self):
         """test_empty_key excludes an indiscriminate accepting fixture."""
@@ -133,7 +140,7 @@ class NamespaceScopeCharacterization(unittest.TestCase):
             self.select(NS(headers={}, query={}))
         self.permission.assert_not_called()
 
-    def test_absent_public_bucket_free_users_fall_back_to_uid(self):
+    def test_absent_public_bucket_free_users_share_admission(self):
         """test_absent_public_bucket disproves blanket shared-free-bucket claims."""
         first = NS(uid="synthetic-A", is_paid=False, n_concurrent=1)
         same = NS(uid="synthetic-A", is_paid=False, n_concurrent=1)
@@ -141,11 +148,10 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         bucket = self.acquire(first)
         with self.assertRaises(SyntheticHTTPError):
             self.acquire(same)
-        separate = self.acquire(other)
-        self.assertIsNot(bucket, separate)
-        self.assertEqual(set(self.buckets), {"synthetic-A", "synthetic-B"})
+        with self.assertRaises(SyntheticHTTPError):
+            self.acquire(other)
+        self.assertEqual(set(self.buckets), {"public"})
         bucket.release()
-        separate.release()
 
     def test_existing_public_bucket_free_users_share_it(self):
         """test_existing_public_bucket proves the preseeded branch separately."""

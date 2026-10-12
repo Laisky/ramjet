@@ -38,6 +38,7 @@ from minio import Minio
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
 from ..credentials import resolve_sdk_credentials
+from ..namespace import require_object_name
 
 from ..base import logger
 from .base import Index, UserChain
@@ -46,7 +47,7 @@ from .private_cache import PasswordProtectedCache
 user_embeddings_chain_mu = threading.RLock()
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 user_shared_chain_mu = threading.RLock()
-user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
+user_shared_chain: Dict[Tuple[str, str], UserChain] = {}  # (public owner, bot name)
 
 
 N_BACTCH_FILES: int = 5
@@ -906,6 +907,9 @@ def download_chatbot_index(
                 resp.close()
                 resp.release_conn()
 
+    if chatbot_name:
+        require_object_name(chatbot_name)
+
     if password:
         objkeys = [
             quote(
@@ -924,6 +928,9 @@ def download_chatbot_index(
                 f"{prd.OPENAI_S3_EMBEDDINGS_PREFIX}/{uid}/chatbot-share-v2/{chatbot_name}.pkl"
             ),
         ]
+
+    # Validate both request names and persisted current-pointer contents.
+    require_object_name(chatbot_name)
 
     # fix bug for https://github.com/minio/minio-py/pull/1309
     tmp_file = os.path.join(dirpath, "tmp.part.minio")
@@ -994,7 +1001,7 @@ def restore_user_chain(
     else:
         logger.info(f"load shared user chain, {uid=}, {chatbot_name=}")
         with user_shared_chain_mu:
-            user_shared_chain[uid + chatbot_name] = chain
+            user_shared_chain[(uid, chatbot_name)] = chain
 
     return chain
 

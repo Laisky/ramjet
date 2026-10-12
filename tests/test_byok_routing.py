@@ -5,6 +5,7 @@ import base64
 import functools
 import hashlib
 import io
+import importlib.util
 import json
 import logging
 import os
@@ -128,6 +129,19 @@ class ByokRoutingTests(unittest.TestCase):
             logger=self.logger,
             hashlib=hashlib,
         )
+        spec = importlib.util.spec_from_file_location(
+            "byok_namespace", ROOT / "ramjet/tasks/gptchat/namespace.py"
+        )
+        namespace = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(namespace)
+        self.env.update(
+            credential_scope=namespace.credential_scope,
+            require_object_name=namespace.require_object_name,
+        )
+        # The SDK-binding unit fixture bypasses namespace/storage auth deliberately;
+        # the real namespace guard and decorators are exercised in ownership tests.
+        self.env["require_private_namespace"] = lambda *args, **kwargs: True
+        self.env["s3cli"] = object()
         self.env["aiohttp"] = NS(web=web)
         self.env["urlsplit"] = __import__(
             "urllib.parse", fromlist=["urlsplit"]
@@ -281,6 +295,14 @@ class ByokRoutingTests(unittest.TestCase):
             user_embeddings_chain_mu=threading.Lock(),
             user_embeddings_chain={"synthetic-user": chain_for_index(cached_index, [])},
             uid_ratelimiter=lambda **kw: NS(release=lambda: None),
+        )
+        # This SDK-binding fixture supplies an already password-checked chain;
+        # actual password/namespace proofs have independent retained regressions.
+        env["private_user_chain_cache"] = NS(
+            get=lambda uid, password: env["user_embeddings_chain"][uid]
+        )
+        load_function(
+            "ramjet/tasks/gptchat/llm/embeddings.py", "get_private_user_chain", env
         )
         source = ROOT / "ramjet/tasks/gptchat/llm/embeddings.py"
         if "def bind_user_chain(" in source.read_text():

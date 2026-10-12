@@ -1,5 +1,4 @@
 import functools
-import hashlib
 import time
 from typing import Mapping
 
@@ -10,6 +9,7 @@ from ramjet.settings import prd
 
 from .base import logger
 from .credentials import resolve_request_credentials
+from .namespace import credential_scope
 
 
 async def verify_user(request) -> Mapping:
@@ -43,6 +43,11 @@ def authenticate(func):
 
 
 def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
+    """get_user_by_appkey binds new private scope to complete caller credentials.
+
+    Wire UID/free assertions confer no ownership or paid capacity. All requests
+    receive conservative admission until an authoritative grant exists.
+    """
     try:
         credentials = resolve_request_credentials(
             request.headers.get("Authorization", ""),
@@ -52,16 +57,12 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
         raise aiohttp.web.HTTPUnauthorized(reason=str(error)) from None
     apikey = credentials["api_key"]
     api_base = credentials["base_url"]
-    uid: str = request.headers.get("X-Laisky-User-Id", "")
-    assert isinstance(uid, str), "uid must be a string"
-
     model: str = request.query.get("model", "") or "gpt-4o-mini"
-    is_paid = request.headers.get("X-Laisky-User-Is-Free", "").lower() != "true"
 
     userinfo = prd.UserPermission(
-        is_paid=is_paid,
-        uid=uid or hashlib.sha1(apikey.encode("utf-8")).hexdigest(),
-        n_concurrent=100,
+        is_paid=False,
+        uid=credential_scope(apikey),
+        n_concurrent=3,
         chat_model=model,
         apikey=apikey,
         api_base=api_base,
@@ -73,8 +74,8 @@ def get_user_by_appkey(request: aiohttp.web.Request) -> prd.UserPermission:
 def authenticate_by_appkey(func):
     """Decorator to authenticate a request
 
-    will check if the appkey is in the list of valid appkeys,
-    and if it is, will return the user info as the first argument to the function
+    Derives a credential capability without asserting provider/account validity,
+    and returns request-local user info as the first argument to the function
     """
 
     @functools.wraps(func)
@@ -88,8 +89,8 @@ def authenticate_by_appkey(func):
 def authenticate_by_appkey_sync(func):
     """Decorator to authenticate a request
 
-    will check if the appkey is in the list of valid appkeys,
-    and if it is, will return the user info as the first argument to the function
+    Derives a credential capability without asserting provider/account validity,
+    and returns request-local user info as the first argument to the function
     """
 
     @functools.wraps(func)

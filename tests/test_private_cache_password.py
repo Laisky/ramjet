@@ -175,6 +175,16 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
                 ),
             )
 
+        spec = importlib.util.spec_from_file_location(
+            "password_namespace", ROOT / "ramjet/tasks/gptchat/namespace.py"
+        )
+        namespace = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(namespace)
+        self.env["require_object_name"] = namespace.require_object_name
+        # These password-cache fixtures bypass request authentication deliberately;
+        # tests/test_namespace_ownership.py qualifies the actual namespace boundary.
+        self.env["require_private_namespace"] = lambda *args, **kwargs: True
+        self.env["bind_user_chain"] = lambda chain, user: chain
         self.env["build_user_chain"] = build_user_chain
         gpt = ROOT / "ramjet/tasks/gptchat"
         execute_definitions(gpt / "llm/embeddings.py", ["derive_key"], self.env)
@@ -350,7 +360,7 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
         ).encode()
         self.storage.objects[prefix + ".pkl"] = pickle.dumps(["public dataset"])
         self.env["restore_user_chain"](self.storage, self.user, chatbot_name="public")
-        chain = self.env["user_shared_chain"][UID + "public"]
+        chain = self.env["user_shared_chain"][(UID, "public")]
         self.assertEqual(chain.search("fixture")[0], "public content")
 
     async def test_cache_proof_never_enters_serialized_index(self):
