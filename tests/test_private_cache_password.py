@@ -175,6 +175,16 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
                 ),
             )
 
+        spec = importlib.util.spec_from_file_location(
+            "password_namespace", ROOT / "ramjet/tasks/gptchat/namespace.py"
+        )
+        namespace = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(namespace)
+        self.env["require_object_name"] = namespace.require_object_name
+        # These password-cache fixtures bypass request authentication deliberately;
+        # tests/test_namespace_ownership.py qualifies the actual namespace boundary.
+        self.env["require_private_namespace"] = lambda *args, **kwargs: True
+        self.env["bind_user_chain"] = lambda chain, user: chain
         self.env["build_user_chain"] = build_user_chain
         gpt = ROOT / "ramjet/tasks/gptchat"
         execute_definitions(gpt / "llm/embeddings.py", ["derive_key"], self.env)
@@ -186,6 +196,7 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
             module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
+            self.env["private_chain_key"] = module.private_chain_key
             self.env["private_user_chain_cache"] = module.PasswordProtectedCache(
                 self.env["user_embeddings_chain"],
                 self.env["user_embeddings_chain_mu"],
@@ -215,7 +226,9 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
             return wrapper
 
         self.env["authenticate_sync"] = authenticate
+        self.env["authenticate_private_sync"] = lambda operation: authenticate
         self.env["authenticate"] = lambda func: func
+        self.env["authenticate_private"] = lambda operation: (lambda func: func)
         self.env["recover"] = lambda func: func
         self.search = execute_method(
             gpt / "router.py", "EmbeddingContext", "chatbot_search", self.env
@@ -297,8 +310,11 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unproven_legacy_cache_entry_requires_cold_password_proof(self):
         """test_unproven_legacy_cache rejects plaintext entries without successful-decrypt proof."""
-        self.env["user_embeddings_chain"][UID] = self.env["build_user_chain"](
-            SyntheticIndex({"text": "unproven cached content"}), ["unproven dataset"]
+        self.env["user_embeddings_chain"][
+            self.env["private_chain_key"](UID)
+        ] = self.env["build_user_chain"](
+            SyntheticIndex({"text": "unproven cached content"}),
+            ["unproven dataset"],
         )
         with self.assertRaises(ValueError):
             self.search(self.view("synthetic-wrong"))
@@ -326,10 +342,13 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_cold_restore_does_not_replace_valid_cached_chain(self):
         """test_failed_cold_restore keeps a successfully decrypted active entry intact."""
         self.restore(PASSWORD_B, "beta")
-        before = self.env["user_embeddings_chain"][UID]
+        before = self.env["user_embeddings_chain"][self.env["private_chain_key"](UID)]
         with self.assertRaises(ValueError):
             self.restore("synthetic-wrong", "alpha")
-        self.assertIs(self.env["user_embeddings_chain"][UID], before)
+        self.assertIs(
+            self.env["user_embeddings_chain"][self.env["private_chain_key"](UID)],
+            before,
+        )
         self.assert_content(self.search, PASSWORD_B, "beta private content")
 
     async def test_newly_built_chain_also_has_password_proof(self):
@@ -350,21 +369,84 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
         ).encode()
         self.storage.objects[prefix + ".pkl"] = pickle.dumps(["public dataset"])
         self.env["restore_user_chain"](self.storage, self.user, chatbot_name="public")
-        chain = self.env["user_shared_chain"][UID + "public"]
+        chain = self.env["user_shared_chain"][(UID, "public")]
         self.assertEqual(chain.search("fixture")[0], "public content")
+
+    def test_store_loaders_reject_neighbor_paths_before_open(self):
+        """test_store_loaders_reject_neighbor_paths confines even direct library callers."""
+        with tempfile.TemporaryDirectory(prefix="ownership-loader-") as tmp:
+            root = Path(tmp) / "child"
+            root.mkdir()
+            outside = Path(tmp) / "outside.store"
+            payload = json.dumps({"text": "synthetic neighbor"}).encode()
+            for loader_name in ("load_plaintext_store", "load_encrypt_store"):
+                if loader_name == "load_encrypt_store":
+                    cipher = AES.new(self.env["derive_key"](PASSWORD_A), AES.MODE_EAX)
+                    ciphertext, tag = cipher.encrypt_and_digest(payload)
+                    outside.write_bytes(cipher.nonce + tag + ciphertext)
+                else:
+                    outside.write_bytes(payload)
+                for name in ("../outside", str(outside.with_suffix(""))):
+                    with self.subTest(loader=loader_name, name=name):
+                        kwargs = dict(
+                            dirpath=str(root),
+                            name=name,
+                            api_key=self.user.apikey,
+                            api_base=self.user.api_base,
+                        )
+                        if loader_name == "load_encrypt_store":
+                            kwargs["password"] = PASSWORD_A
+                        with self.assertRaises(ValueError):
+                            self.env[loader_name](**kwargs)
+
+    def test_store_savers_reject_invalid_names_before_file_or_serialization_work(self):
+        """test_store_savers_reject_invalid_names refuses direct library misuse early."""
+        from unittest.mock import patch
+
+        execute_definitions(
+            ROOT / "ramjet/tasks/gptchat/llm/embeddings.py",
+            ["save_plaintext_store"],
+            self.env,
+        )
+        for loader_name in ("save_plaintext_store", "save_encrypt_store"):
+            for name in ("../outside", "/absolute", "valid\\n", "", 1):
+                with self.subTest(saver=loader_name, name=name):
+                    kwargs = dict(
+                        s3cli=self.storage,
+                        user=self.user,
+                        index=NS(
+                            serialize=lambda: self.fail("unexpected serialization")
+                        ),
+                        name=name,
+                        datasets=["synthetic"],
+                    )
+                    if loader_name == "save_encrypt_store":
+                        kwargs["password"] = PASSWORD_A
+                    with patch(
+                        "builtins.open",
+                        side_effect=AssertionError("unexpected local open"),
+                    ):
+                        with self.assertRaises(ValueError):
+                            self.env[loader_name](**kwargs)
+                    self.assertEqual(self.storage.downloads, [])
 
     async def test_cache_proof_never_enters_serialized_index(self):
         """test_cache_proof confirms existing persisted payload and namespace format stay unchanged."""
         self.restore()
-        payload = self.env["user_embeddings_chain"][UID].user_index.serialize()
+        payload = self.env["user_embeddings_chain"][
+            self.env["private_chain_key"](UID)
+        ].user_index.serialize()
         self.assertEqual(json.loads(payload), {"text": "alpha private content"})
         self.assertNotIn(PASSWORD_A.encode(), payload)
 
     async def test_replaced_chain_cannot_reuse_a_sibling_password_proof(self):
         """test_replaced_chain checks that proof for alpha never authorizes substituted plaintext."""
         self.restore()
-        self.env["user_embeddings_chain"][UID] = self.env["build_user_chain"](
-            SyntheticIndex({"text": "substituted sibling content"}), ["sibling dataset"]
+        self.env["user_embeddings_chain"][
+            self.env["private_chain_key"](UID)
+        ] = self.env["build_user_chain"](
+            SyntheticIndex({"text": "substituted sibling content"}),
+            ["sibling dataset"],
         )
         downloads = len(self.storage.downloads)
         self.assert_content(self.search, PASSWORD_A, "alpha private content")
@@ -394,7 +476,10 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
         ):
             self.assert_content(self.search, PASSWORD_A, "alpha private content")
         self.assertEqual(
-            self.env["user_embeddings_chain"][UID].datasets, ["beta dataset"]
+            self.env["user_embeddings_chain"][
+                self.env["private_chain_key"](UID)
+            ].datasets,
+            ["beta dataset"],
         )
         with self.assertRaises(ValueError):
             self.search(self.view(PASSWORD_A))

@@ -49,6 +49,10 @@ def load_upload(executor):
         ),
         asyncio=NS(get_event_loop=lambda: Loop()),
         thread_executor=executor,
+        # Isolate scheduler/permit contracts; namespace proof is tested separately.
+        require_private_namespace=lambda *args, **kwargs: True,
+        require_object_name=lambda name: name,
+        s3cli=object(),
         partial=partial,
         functools=__import__("functools"),
     )
@@ -124,11 +128,23 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         self.scheduler = Scheduler()
         self.env, self.TooMany = load_upload(self.scheduler)
         self.forms = 0
+        import tempfile
+        from aiohttp.web_request import FileField
+
+        self.default_file = tempfile.TemporaryFile()
+        self.addCleanup(self.default_file.close)
+        self.default_field = FileField(
+            "file", "synthetic.txt", self.default_file, "text/plain", {}
+        )
 
         async def form():
             """Record when a local form would retain uploaded data."""
             self.forms += 1
-            return {"file_key": "fixture"}
+            return {
+                "file_key": "fixture",
+                "data_key": "synthetic-password",
+                "file": self.default_field,
+            }
 
         self.view = NS(request=NS(post=form), process_file=lambda **kw: None)
         self.user = NS(uid="fixture", is_paid=True, n_concurrent=1)
@@ -202,7 +218,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
                 job.set_exception(RuntimeError("local worker failure"))
             else:
                 job.cancel()
-            sema = self.env["user_prcess_file_sema"][self.user.uid]
+            sema = self.env["user_prcess_file_sema"][
+                ("private-admission-v2", self.user.uid)
+            ]
             self.assertTrue(sema.acquire(blocking=False))
             sema.release()
             self.assert_process_capacity_available()
@@ -237,7 +255,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         self.view.request.post = too_large
         with self.assertRaises(web.HTTPRequestEntityTooLarge):
             await self.post()
-        sema = self.env["user_prcess_file_sema"][self.user.uid]
+        sema = self.env["user_prcess_file_sema"][
+            ("private-admission-v2", self.user.uid)
+        ]
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assertEqual(self.scheduler.jobs, [])
@@ -255,7 +275,11 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
 
         async def form():
             """Supply a real disposable uploaded-file descriptor."""
-            return {"file": FileField("file", "fixture.txt", source, "text/plain", {})}
+            return {
+                "file_key": "fixture",
+                "data_key": "synthetic-password",
+                "file": FileField("file", "fixture.txt", source, "text/plain", {}),
+            }
 
         self.view.request.post = form
         self.view.process_file = lambda user, data: data["file"].file.read()
@@ -267,6 +291,48 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(submitted(), b"local uploaded bytes")
         job.set_result([])
         self.assertTrue(worker_file.closed)
+
+    async def test_namespace_proof_failure_releases_admission_without_submission(self):
+        """test_namespace_proof_failure releases both permits before any worker is queued."""
+
+        def invalid_proof(*args, **kwargs):
+            """invalid_proof models a guard denial already covered by actual proof regressions."""
+            raise ValueError("Private namespace ownership could not be verified")
+
+        self.env["aiohttp"].web.json_response = lambda value, **kwargs: NS(
+            status=kwargs.get("status", 200), value=value
+        )
+        self.env["require_private_namespace"] = invalid_proof
+        response = await self.post()
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.scheduler.jobs, [])
+        sema = self.env["user_prcess_file_sema"][
+            ("private-admission-v2", self.user.uid)
+        ]
+        self.assertTrue(sema.acquire(blocking=False))
+        sema.release()
+        self.assert_process_capacity_available()
+
+    async def test_invalid_upload_never_initializes_namespace_or_schedules(self):
+        """test_invalid_upload checks required fields before durable proof creation."""
+        proofs = []
+        self.env["aiohttp"].web.json_response = lambda value, **kwargs: NS(
+            status=kwargs.get("status", 200), value=value
+        )
+        self.env["require_private_namespace"] = lambda *args, **kwargs: proofs.append(
+            kwargs
+        )
+
+        async def invalid_form():
+            """invalid_form supplies no encrypted data password."""
+            return {"file_key": "fixture", "file": self.default_field}
+
+        self.view.request.post = invalid_form
+        response = await self.post()
+        self.assertEqual(response.status, 400)
+        self.assertEqual(proofs, [])
+        self.assertEqual(self.scheduler.jobs, [])
+        self.assert_process_capacity_available()
 
     async def test_cancelled_form_releases_existing_permit(self):
         """Cancellation before submission releases capacity without creating a job."""
@@ -284,7 +350,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
-        sema = self.env["user_prcess_file_sema"][self.user.uid]
+        sema = self.env["user_prcess_file_sema"][
+            ("private-admission-v2", self.user.uid)
+        ]
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assertEqual(self.scheduler.jobs, [])

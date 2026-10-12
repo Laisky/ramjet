@@ -6,14 +6,50 @@ DEFAULT_API_BASE = "https://api.openai.com/v1"
 
 
 def require_api_key(api_key: str | None) -> str:
-    """require_api_key returns an opaque HTTP-safe key or fails before model work."""
+    """require_api_key returns an opaque model key and excludes identifiable Laisky sessions.
+
+    Session recognition is a fail-closed credential-separation policy, not JWT
+    authentication or general content inspection. Compound strings can contain
+    a complete original session alongside another opaque value or provider JWT.
+    Unrelated issuer claims and non-JWT opaque keys remain unchanged.
+    """
     if (
         not isinstance(api_key, str)
         or not api_key
         or api_key.lower()
         in {"bearer", "null", "undefined", "default_proxy_token", "freetier"}
-        or any(ord(char) < 33 or ord(char) > 126 for char in api_key)
     ):
+        raise ValueError("A valid client API key is required")
+    # Keep these standard-library imports local for isolated source fixtures.
+    import base64
+    import json
+    import re
+
+    # Examine dot-separated compact components in each contiguous token run.
+    # Sliding payload positions also cover a JWT preceded/followed by dot values.
+    for run in re.finditer(r"[A-Za-z0-9_.-]+", api_key):
+        components = run.group().split(".")
+        for index in range(1, len(components) - 1):
+            payload = components[index]
+            if (
+                not components[index - 1]
+                or not components[index + 1]
+                or not 0 < len(payload) <= 8192
+            ):
+                continue
+            try:
+                claims = json.loads(
+                    base64.b64decode(
+                        payload + "=" * (-len(payload) % 4),
+                        altchars=b"-_",
+                        validate=True,
+                    )
+                )
+            except (ValueError, TypeError, UnicodeError, RecursionError):
+                continue
+            if isinstance(claims, dict) and claims.get("iss") == "laisky-sso":
+                raise ValueError("A separate client model API key is required")
+    if any(ord(char) < 33 or ord(char) > 126 for char in api_key):
         raise ValueError("A valid client API key is required")
     return api_key
 
@@ -26,6 +62,8 @@ def resolve_model_credentials(
     Keys remain transient request data. Provider syntax is checked without
     restricting internal addresses or introducing a destination allowlist.
     """
+    from urllib.parse import parse_qsl, unquote
+
     key = require_api_key(api_key)
     base = DEFAULT_API_BASE if api_base is None else api_base
     try:
@@ -37,6 +75,32 @@ def resolve_model_credentials(
         ):
             raise ValueError()
         parsed.port
+        # A session is never a provider URL option. Preserve all other URL syntax.
+        candidates = [
+            # netloc retains original JWT case, unlike parsed.hostname.
+            *(
+                unquote(component)
+                for component in (
+                    parsed.netloc,
+                    parsed.fragment,
+                    *parsed.path.split("/"),
+                )
+            ),
+            # parse_qsl already applies the single URL-component decode.
+            *(
+                component
+                for pair in parse_qsl(parsed.query, keep_blank_values=True)
+                for component in pair
+            ),
+        ]
+        for candidate in candidates:
+            try:
+                require_api_key(candidate)
+            except ValueError as error:
+                if str(error) == "A separate client model API key is required":
+                    raise ValueError(
+                        "SSO sessions cannot be model provider options"
+                    ) from None
     except (TypeError, ValueError):
         raise ValueError("A valid model provider URL is required") from None
     return {"api_key": key, "base_url": base.rstrip("/")}

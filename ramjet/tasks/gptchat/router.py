@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import base64
 import hashlib
 import io
@@ -32,9 +33,11 @@ from .llm.embeddings import (
     chunk_text_content,
     Index,
     build_user_chain,
+    bind_user_chain,
     derive_key,
     get_private_user_chain,
     private_user_chain_cache,
+    private_chain_key,
     download_chatbot_index,
     embedding_file,
     load_encrypt_store,
@@ -47,9 +50,18 @@ from .llm.embeddings import (
 )
 from .llm.image import (
     draw_image_by_dalle,
+    resolve_image_parameters,
     upload_image_to_s3,
     image_objkey,
-    draw_image_by_dalle_azure,
+)
+from .credentials import resolve_model_credentials
+from .namespace import require_dataset_names, require_object_name, public_share_owner
+from .ownership import require_private_namespace as _require_private_namespace
+from .private_auth import (
+    authenticate_private,
+    authenticate_private_sync,
+    authorize_private_request,
+    private_context_operation,
 )
 from .llm.query import (
     build_llm_for_user,
@@ -63,9 +75,9 @@ from .utils import authenticate_by_appkey as authenticate
 from .utils import authenticate_by_appkey_sync as authenticate_sync
 from .utils import recover
 
-# limit concurrent process files by uid
+# Versioned keys prevent adopting legacy arbitrary-UID semaphore grants.
 user_prcess_file_sema_lock = threading.RLock()
-user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
+user_prcess_file_sema: Dict[Tuple[str, str], threading.Semaphore] = {}
 
 # Retain workers until completion independently of the HTTP request lifetime.
 uploaded_jobs_lock = threading.RLock()
@@ -73,10 +85,9 @@ uploaded_jobs = set()
 # Bound all queued/running uploads before multipart parsing, regardless of UID.
 uploaded_job_slots = threading.BoundedSemaphore(8)
 
-# track processing files by uid
-# {uid: [filekeys]}
+# Track current processing files separately from legacy arbitrary-UID strings.
 user_processing_files_lock = threading.RLock()
-user_processing_files: Dict[str, Set[str]] = {}
+user_processing_files: Dict[Tuple[str, str], Set[str]] = {}
 
 # valid dataset name
 dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -104,23 +115,28 @@ def bind_handle(add_route):
     add_route("encrypted-files/{filekey:.*}", EncryptedFiles)
 
 
+def require_private_namespace(storage, user, *, create=False, operation=None) -> bool:
+    """require_private_namespace applies exact registry authority to the configured target."""
+    return _require_private_namespace(
+        storage,
+        user,
+        bucket=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
+        root_prefix=settings.OPENAI_S3_EMBEDDINGS_PREFIX,
+        create=create,
+        operation=operation,
+    )
+
+
 def uid_ratelimiter(user: settings.UserPermission, concurrent=3) -> threading.Semaphore:
-    logger.debug(f"uid_ratelimiter: {user.uid=}")
+    """uid_ratelimiter shares conservative admission and returns one acquired permit."""
     uid = user.uid
     limit = user.n_concurrent or concurrent
-
-    if user.is_paid:
-        sema = user_prcess_file_sema.get(uid)
-    else:
-        # all free users share the same semaphore
-        sema = user_prcess_file_sema.get("public")
-
-    if not sema:
-        with user_prcess_file_sema_lock:
-            sema = user_prcess_file_sema.get(uid)
-            if not sema:
-                sema = threading.Semaphore(limit)
-                user_prcess_file_sema[uid] = sema
+    bucket = ("private-admission-v2", uid if user.is_paid else "public")
+    with user_prcess_file_sema_lock:
+        sema = user_prcess_file_sema.get(bucket)
+        if sema is None:
+            sema = threading.Semaphore(limit)
+            user_prcess_file_sema[bucket] = sema
 
     if not sema.acquire(blocking=False):
         raise aiohttp.web.HTTPTooManyRequests(
@@ -164,6 +180,21 @@ class Image(aiohttp.web.View):
         logger.debug(f"post image api, {op=}")
 
         if op == "/dalle":
+            credentials = resolve_model_credentials(user.apikey, user.api_base)
+            try:
+                resolve_image_parameters(
+                    credentials["base_url"],
+                    data.get("model"),
+                    data.get("image_profile"),
+                )
+            except ValueError:
+                raise aiohttp.web.HTTPBadRequest(
+                    text=(
+                        "Invalid image configuration. Custom providers require an "
+                        "explicit model; unknown models require image_profile "
+                        "gpt-image or legacy. OpenAI requires a supported GPT Image model."
+                    )
+                ) from None
             task_id = str(uuid1())
             thread_executor.submit(
                 self.catch_and_upload_err,
@@ -192,8 +223,8 @@ class Image(aiohttp.web.View):
             return func()
         except Exception as err:
             objkey = f"{os.path.splitext(image_objkey(task_id=task_id))[0]}.err.txt"
-            logger.exception(f"catch and upload image drawing error, {objkey=}")
-            errmsg = str(err).encode("utf-8")
+            logger.error("image drawing failed (%s)", type(err).__name__)
+            errmsg = b"Image generation failed"
             s3cli.put_object(
                 bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
                 object_name=objkey,
@@ -207,7 +238,7 @@ class Image(aiohttp.web.View):
         data: dict,
         task_id: str,
     ) -> None:
-        """draw image by openai dalle-2 and upload to s3
+        """_draw_by_dalle generates the selected image model and uploads its bytes
 
         Args:
             user (settings.UserPermission): user info
@@ -220,12 +251,15 @@ class Image(aiohttp.web.View):
         logger.debug(f"draw image by dalle, user={user.uid}, {task_id=}")
 
         model_type = self.request.headers.getone("X-Laisky-Image-Token-Type", "azure")
-        if model_type == "azure":
-            img_content = draw_image_by_dalle_azure(prompt=prompt, apikey=user.apikey)
-        elif model_type == "openai":
-            img_content = draw_image_by_dalle(prompt=prompt, apikey=user.apikey)
-        else:
-            raise Exception(f"unknown image model type {model_type}")
+        if model_type not in {"azure", "openai"}:
+            raise ValueError("Unknown image model type")
+        img_content = draw_image_by_dalle(
+            prompt=prompt,
+            apikey=user.apikey,
+            api_base=user.api_base,
+            model=data.get("model"),
+            image_profile=data.get("image_profile"),
+        )
 
         upload_image_to_s3(
             s3cli=s3cli, img_content=img_content, task_id=task_id, prompt=prompt
@@ -437,7 +471,7 @@ class Query(aiohttp.web.View):
         elif op == "/search":
             resp = await ioloop.run_in_executor(
                 thread_executor,
-                partial(self.search, project=project, question=question),
+                partial(self.search, user=user, project=project, question=question),
             )
         else:
             return aiohttp.web.Response(text=f"unknown op, {op=}", status=400)
@@ -447,10 +481,10 @@ class Query(aiohttp.web.View):
     @uid_method_ratelimiter()
     def query(self, user: settings.UserPermission, project: str, question: str):
         llm = build_llm_for_user(user)
-        return query_for_prebuild_qa(project, question, llm)
+        return query_for_prebuild_qa(project, question, llm, user)
 
-    def search(self, project: str, question: str):
-        return search_for_prebuild_qa(project, question)
+    def search(self, user: settings.UserPermission, project: str, question: str):
+        return search_for_prebuild_qa(project, question, user)
 
     @recover
     @authenticate
@@ -497,6 +531,8 @@ def _make_embedding_chunk(
         idx = Index.deserialize(
             data=cache_data,
             api_key=apikey,
+            api_base=api_base,
+            embedding_model="text-embedding-3-small",
         )
         return idx, True
 
@@ -530,13 +566,18 @@ def _embedding_chunk_worker(
     model = data.get("model") or "gpt-4o-mini"
 
     cache_key = hashlib.sha1(base64.b64decode(b64content)).hexdigest() + "-v2"
-    max_chunks = data.get("max_chunks", 0) or DEFAULT_MAX_CHUNKS_FOR_FREE
-    assert isinstance(max_chunks, int), "max_chunks must be int"
-    if user.is_paid:
-        max_chunks = DEFAULT_MAX_CHUNKS_FOR_PAID
+    limit = DEFAULT_MAX_CHUNKS_FOR_PAID if user.is_paid else DEFAULT_MAX_CHUNKS_FOR_FREE
+    max_chunks = data.get("max_chunks", 0) or limit
+    if (
+        isinstance(max_chunks, bool)
+        or not isinstance(max_chunks, int)
+        or max_chunks <= 0
+    ):
+        raise ValueError("max_chunks must be a positive integer")
+    max_chunks = min(max_chunks, limit)
 
     logger.debug(
-        f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}, {user.info()=}"
+        f"_embedding_chunk_worker for {ext=}, {model=}, {cache_key=}, {max_chunks=}"
     )
 
     task_type = classificate_query_type(
@@ -639,7 +680,7 @@ def _chunk_search(
         aiohttp.web.Response: json response
     """
     cache_key = f"chunksearch/{cache_key[:2]}/{cache_key[2:4]}/{cache_key}"
-    logger.debug(f"search embedding chunk, {query=}, {ext=}, {api_base=}, {cache_key=}")
+    logger.debug(f"search embedding chunk, {query=}, {ext=}, {cache_key=}")
     start_at = time.time()
     idx, cached = _make_embedding_chunk(
         cache_key=cache_key,
@@ -756,9 +797,11 @@ class UploadedFiles(aiohttp.web.View):
     """
 
     @recover
-    @authenticate
+    @authenticate_private("list-files")
     async def get(self, user: settings.UserPermission):
         """list s3 files"""
+        if not require_private_namespace(s3cli, user, operation="list-files"):
+            return aiohttp.web.json_response({"datasets": [], "selected": []})
         uid = user.uid
         files: List[Dict] = []
         password = self.request.headers.get("X-PDFCHAT-PASSWORD", "")
@@ -785,7 +828,9 @@ class UploadedFiles(aiohttp.web.View):
             files.extend(
                 [
                     {"name": f, "status": "processing", "progress": 75}
-                    for f in user_processing_files.get(uid, [])
+                    for f in user_processing_files.get(
+                        ("sso-private-processing-v3", uid), []
+                    )
                 ]
             )
 
@@ -804,7 +849,7 @@ class UploadedFiles(aiohttp.web.View):
         )
 
     @recover
-    @authenticate
+    @authenticate_private("delete-files")
     async def delete(self, user: settings.UserPermission):
         """delete s3 files"""
         data = await self.request.json()
@@ -814,7 +859,9 @@ class UploadedFiles(aiohttp.web.View):
                 {"error": "datasets is required"}, status=400
             )
 
-        assert isinstance(datasets, list), "datasets must be a array"
+        require_dataset_names(datasets)
+        if not require_private_namespace(s3cli, user, operation="delete-files"):
+            return aiohttp.web.json_response({"status": "ok"})
 
         try:
             ioloop = asyncio.get_event_loop()
@@ -831,6 +878,9 @@ class UploadedFiles(aiohttp.web.View):
         return aiohttp.web.json_response({"status": "ok"})
 
     def delete_files(self, user: settings.UserPermission, dataset_names: List[str]):
+        require_dataset_names(dataset_names)
+        if not require_private_namespace(s3cli, user, operation="delete-files"):
+            raise aiohttp.web.HTTPForbidden(text="Private namespace grant is required")
         uid = user.uid
         for ext in ["store", "index", "pdf"]:
             for dataset_name in dataset_names:
@@ -847,7 +897,7 @@ class UploadedFiles(aiohttp.web.View):
                     logger.exception(f"failed to delete file on s3, {objkey=}")
 
     @recover
-    @authenticate
+    @authenticate_private("upload")
     async def post(self, user: settings.UserPermission):
         """Upload pdf file by form"""
         if not uploaded_job_slots.acquire(blocking=False):
@@ -860,7 +910,13 @@ class UploadedFiles(aiohttp.web.View):
         try:
             sema = uid_ratelimiter(user, 3)
             data = (await self.request.post()).copy()
+            require_object_name(data.get("file_key", ""))
+            if not isinstance(data.get("data_key"), str) or not data["data_key"]:
+                raise ValueError("data_key is required")
             file = data.get("file")
+            if not isinstance(file, FileField):
+                raise ValueError("file is required")
+            require_private_namespace(s3cli, user, create=True, operation="upload")
             if isinstance(file, FileField):
                 # aiohttp closes request-owned files on return; the worker needs its own descriptor.
                 owned_file = os.fdopen(os.dup(file.file.fileno()), "rb")
@@ -916,23 +972,27 @@ class UploadedFiles(aiohttp.web.View):
         dataset_name = data.get("file_key", "")
         assert isinstance(dataset_name, str), "file_key must be string"
         assert dataset_name, "file_key is required"
-        assert dataset_name_regex.match(
-            dataset_name
-        ), "file_key should only contain [a-zA-Z0-9_-]"
+        require_object_name(dataset_name)
+        if not require_private_namespace(s3cli, user, operation="upload"):
+            raise aiohttp.web.HTTPForbidden(text="Private namespace grant is required")
 
         uid = user.uid
         logger.debug(f"process file {dataset_name=} for user {uid=}")
         try:
             with user_processing_files_lock:
-                fset = user_processing_files.get(uid, set())
+                fset = user_processing_files.get(
+                    ("sso-private-processing-v3", uid), set()
+                )
                 fset.add(dataset_name)
-                user_processing_files[uid] = fset
+                user_processing_files[("sso-private-processing-v3", uid)] = fset
 
             logger.info(f"process file {dataset_name=} for user {uid=}")
             return self._process_file(user, data)
         finally:
             with user_processing_files_lock:
-                user_processing_files[uid].remove(dataset_name)
+                user_processing_files[("sso-private-processing-v3", uid)].remove(
+                    dataset_name
+                )
 
     def _process_file(self, user: settings.UserPermission, data: Dict) -> List[str]:
         """process user uploaded file by openai embeddings,
@@ -1036,6 +1096,15 @@ class EmbeddingContext(aiohttp.web.View):
         """
         op = self.request.match_info["op"]
         logger.debug(f"embedding context, {op=}")
+        private_ops = {
+            "/chat": "read-private",
+            "/search": "read-private",
+            "/list": "list-chatbots",
+        }
+        if op in private_ops:
+            await authorize_private_request(self.request, private_ops[op])
+        elif op != "/share":
+            raise aiohttp.web.HTTPNotFound(text="Unknown operation")
 
         ioloop = asyncio.get_event_loop()
         if op == "/chat":
@@ -1058,23 +1127,28 @@ class EmbeddingContext(aiohttp.web.View):
         self, user: settings.UserPermission
     ) -> aiohttp.web.Response:
         """talk with somebody shared private knowledge base"""
-        # get uid and chatbot_name from query args
-        chatbot_name = self.request.query.get("chatbot_name", "")
-        assert re.match(r"^[a-zA-Z0-9\-_]+$", chatbot_name), "chatbot_name is required"
-
+        chatbot_name = require_object_name(self.request.query.get("chatbot_name", ""))
+        owner = public_share_owner(
+            self.request.query.get("uid", "")
+            or self.request.headers.get("X-Laisky-User-Id", "")
+            or user.uid
+        )
         query = self.request.query.get("q", "").strip()
         assert query, "q is required"
 
+        # A public link chooses only published plaintext; private authority stays
+        # with the independently authenticated owner; reader model credentials stay separate.
+        cache_key = (owner, chatbot_name)
         with user_shared_chain_mu:
-            need_restore = user.uid not in user_shared_chain
+            chatbot = user_shared_chain.get(cache_key)
+        if chatbot is None:
+            public_user = copy.copy(user)
+            public_user.uid = owner
+            chatbot = restore_user_chain(
+                s3cli=s3cli, user=public_user, chatbot_name=chatbot_name
+            )
 
-        if need_restore:
-            logger.debug(f"try restore user shared chain from s3 for {user.uid=}")
-            restore_user_chain(s3cli=s3cli, user=user, chatbot_name=chatbot_name)
-
-        with user_shared_chain_mu:
-            chatbot = user_shared_chain[user.uid + chatbot_name]
-
+        chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
@@ -1090,7 +1164,7 @@ class EmbeddingContext(aiohttp.web.View):
             }
         )
 
-    @authenticate_sync
+    @authenticate_private_sync("read-private")
     def chatbot_search(self, user: settings.UserPermission) -> aiohttp.web.Response:
         uid = user.uid
         user_query = self.request.query.get("q", "").strip()
@@ -1099,8 +1173,13 @@ class EmbeddingContext(aiohttp.web.View):
         password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
         assert password, "X-PDFCHAT-PASSWORD is required"
 
+        if not require_private_namespace(s3cli, user, operation="read-private"):
+            raise aiohttp.web.HTTPNotFound(
+                text="Private namespace has not been initialized"
+            )
         chatbot = get_private_user_chain(s3cli, user, password)
 
+        chatbot = bind_user_chain(chatbot, user)
         sema = uid_ratelimiter(user=user)
         try:
             resp, refs = chatbot.search(user_query)
@@ -1115,7 +1194,7 @@ class EmbeddingContext(aiohttp.web.View):
             }
         )
 
-    @authenticate_sync
+    @authenticate_private_sync("read-private")
     def chatbot_query(self, user: settings.UserPermission) -> aiohttp.web.Response:
         """talk with user's private knowledge base"""
         uid = user.uid
@@ -1125,8 +1204,13 @@ class EmbeddingContext(aiohttp.web.View):
         password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
         assert password, "X-PDFCHAT-PASSWORD is required"
 
+        if not require_private_namespace(s3cli, user, operation="read-private"):
+            raise aiohttp.web.HTTPNotFound(
+                text="Private namespace has not been initialized"
+            )
         chatbot = get_private_user_chain(s3cli, user, password)
 
+        chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
         sema = uid_ratelimiter(user=user)
         try:
@@ -1142,8 +1226,10 @@ class EmbeddingContext(aiohttp.web.View):
             }
         )
 
-    @authenticate_sync
+    @authenticate_private_sync("list-chatbots")
     def list_chatbots(self, user: settings.UserPermission) -> aiohttp.web.Response:
+        if not require_private_namespace(s3cli, user, operation="list-chatbots"):
+            return aiohttp.web.json_response({"current": "", "chatbots": []})
         chatbot_names = []
         for obj in s3cli.list_objects(
             bucket_name=settings.OPENAI_S3_CHUNK_CACHE_BUCKET,
@@ -1180,7 +1266,7 @@ class EmbeddingContext(aiohttp.web.View):
         )
 
     @recover
-    @authenticate
+    @authenticate_private(private_context_operation)
     async def post(self, user: settings.UserPermission):
         data = await self.request.json()
 
@@ -1230,7 +1316,11 @@ class EmbeddingContext(aiohttp.web.View):
         assert password, "data_key is required"
 
         chatbot_name = data.get("chatbot_name", "")
-        assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
+        require_object_name(chatbot_name)
+        if not require_private_namespace(s3cli, user, operation="publish-share"):
+            raise aiohttp.web.HTTPNotFound(
+                text="Private namespace has not been initialized"
+            )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             _, index, datasets = download_chatbot_index(
@@ -1267,7 +1357,11 @@ class EmbeddingContext(aiohttp.web.View):
         assert password, "data_key is required"
 
         chatbot_name = data.get("chatbot_name", "")
-        assert re.match(r"^[a-zA-Z0-9_-]+$", chatbot_name), "chatbot_name is invalid"
+        require_object_name(chatbot_name)
+        if not require_private_namespace(s3cli, user, operation="activate"):
+            raise aiohttp.web.HTTPNotFound(
+                text="Private namespace has not been initialized"
+            )
 
         restore_user_chain(s3cli, user, password, chatbot_name)
 
@@ -1280,18 +1374,19 @@ class EmbeddingContext(aiohttp.web.View):
     ) -> aiohttp.web.Response:
         """build chatbot by selected datasets"""
         datasets = data.get("datasets", [])
-        assert isinstance(datasets, list), "datasets must be list"
-        assert datasets, "datasets is required"
+        require_dataset_names(datasets)
 
         chatbot_name = data.get("chatbot_name", "")
-        assert re.match(
-            r"^[a-zA-Z0-9_-]+$", chatbot_name
-        ), f"{chatbot_name=} is invalid"
+        require_object_name(chatbot_name)
 
         password = data.get("data_key", "")
         assert isinstance(password, str), "data_key must be string"
         assert password, "data_key is required"
 
+        if not require_private_namespace(s3cli, user, operation="build"):
+            raise aiohttp.web.HTTPNotFound(
+                text="Private namespace has not been initialized"
+            )
         self._build_user_chatbot(
             user=user,
             password=password,
@@ -1327,7 +1422,7 @@ class EmbeddingContext(aiohttp.web.View):
             index=index,
             datasets=datasets,
         )
-        private_user_chain_cache.save(uid, chain, password)
+        private_user_chain_cache.save(private_chain_key(uid), chain, password)
 
         save_encrypt_store(
             s3cli=s3cli,
@@ -1365,6 +1460,7 @@ class EmbeddingContext(aiohttp.web.View):
             datasets (List[str]): dataset names
             password (str): password for decrypt
         """
+        require_dataset_names(datasets)
         uid = user.uid
         store = new_store(apikey=user.apikey, api_base=user.api_base)
         for dataset in datasets:
@@ -1389,6 +1485,9 @@ class EmbeddingContext(aiohttp.web.View):
                     dirpath=tmpdir,
                     name="dataset",
                     password=password,
+                    api_key=user.apikey,
+                    api_base=user.api_base,
+                    embedding_model="text-embedding-3-small",
                 )
 
             store.store.merge_from(store_part.store)

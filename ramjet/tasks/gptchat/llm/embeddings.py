@@ -1,3 +1,4 @@
+import copy
 import codecs
 import hashlib
 import os
@@ -36,15 +37,17 @@ from minio import Minio
 
 from ramjet.engines import thread_executor
 from ramjet.settings import prd
+from ..credentials import resolve_sdk_credentials
+from ..namespace import require_object_name
 
 from ..base import logger
 from .base import Index, UserChain
-from .private_cache import PasswordProtectedCache
+from .private_cache import PasswordProtectedCache, private_chain_key
 
 user_embeddings_chain_mu = threading.RLock()
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
 user_shared_chain_mu = threading.RLock()
-user_shared_chain: Dict[str, UserChain] = {}  # uid-botname -> UserChain
+user_shared_chain: Dict[Tuple[str, str], UserChain] = {}  # (public owner, bot name)
 
 
 N_BACTCH_FILES: int = 5
@@ -123,7 +126,7 @@ def build_embeddings_llm_for_user(user: prd.UserPermission) -> OpenAIEmbeddings:
     """
     return OpenAIEmbeddings(
         client=None,
-        openai_api_key=user.apikey,
+        **resolve_sdk_credentials(user.apikey, user.api_base),
         model="text-embedding-3-small",
     )
 
@@ -257,6 +260,22 @@ def build_chain(
         return resp, all_refs
 
     return chain
+
+
+def bind_user_chain(chain: UserChain, user: prd.UserPermission) -> UserChain:
+    """bind_user_chain returns a request-local retriever using the caller's provider.
+
+    The shallow store copy shares stored vectors and documents but keeps the
+    embedding client separate, so concurrent callers cannot replace each other's
+    credentials. The returned chain uses the existing dataset selection.
+    """
+    store = copy.copy(chain.user_index.store)
+    store.embedding_function = OpenAIEmbeddings(
+        **resolve_sdk_credentials(user.apikey, user.api_base),
+        model="text-embedding-3-small",
+    )
+    index = Index(store=store, scaned_files=chain.user_index.scaned_files)
+    return build_user_chain(index=index, datasets=chain.datasets)
 
 
 def build_user_chain(
@@ -589,7 +608,7 @@ def embedding_file(
     )
 
     logger.info(
-        f"embedding {fpath} done, {api_base=}, {max_chunks=},cost {time.time() - start_at:.2f}s"
+        f"embedding {fpath} done, {max_chunks=},cost {time.time() - start_at:.2f}s"
     )
     return idx
 
@@ -801,10 +820,9 @@ def new_store(apikey: str, api_base: str = "https://api.openai.com/v1") -> Index
     #         deployment=azure_embeddings_deploymentid,
     #     )
     # else:
-    logger.debug(f"new faiss store {api_base=}")
+    logger.debug("new faiss store")
     embedding_model = OpenAIEmbeddings(
-        api_key=apikey,
-        base_url=api_base,
+        **resolve_sdk_credentials(apikey, api_base),
         model="text-embedding-3-small",
     )
 
@@ -844,7 +862,7 @@ def get_private_user_chain(
     restore instead. The result is local to this request, not a subsequent UID
     lookup that another caller could replace.
     """
-    chain = private_user_chain_cache.get(user.uid, password)
+    chain = private_user_chain_cache.get(private_chain_key(user.uid), password)
     if chain is not None:
         return chain
     return restore_user_chain(s3cli, user, password)
@@ -889,6 +907,9 @@ def download_chatbot_index(
                 resp.close()
                 resp.release_conn()
 
+    if chatbot_name:
+        require_object_name(chatbot_name)
+
     if password:
         objkeys = [
             quote(
@@ -908,14 +929,17 @@ def download_chatbot_index(
             ),
         ]
 
+    # Validate both request names and persisted current-pointer contents.
+    require_object_name(chatbot_name)
+
     # fix bug for https://github.com/minio/minio-py/pull/1309
     tmp_file = os.path.join(dirpath, "tmp.part.minio")
 
-    for objkey in objkeys:
+    for objkey, extension in zip(objkeys, ("store", "pkl")):
         s3cli.fget_object(
             bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
             object_name=objkey,
-            file_path=os.path.join(dirpath, os.path.basename(objkey)),
+            file_path=os.path.join(dirpath, "chatbot." + extension),
             tmp_file_path=tmp_file,
         )
 
@@ -923,17 +947,23 @@ def download_chatbot_index(
     if password:
         index = load_encrypt_store(
             dirpath=dirpath,
-            name=chatbot_name,
+            name="chatbot",
             password=password,
+            api_key=user.apikey,
+            api_base=user.api_base,
+            embedding_model="text-embedding-3-small",
         )
     else:
         index = load_plaintext_store(
             dirpath=dirpath,
-            name=chatbot_name,
+            name="chatbot",
+            api_key=user.apikey,
+            api_base=user.api_base,
+            embedding_model="text-embedding-3-small",
         )
 
     # read datasets file
-    with open(os.path.join(dirpath, f"{chatbot_name}.pkl"), "rb") as fp:
+    with open(os.path.join(dirpath, "chatbot.pkl"), "rb") as fp:
         datasets = pickle.load(fp)
 
     return chatbot_name, index, datasets
@@ -967,11 +997,11 @@ def restore_user_chain(
 
     if password:
         logger.info(f"load encrypted user chain, {uid=}, {chatbot_name=}")
-        private_user_chain_cache.save(uid, chain, password)
+        private_user_chain_cache.save(private_chain_key(uid), chain, password)
     else:
         logger.info(f"load shared user chain, {uid=}, {chatbot_name=}")
         with user_shared_chain_mu:
-            user_shared_chain[uid + chatbot_name] = chain
+            user_shared_chain[(uid, chatbot_name)] = chain
 
     return chain
 
@@ -997,11 +1027,12 @@ def save_encrypt_store(
     Returns:
         List[str]: saved filepaths
     """
+    require_object_name(name)
     key = derive_key(password)
     uid = user.uid
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        fpath_prefix = os.path.join(tmpdir, name)
+        fpath_prefix = os.path.join(tmpdir, os.path.basename(name))
         data = index.serialize()
         with open(f"{fpath_prefix}.store", "wb") as f:
             cipher = AES.new(key, AES.MODE_EAX)
@@ -1015,7 +1046,7 @@ def save_encrypt_store(
 
         if datasets:
             # save user built chatbot, dump selected datasets
-            datasets_fname = os.path.join(tmpdir, f"{name}.pkl")
+            datasets_fname = os.path.join(tmpdir, f"{os.path.basename(name)}.pkl")
             fs.append(datasets_fname)
             with open(datasets_fname, "wb") as datasets_fp:
                 pickle.dump(datasets, datasets_fp)
@@ -1051,19 +1082,20 @@ def save_plaintext_store(
             if not empty, save as user's chatbot.
     """
 
+    require_object_name(name)
     uid = user.uid
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        fpath_prefix = os.path.join(tmpdir, name)
+        fpath_prefix = os.path.join(tmpdir, os.path.basename(name))
         with open(f"{fpath_prefix}.store", "wb") as f:
-            pickle.dump(index.store, f)
+            f.write(index.serialize())
 
         fs = [
             f"{fpath_prefix}.store",
         ]
 
         # save user built chatbot, dump selected datasets
-        datasets_fname = os.path.join(tmpdir, f"{name}.pkl")
+        datasets_fname = os.path.join(tmpdir, f"{os.path.basename(name)}.pkl")
         fs.append(datasets_fname)
         with open(datasets_fname, "wb") as datasets_fp:
             pickle.dump(datasets, datasets_fp)
@@ -1082,33 +1114,64 @@ def save_plaintext_store(
             logger.info(f"upload plaintext {objkey} to s3")
 
 
-def load_plaintext_store(dirpath: str, name: str) -> Index:
-    """load plaintext store
+def load_plaintext_store(
+    dirpath: str,
+    name: str,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    embedding_model: str | None = None,
+) -> Index:
+    """load_plaintext_store restores a store with caller credentials when provided.
 
     Args:
         dirpath: dirpath to store index files
         name: project/file name
+        api_key: explicit caller embedding credential; a missing key is rejected.
+        api_base: explicit provider URL, or None to retain the SDK default.
+        embedding_model: explicit model, or None to retain the SDK default.
+
+    Returns:
+        Index: the restored vector store and scanned file names.
     """
-    fpath_prefix = os.path.join(dirpath, name)
+    require_object_name(name)
+    fpath_prefix = os.path.join(dirpath, os.path.basename(name))
     with open(f"{fpath_prefix}.store", "rb") as f:
         data = f.read()
-        return Index.deserialize(data, api_key=prd.OPENAI_TOKEN)
+        return Index.deserialize(
+            data, api_key=api_key, api_base=api_base, embedding_model=embedding_model
+        )
 
 
-def load_encrypt_store(dirpath: str, name: str, password: str) -> Index:
-    """load encrypted store
+def load_encrypt_store(
+    dirpath: str,
+    name: str,
+    password: str,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    embedding_model: str | None = None,
+) -> Index:
+    """load_encrypt_store decrypts a store and restores the caller's provider.
 
     Args:
         dirpath: dirpath to store index files
         name: project/file name
-        key: AES256 key used to decrypt the index files
+        password: password used to derive the AES256 decryption key.
+        api_key: explicit caller embedding credential; a missing key is rejected.
+        api_base: explicit provider URL, or None to retain the SDK default.
+        embedding_model: explicit model, or None to retain the SDK default.
+
+    Returns:
+        Index: the decrypted vector store and scanned file names.
     """
+    require_object_name(name)
     key = derive_key(password)
 
-    fpath_prefix = os.path.join(dirpath, name)
+    fpath_prefix = os.path.join(dirpath, os.path.basename(name))
     with open(f"{fpath_prefix}.store", "rb") as f:
         nonce, tag, ciphertext = [f.read(x) for x in (16, 16, -1)]
     cipher = AES.new(key, AES.MODE_EAX, nonce)
     data = cipher.decrypt_and_verify(ciphertext, tag)
 
-    return Index.deserialize(data, api_key=prd.OPENAI_TOKEN)
+    return Index.deserialize(
+        data, api_key=api_key, api_base=api_base, embedding_model=embedding_model
+    )

@@ -6,45 +6,36 @@ from typing import Coroutine, Dict, List
 import aiohttp
 import faiss
 from langchain_community.vectorstores.faiss import FAISS
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.embeddings import Embeddings
 
 from ramjet.settings import prd
 
 from ..base import logger
 
 
+class UnboundEmbeddings(Embeddings):
+    """Keep loaded vector data unusable until explicit request credentials are bound."""
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Reject model operations without an explicit request credential."""
+        raise ValueError("A valid client API key is required")
+
+    def embed_query(self, text: str) -> List[float]:
+        """Reject model operations without an explicit request credential."""
+        raise ValueError("A valid client API key is required")
+
+
 def load_all_prebuild_qa() -> Dict[str, FAISS]:
-    """load all prebuild qa embeddings stores
-    """
+    """load all prebuild qa embeddings stores"""
     stores = {}
-    # if os.environ.get("OPENAI_API_TYPE") == "azure":
-    #     azure_embeddings_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS[
-    #         "embeddings"
-    #     ].deployment_id
-    #     # azure_gpt_deploymentid = prd.OPENAI_AZURE_DEPLOYMENTS["chat"].deployment_id
-
-    #     embedding_model = OpenAIEmbeddings(
-    #         client=None,
-    #         model="text-embedding-3-small",
-    #         deployment=azure_embeddings_deploymentid,
-    #     )
-    # else:
-
-    # warning: according to compatible with legacy langchain FAISS store,
-    # replace embedding_funcion by my own apikey
-    embedding_model = OpenAIEmbeddings(
-        client=None,
-        api_key=prd.OPENAI_TOKEN,
-        model="text-embedding-3-small",
-    )
-
+    # Startup only loads vector data; request handlers bind their own credentials.
     for project_name in prd.OPENAI_EMBEDDING_QA:
         try:
             fname = os.path.join(prd.OPENAI_INDEX_DIR, project_name)
             with open(fname + ".store", "rb") as f:
                 store = pickle.load(f)
 
-            store.embedding_function = embedding_model.embed_query
+            store.embedding_function = UnboundEmbeddings()
             store.index = faiss.read_index(fname + ".index")
             stores[project_name] = store
         except Exception as err:
