@@ -8,7 +8,7 @@ The repaired contract authorizes new private storage through possession of the c
 
 Ramjet recomputes this value from the raw or Bearer Authorization credential. Incoming UID and free/paid headers grant no private access or paid capacity. Go computes its informational forwarding UID after its existing constant-time credential checks, and keeps generic cached identity unchanged. Raw provider credentials and intentional configured HTTP(S) backends remain supported.
 
-The capability is not an assertion of provider validity, account ownership, paid status, or human identity. Anyone who shares or learns the complete credential shares this capability. Weak or publicly known credentials remain weak capabilities. Provider routing does not change storage scope; rotation creates a distinct scope, with no automatic account or key alias. Private namespace operations do not query provider revocation: possession of an old key continues to authorize its initialized namespace. An application revocation/transfer authority is absent from this flow; provider rotation alone does not invalidate that capability.
+The capability is not an assertion of provider validity, account ownership, paid status, or human identity. Anyone who shares or learns the complete credential shares this capability. Weak or publicly known credentials remain weak capabilities. Published scope hashes and marker proofs are offline guess verifiers; guessing a weak backend credential grants private metadata/mutation capability without the separate data password. A slower digest cannot establish account ownership or eliminate this risk. A separate strong private capability or independently verified principal contract is a remaining behavior decision, and the required CodeQL aggregate remains blocked on this accepted-input risk. Provider routing does not change storage scope; rotation creates a distinct scope, with no automatic account or key alias. Private namespace operations do not query provider revocation: possession of an old key continues to authorize its initialized namespace. An application revocation/transfer authority is absent from this flow; provider rotation alone does not invalidate that capability.
 
 ## New namespace initialization
 
@@ -24,7 +24,7 @@ Historical records stay in place. SHA1, truncated-key and arbitrary-UID names ar
 
 ## Operations and compatibility
 
-Dataset list/upload/delete, chatbot names/build/activation/publication, private query and password-bound caches use only the server-derived private scope. Object names use full-component validation; traversal, separators, trailing newlines and malformed current-pointer names are rejected before object access or scheduling.
+Dataset list/upload/delete, chatbot names/build/activation/publication, private query and password-bound caches use only the server-derived private scope. Store loaders/savers enforce the same component contract directly and confine filenames to basenames after validation. Object names use full-component validation; traversal, separators, trailing newlines and malformed current-pointer names are rejected before object access or scheduling.
 
 Merged PR288's AES password proof remains required on private warm and cold cache reads. Password knowledge alone cannot select another key's cache. The marker remains necessary before reading a warm cache. Current private cache, processing-file and admission state use versioned tuple keys, so retained legacy HTTP UID strings cannot supply old grants, filenames or semaphore capacity.
 
@@ -43,3 +43,18 @@ Run retained ordinary regressions with synthetic storage and model transports:
 The Go companion adds actual proxy/chunk forwarding controls, fixed scope vectors, forged-cache controls and an opt-in cross-language resolver contract. Heavy suites remain local; existing formatting and fast-unit CI workload is unchanged.
 
 Historical characterization receipts retain their original source revisions. Current manual selectors assert repaired behavior. No test contacts production storage, providers, accounts or quota services.
+
+The exact-head scanner also annotated three local file reads. Current HTTP
+callers validate request and stored-pointer names before those reads, and
+dataset loading supplies literal dataset; no HTTP traversal was reproduced.
+Direct lower-level library callers previously bypassed those guards. Synthetic
+neighbor-file read and early saver controls reproduce that missing contract,
+then pass after lower-level validation/confinement. These are distinct from the
+unresolved credential-entropy finding; no scanner annotation is suppressed.
+
+Preserve the weak-key reproduction separately from secure acceptance:
+
+    RAMJET_WEAK_CAPABILITY_CHARACTERIZATION=1 python -m unittest tests.manual.test_weak_credential_capability
+
+That opt-in test demonstrates the residual risk; passing it does not qualify
+this pair for enforcement or migration.

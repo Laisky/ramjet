@@ -963,7 +963,9 @@ def download_chatbot_index(
         )
 
     # read datasets file
-    with open(os.path.join(dirpath, f"{chatbot_name}.pkl"), "rb") as fp:
+    with open(
+        os.path.join(dirpath, f"{os.path.basename(chatbot_name)}.pkl"), "rb"
+    ) as fp:
         datasets = pickle.load(fp)
 
     return chatbot_name, index, datasets
@@ -1027,11 +1029,12 @@ def save_encrypt_store(
     Returns:
         List[str]: saved filepaths
     """
+    require_object_name(name)
     key = derive_key(password)
     uid = user.uid
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        fpath_prefix = os.path.join(tmpdir, name)
+        fpath_prefix = os.path.join(tmpdir, os.path.basename(name))
         data = index.serialize()
         with open(f"{fpath_prefix}.store", "wb") as f:
             cipher = AES.new(key, AES.MODE_EAX)
@@ -1045,7 +1048,7 @@ def save_encrypt_store(
 
         if datasets:
             # save user built chatbot, dump selected datasets
-            datasets_fname = os.path.join(tmpdir, f"{name}.pkl")
+            datasets_fname = os.path.join(tmpdir, f"{os.path.basename(name)}.pkl")
             fs.append(datasets_fname)
             with open(datasets_fname, "wb") as datasets_fp:
                 pickle.dump(datasets, datasets_fp)
@@ -1081,10 +1084,11 @@ def save_plaintext_store(
             if not empty, save as user's chatbot.
     """
 
+    require_object_name(name)
     uid = user.uid
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        fpath_prefix = os.path.join(tmpdir, name)
+        fpath_prefix = os.path.join(tmpdir, os.path.basename(name))
         with open(f"{fpath_prefix}.store", "wb") as f:
             f.write(index.serialize())
 
@@ -1093,7 +1097,7 @@ def save_plaintext_store(
         ]
 
         # save user built chatbot, dump selected datasets
-        datasets_fname = os.path.join(tmpdir, f"{name}.pkl")
+        datasets_fname = os.path.join(tmpdir, f"{os.path.basename(name)}.pkl")
         fs.append(datasets_fname)
         with open(datasets_fname, "wb") as datasets_fp:
             pickle.dump(datasets, datasets_fp)
@@ -1131,7 +1135,8 @@ def load_plaintext_store(
     Returns:
         Index: the restored vector store and scanned file names.
     """
-    fpath_prefix = os.path.join(dirpath, name)
+    require_object_name(name)
+    fpath_prefix = os.path.join(dirpath, os.path.basename(name))
     with open(f"{fpath_prefix}.store", "rb") as f:
         data = f.read()
         return Index.deserialize(
@@ -1160,9 +1165,10 @@ def load_encrypt_store(
     Returns:
         Index: the decrypted vector store and scanned file names.
     """
+    require_object_name(name)
     key = derive_key(password)
 
-    fpath_prefix = os.path.join(dirpath, name)
+    fpath_prefix = os.path.join(dirpath, os.path.basename(name))
     with open(f"{fpath_prefix}.store", "rb") as f:
         nonce, tag, ciphertext = [f.read(x) for x in (16, 16, -1)]
     cipher = AES.new(key, AES.MODE_EAX, nonce)
