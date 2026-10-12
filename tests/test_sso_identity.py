@@ -152,6 +152,7 @@ class StrictClaimTests(unittest.TestCase):
 
         for base in (
             "https://provider.fixture/v1?access_token=" + token,
+            "https://provider.fixture/v1?" + token + "=routing-value",
             "https://provider.fixture/v1/" + token,
             "https://" + token + "@provider.fixture/v1",
             "https://provider.fixture/v1#" + token,
@@ -164,6 +165,11 @@ class StrictClaimTests(unittest.TestCase):
             claims, "public-offline-fixture-legacy-key-at-least-32", algorithm="HS256"
         )
         self.assertEqual(require_api_key(provider_key), provider_key)
+        unrelated_base = "http://internal.fixture/v1?" + provider_key + "=routing"
+        self.assertEqual(
+            resolve_request_credentials("model-only-key", unrelated_base)["base_url"],
+            unrelated_base,
+        )
         self.assertEqual(
             resolve_request_credentials(
                 "weak-but-model-only", "http://internal.fixture"

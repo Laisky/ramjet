@@ -60,7 +60,11 @@ def resolve_model_credentials(
             parsed.password or "",
             parsed.fragment,
             *parsed.path.split("/"),
-            *(value for _, value in parse_qsl(parsed.query, keep_blank_values=True)),
+            *(
+                component
+                for pair in parse_qsl(parsed.query, keep_blank_values=True)
+                for component in pair
+            ),
         ]
         for candidate in candidates:
             candidate = unquote(candidate)
