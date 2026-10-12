@@ -174,13 +174,15 @@ Official sources checked on 2026-10-10:
 
 Native Azure deployment/version configuration is not invented from a legacy
 token label; custom backends must expose the declared compatible protocol.
-The capability/default decision is resolved. This PR remains Draft for the
-inherited required CodeQL failure and caller/system review.
+The image capability/default decision is resolved. The ownership and scanner
+status below records the earlier routing-only stage. Current account-bound
+ownership is documented in [private ownership](private-credential-capabilities.md);
+paired PRs remain Draft for source/security qualification and separate rollout gates.
 
-Go's legacy BYOK identifier contains the first 15 key characters and its accepted
-key formats are narrower than Ramjet's opaque-key resolver. Changing those
-dataset/quota identities requires a separate migration decision; no UID migration
-is performed here. Redirect behavior also remains characterized rather than
+The earlier Go BYOK identifier used the first 15 key characters. The current
+private-data path instead requires strict original SSO and an exact operator
+registry grant, with independently generated namespaces and no legacy adoption.
+Generic quota behavior remains separate; no historical UID migration is performed. Redirect behavior also remains characterized rather than
 changed: a mocked SDK 307 cross-origin redirect strips Authorization but forwards
 the embedding query body.
 
@@ -215,17 +217,20 @@ Qualification containers use CPU/memory/time bounds and no network. Pytest tooli
 is scoped to its own packages so it cannot override production dependency pins.
 No automatic CI suite or production dependency manifest is enlarged.
 
-## UID compatibility and the open CodeQL finding
+## Historical UID compatibility and scanner evidence
 
-The required CodeQL failure remains visible. Alert13 was first recorded on
+At the earlier routing-only stage, a required CodeQL failure remained visible.
+Alert13 was first recorded on
 2025-08-11 and reports the unchanged SHA-1 API-key-derived fallback UID.
-Dataset/cache/quota identifiers retain their existing values. Encryption uses
+That stage retained dataset/cache/quota identifiers. Encryption uses
 a separate password argument through PBKDF2-HMAC-SHA256, not this fallback UID.
 
 Replacing the digest would shift persisted identities. Marking the operation
 nonsecurity or reshaping taint solely to clear a check is not justified while
 runtime permission-constructor behavior and access-control reliance are
-unverified. A separate verified-principal/capability design could preserve
-authorized legacy-ID lookup and key rotation, but the current source/mocked
-evidence does not establish that contract. No migration, new secret store,
-suppression, dismissal or waiver is applied.
+unverified at that stage. The subsequent authorized source repair now separates
+verified SSO ownership from model credentials and requires exact registry grants.
+It preserves account ownership across provider rotation, excludes automatic legacy
+lookup, and retains encrypted/public compatibility. Historical receipts remain
+unchanged; current exact-head scanner results are recorded in the PR. No migration,
+production registry, suppression, dismissal or waiver is applied.
