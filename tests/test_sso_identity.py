@@ -10,7 +10,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import jwt
 from multidict import CIMultiDict
 
-from ramjet.credentials import require_api_key, resolve_request_credentials
+from ramjet.credentials import (
+    require_api_key,
+    resolve_model_credentials,
+    resolve_request_credentials,
+)
 from ramjet.sso import (
     IssuerUnavailable,
     MAX_RESPONSE_BYTES,
@@ -176,6 +180,81 @@ class StrictClaimTests(unittest.TestCase):
             )["api_key"],
             "weak-but-model-only",
         )
+
+
+class CompoundSessionPolicyTests(unittest.TestCase):
+    """CompoundSessionPolicyTests pin source admission policy without DNS or provider execution."""
+
+    @staticmethod
+    def provider_token():
+        """provider_token returns an unrelated public fixture JWT accepted as model credentials."""
+        claims = jwt.decode(session_token(), options={"verify_signature": False})
+        claims["iss"] = "fixture-model-provider"
+        return jwt.encode(
+            claims, "public-offline-provider-key-at-least-32", algorithm="HS256"
+        )
+
+    def test_compound_model_keys_reject_identifiable_original_sso_session(self):
+        """test_compound_model_keys excludes full original sessions even with additional dot/value parts."""
+        token, provider = session_token(), self.provider_token()
+        for label, value in (
+            ("two-jwts", token + ":" + provider),
+            ("value-suffix", token + ".routing"),
+            ("value-prefix", "routing." + token),
+            ("provider-before-session", provider + "." + token),
+        ):
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    require_api_key(value)
+
+    def test_compound_url_components_reject_identifiable_original_sso_session(self):
+        """test_compound_url_components tests only resolver admission, not actual provider disclosure."""
+        from urllib.parse import quote
+
+        token, provider = session_token(), self.provider_token()
+        compound = token + ":" + provider
+        for label, base in (
+            ("query-value", "https://provider.fixture/v1?auth=" + quote(compound)),
+            (
+                "query-name",
+                "https://provider.fixture/v1?" + quote(compound) + "=routing",
+            ),
+            ("path", "https://provider.fixture/v1/" + compound),
+            ("fragment", "https://provider.fixture/v1#" + compound),
+            ("userinfo", "https://" + compound + "@provider.fixture/v1"),
+            ("case-preserved-host", "https://" + token + ".provider.fixture/v1"),
+            (
+                "bearer-with-extra-value",
+                "https://provider.fixture/v1?auth="
+                + quote("Bearer " + token + ":routing"),
+            ),
+        ):
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    resolve_model_credentials("model-only-key", base)
+
+    def test_unrelated_jwts_opaque_keys_and_once_decoded_provider_options_survive(self):
+        """test_unrelated_jwts preserves configured destinations and avoids recursive content decoding."""
+        from urllib.parse import quote
+
+        provider = self.provider_token()
+        for value in (
+            provider,
+            provider + ":opaque.routing",
+            "opaque.routing.value",
+            "plain-model-only-key",
+        ):
+            self.assertEqual(require_api_key(value), value)
+        double_encoded = session_token().replace(".", "%252E")
+        for base in (
+            "http://10.0.0.1:8123/v1?route=" + quote(provider + ":opaque"),
+            "https://" + provider + ".provider.fixture/v1",
+            "https://provider.fixture/v1?route=" + double_encoded,
+            "http://internal.fixture/v1?route=%252Fconfigured%253Frouting%253Dvalue",
+        ):
+            self.assertEqual(
+                resolve_model_credentials("model-only-key", base)["base_url"], base
+            )
 
 
 class OnlineIdentityTests(unittest.IsolatedAsyncioTestCase):
