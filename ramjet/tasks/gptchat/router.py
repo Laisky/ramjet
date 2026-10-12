@@ -34,6 +34,8 @@ from .llm.embeddings import (
     build_user_chain,
     bind_user_chain,
     derive_key,
+    get_private_user_chain,
+    private_user_chain_cache,
     download_chatbot_index,
     embedding_file,
     load_encrypt_store,
@@ -41,8 +43,6 @@ from .llm.embeddings import (
     restore_user_chain,
     save_encrypt_store,
     save_plaintext_store,
-    user_embeddings_chain,
-    user_embeddings_chain_mu,
     user_shared_chain,
     user_shared_chain_mu,
 )
@@ -72,6 +72,8 @@ user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
 # Retain workers until completion independently of the HTTP request lifetime.
 uploaded_jobs_lock = threading.RLock()
 uploaded_jobs = set()
+# Bound all queued/running uploads before multipart parsing, regardless of UID.
+uploaded_job_slots = threading.BoundedSemaphore(8)
 
 # track processing files by uid
 # {uid: [filekeys]}
@@ -811,15 +813,8 @@ class UploadedFiles(aiohttp.web.View):
 
         selected = []
         try:
-            with user_embeddings_chain_mu:
-                need_restore = uid not in user_embeddings_chain
-
-            if need_restore:
-                restore_user_chain(s3cli, user, password)
-
-            with user_embeddings_chain_mu:
-                if uid in user_embeddings_chain:
-                    selected = user_embeddings_chain[uid].datasets
+            if password:
+                selected = get_private_user_chain(s3cli, user, password).datasets
         except Exception as err:
             logger.debug(f"failed to restore user chain {uid}, {err=}")
 
@@ -877,10 +872,15 @@ class UploadedFiles(aiohttp.web.View):
     @authenticate
     async def post(self, user: settings.UserPermission):
         """Upload pdf file by form"""
-        sema = uid_ratelimiter(user, 3)
+        if not uploaded_job_slots.acquire(blocking=False):
+            raise aiohttp.web.HTTPTooManyRequests(
+                reason="upload process capacity reached"
+            )
+        sema = None
         submitted = False
         owned_file = None
         try:
+            sema = uid_ratelimiter(user, 3)
             data = (await self.request.post()).copy()
             file = data.get("file")
             if isinstance(file, FileField):
@@ -912,6 +912,7 @@ class UploadedFiles(aiohttp.web.View):
                     if owned_file is not None:
                         owned_file.close()
                     sema.release()
+                    uploaded_job_slots.release()
 
             future.add_done_callback(finished)
             submitted = True
@@ -926,7 +927,9 @@ class UploadedFiles(aiohttp.web.View):
             if not submitted:
                 if owned_file is not None:
                     owned_file.close()
-                sema.release()
+                if sema is not None:
+                    sema.release()
+                uploaded_job_slots.release()
 
         return aiohttp.web.json_response({"status": "ok"})
 
@@ -1119,15 +1122,7 @@ class EmbeddingContext(aiohttp.web.View):
         password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
         assert password, "X-PDFCHAT-PASSWORD is required"
 
-        with user_embeddings_chain_mu:
-            need_restore = uid not in user_embeddings_chain
-
-        if need_restore:
-            logger.debug(f"try restore user chain from s3 for {uid=}")
-            restore_user_chain(s3cli, user, password)
-
-        with user_embeddings_chain_mu:
-            chatbot = user_embeddings_chain[uid]
+        chatbot = get_private_user_chain(s3cli, user, password)
 
         chatbot = bind_user_chain(chatbot, user)
         sema = uid_ratelimiter(user=user)
@@ -1154,15 +1149,7 @@ class EmbeddingContext(aiohttp.web.View):
         password = self.request.headers.getone("X-PDFCHAT-PASSWORD")
         assert password, "X-PDFCHAT-PASSWORD is required"
 
-        with user_embeddings_chain_mu:
-            need_restore = uid not in user_embeddings_chain
-
-        if need_restore:
-            logger.debug(f"try restore user chain from s3 for {uid=}")
-            restore_user_chain(s3cli, user, password)
-
-        with user_embeddings_chain_mu:
-            chatbot = user_embeddings_chain[uid]
+        chatbot = get_private_user_chain(s3cli, user, password)
 
         chatbot = bind_user_chain(chatbot, user)
         llm = build_llm_for_user(user)
@@ -1365,8 +1352,7 @@ class EmbeddingContext(aiohttp.web.View):
             index=index,
             datasets=datasets,
         )
-        with user_embeddings_chain_mu:
-            user_embeddings_chain[uid] = chain
+        private_user_chain_cache.save(uid, chain, password)
 
         save_encrypt_store(
             s3cli=s3cli,
