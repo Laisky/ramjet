@@ -3,6 +3,7 @@
 Only public tracked functions run. Permission construction is mocked to capture
 selected arguments; no private configuration, provider or storage is loaded.
 """
+
 import ast
 import hashlib
 import importlib.util
@@ -29,14 +30,20 @@ def tracked_function(relative, name, environment):
     """tracked_function compiles one unchanged public definition without imports."""
     tree = ast.parse((ROOT / relative).read_text())
     selected = [
-        n for n in tree.body
+        n
+        for n in tree.body
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
     ]
     assert len(selected) == 1
-    module = ast.Module(body=[
-        ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0),
-        *selected,
-    ], type_ignores=[])
+    module = ast.Module(
+        body=[
+            ast.ImportFrom(
+                module="__future__", names=[ast.alias(name="annotations")], level=0
+            ),
+            *selected,
+        ],
+        type_ignores=[],
+    )
     exec(compile(ast.fix_missing_locations(module), relative, "exec"), environment)
     return environment[name]
 
@@ -62,20 +69,26 @@ class NamespaceScopeCharacterization(unittest.TestCase):
             "hashlib": hashlib,
             "resolve_request_credentials": credentials.resolve_request_credentials,
             "prd": NS(UserPermission=self.permission),
-            "aiohttp": NS(web=NS(
-                HTTPUnauthorized=SyntheticHTTPError,
-                HTTPTooManyRequests=SyntheticHTTPError,
-            )),
+            "aiohttp": NS(
+                web=NS(
+                    HTTPUnauthorized=SyntheticHTTPError,
+                    HTTPTooManyRequests=SyntheticHTTPError,
+                )
+            ),
             "logger": logging.getLogger("namespace-characterization"),
             "threading": threading,
             "user_prcess_file_sema": self.buckets,
             "user_prcess_file_sema_lock": threading.RLock(),
         }
         self.select = tracked_function(
-            "ramjet/tasks/gptchat/utils.py", "get_user_by_appkey", environment,
+            "ramjet/tasks/gptchat/utils.py",
+            "get_user_by_appkey",
+            environment,
         )
         self.acquire = tracked_function(
-            "ramjet/tasks/gptchat/router.py", "uid_ratelimiter", environment,
+            "ramjet/tasks/gptchat/router.py",
+            "uid_ratelimiter",
+            environment,
         )
 
     def user(self, uid, free=None, key="sk-synthetic-owner-A"):
@@ -89,8 +102,13 @@ class NamespaceScopeCharacterization(unittest.TestCase):
 
     def test_free_header_changes_selected_paid_argument(self):
         """test_free_header records argument selection, not constructor authority."""
-        for value, paid in [(None, True), ("false", True), ("true", False),
-                            ("TrUe", False), ("unrecognized", True)]:
+        for value, paid in [
+            (None, True),
+            ("false", True),
+            ("true", False),
+            ("TrUe", False),
+            ("unrecognized", True),
+        ]:
             with self.subTest(value=value):
                 user = self.user("synthetic-requested-scope", value)
                 self.assertEqual(user.uid, "synthetic-requested-scope")
