@@ -8,7 +8,7 @@ The repaired contract authorizes new private storage through possession of the c
 
 Ramjet recomputes this value from the raw or Bearer Authorization credential. Incoming UID and free/paid headers grant no private access or paid capacity. Go computes its informational forwarding UID after its existing constant-time credential checks, and keeps generic cached identity unchanged. Raw provider credentials and intentional configured HTTP(S) backends remain supported.
 
-The capability is not an assertion of provider validity, account ownership, paid status, or human identity. Anyone who shares or learns the complete credential shares this capability. Weak or publicly known credentials remain weak capabilities. Provider routing does not change storage scope; rotation creates a distinct scope, with no automatic account or key alias.
+The capability is not an assertion of provider validity, account ownership, paid status, or human identity. Anyone who shares or learns the complete credential shares this capability. Weak or publicly known credentials remain weak capabilities. Provider routing does not change storage scope; rotation creates a distinct scope, with no automatic account or key alias. Private namespace operations do not query provider revocation: possession of an old key continues to authorize its initialized namespace. An application revocation/transfer authority is absent from this flow; provider rotation alone does not invalidate that capability.
 
 ## New namespace initialization
 
