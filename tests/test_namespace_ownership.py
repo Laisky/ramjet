@@ -116,7 +116,7 @@ class OwnershipBoundaryTests(OwnershipFixture):
         try:
             with self.assertRaises(web.HTTPTooManyRequests):
                 self.acquire(self.user(KEY_B, free="false"))
-            self.assertEqual(set(self.buckets), {"public"})
+            self.assertEqual(set(self.buckets), {("private-admission-v2", "public")})
         finally:
             for permit in permits:
                 permit.release()
@@ -156,7 +156,7 @@ class OwnershipBoundaryTests(OwnershipFixture):
         password = "synthetic-password"
         chain = NS(datasets=["private"], chain=lambda llm, q: ("private-answer", []))
         self.env["require_private_namespace"](self.storage, first, create=True)
-        cache.save(first.uid, chain, password)
+        cache.save(self.env["private_chain_key"](first.uid), chain, password)
         restores = []
         bindings = []
 
@@ -197,7 +197,118 @@ class OwnershipBoundaryTests(OwnershipFixture):
             query(attacker)
         self.assertEqual(bindings, [(first.uid, KEY_A)])
         self.assertEqual(restores, [])
-        self.assertEqual(set(chains), {first.uid})
+        self.assertEqual(set(chains), {self.env["private_chain_key"](first.uid)})
+
+    def test_proven_legacy_string_cache_cannot_enter_new_private_scope(self):
+        """test_proven_legacy_string_cache excludes old grants even with valid AES proof."""
+        import sys
+
+        spec = importlib.util.spec_from_file_location(
+            "ownership_legacy_cache", ROOT / "ramjet/tasks/gptchat/llm/private_cache.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        cache = module.PasswordProtectedCache(
+            {}, threading.RLock(), lambda pwd: hashlib.sha256(pwd.encode()).digest()
+        )
+        user = self.user()
+        password = "synthetic-password"
+        legacy = NS(datasets=["legacy-private"])
+        cache.save(user.uid, legacy, password)
+        self.assertIs(cache.get(user.uid, password), legacy)
+        self.env["require_private_namespace"](self.storage, user, create=True)
+        restores = []
+
+        def cold_restore(storage, reader, pwd):
+            """cold_restore refuses absent new objects and records the attempted scope."""
+            restores.append(reader.uid)
+            raise KeyError("new namespace contains no private chain")
+
+        key = getattr(
+            module, "private_chain_key", lambda uid: ("private-credential-v2", uid)
+        )
+        self.env.update(
+            private_user_chain_cache=cache,
+            restore_user_chain=cold_restore,
+            private_chain_key=key,
+        )
+        get_chain = definition(
+            "ramjet/tasks/gptchat/llm/embeddings.py", "get_private_user_chain", self.env
+        )
+        with self.assertRaises(KeyError):
+            get_chain(self.storage, user, password)
+        self.assertEqual(restores, [user.uid])
+        current = NS(datasets=["new-private"])
+        cache.save(key(user.uid), current, password)
+        self.assertIs(get_chain(self.storage, user, password), current)
+        self.assertIs(cache.get(user.uid, password), legacy)
+
+    async def test_legacy_processing_names_do_not_enter_initialized_scope(self):
+        """test_legacy_processing_names separates old UID strings from current worker state."""
+        user = self.user()
+        self.env["user_processing_files"][user.uid] = {"legacy-private-filename"}
+        self.env["require_private_namespace"](self.storage, user, create=True)
+        response = await self.get(self.view(KEY_A))
+        self.assertEqual(json.loads(response.text)["datasets"], [])
+        self.env["user_processing_files"][("private-processing-v2", user.uid)] = {
+            "current"
+        }
+        response = await self.get(self.view(KEY_A))
+        self.assertEqual(
+            json.loads(response.text)["datasets"],
+            [{"name": "current", "status": "processing", "progress": 75}],
+        )
+        self.assertEqual(
+            self.env["user_processing_files"][user.uid], {"legacy-private-filename"}
+        )
+
+    def test_current_processing_worker_uses_and_cleans_only_typed_state(self):
+        """test_current_processing_worker preserves legacy state on success and failure."""
+        user = self.user()
+        legacy = {"legacy-private-filename"}
+        self.env["user_processing_files"][user.uid] = legacy
+        self.env.update(
+            timer=lambda fn: fn,
+            require_object_name=public_module(
+                "ramjet/tasks/gptchat/namespace.py"
+            ).require_object_name,
+        )
+        process = definition(
+            "ramjet/tasks/gptchat/router.py", "process_file", self.env, "UploadedFiles"
+        )
+        state_key = ("private-processing-v2", user.uid)
+
+        def worker(reader, data):
+            """worker checks current pending state while preserving old filenames."""
+            self.assertEqual(self.env["user_processing_files"][state_key], {"current"})
+            self.assertIs(self.env["user_processing_files"][user.uid], legacy)
+            if data.get("fail"):
+                raise ValueError("synthetic worker failure")
+            return ["current"]
+
+        view = NS(_process_file=worker)
+        self.assertEqual(process(view, user, {"file_key": "current"}), ["current"])
+        self.assertEqual(self.env["user_processing_files"][state_key], set())
+        with self.assertRaises(ValueError):
+            process(view, user, {"file_key": "current", "fail": True})
+        self.assertEqual(self.env["user_processing_files"][state_key], set())
+        self.assertEqual(legacy, {"legacy-private-filename"})
+
+    def test_legacy_public_semaphore_cannot_supply_new_admission_capacity(self):
+        """test_legacy_public_semaphore retains old state without adopting its paid capacity."""
+        legacy = threading.Semaphore(100)
+        self.buckets["public"] = legacy
+        permits = [self.acquire(self.user()) for _ in range(3)]
+        try:
+            with self.assertRaises(web.HTTPTooManyRequests):
+                self.acquire(self.user(KEY_B))
+            self.assertIs(self.buckets["public"], legacy)
+            self.assertIsNot(permits[0], legacy)
+        finally:
+            for permit in permits:
+                permit.release()
+        self.acquire(self.user(KEY_B)).release()
 
     def test_private_mutation_names_reject_before_storage_or_provider_work(self):
         """test_private_mutation_names checks every selected private path builder."""

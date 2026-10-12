@@ -293,8 +293,15 @@ class ByokRoutingTests(unittest.TestCase):
             build_user_chain=chain_for_index,
             aiohttp=NS(web=web),
             user_embeddings_chain_mu=threading.Lock(),
-            user_embeddings_chain={"synthetic-user": chain_for_index(cached_index, [])},
+            user_embeddings_chain={
+                ("private-credential-v2", "synthetic-user"): chain_for_index(
+                    cached_index, []
+                )
+            },
             uid_ratelimiter=lambda **kw: NS(release=lambda: None),
+        )
+        load_function(
+            "ramjet/tasks/gptchat/llm/private_cache.py", "private_chain_key", env
         )
         # This SDK-binding fixture supplies an already password-checked chain;
         # actual password/namespace proofs have independent retained regressions.

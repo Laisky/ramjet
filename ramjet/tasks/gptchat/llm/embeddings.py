@@ -42,7 +42,7 @@ from ..namespace import require_object_name
 
 from ..base import logger
 from .base import Index, UserChain
-from .private_cache import PasswordProtectedCache
+from .private_cache import PasswordProtectedCache, private_chain_key
 
 user_embeddings_chain_mu = threading.RLock()
 user_embeddings_chain: Dict[str, UserChain] = {}  # uid -> UserChain
@@ -862,7 +862,7 @@ def get_private_user_chain(
     restore instead. The result is local to this request, not a subsequent UID
     lookup that another caller could replace.
     """
-    chain = private_user_chain_cache.get(user.uid, password)
+    chain = private_user_chain_cache.get(private_chain_key(user.uid), password)
     if chain is not None:
         return chain
     return restore_user_chain(s3cli, user, password)
@@ -997,7 +997,7 @@ def restore_user_chain(
 
     if password:
         logger.info(f"load encrypted user chain, {uid=}, {chatbot_name=}")
-        private_user_chain_cache.save(uid, chain, password)
+        private_user_chain_cache.save(private_chain_key(uid), chain, password)
     else:
         logger.info(f"load shared user chain, {uid=}, {chatbot_name=}")
         with user_shared_chain_mu:

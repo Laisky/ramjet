@@ -196,6 +196,7 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
             module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
+            self.env["private_chain_key"] = module.private_chain_key
             self.env["private_user_chain_cache"] = module.PasswordProtectedCache(
                 self.env["user_embeddings_chain"],
                 self.env["user_embeddings_chain_mu"],
@@ -307,8 +308,11 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unproven_legacy_cache_entry_requires_cold_password_proof(self):
         """test_unproven_legacy_cache rejects plaintext entries without successful-decrypt proof."""
-        self.env["user_embeddings_chain"][UID] = self.env["build_user_chain"](
-            SyntheticIndex({"text": "unproven cached content"}), ["unproven dataset"]
+        self.env["user_embeddings_chain"][
+            self.env["private_chain_key"](UID)
+        ] = self.env["build_user_chain"](
+            SyntheticIndex({"text": "unproven cached content"}),
+            ["unproven dataset"],
         )
         with self.assertRaises(ValueError):
             self.search(self.view("synthetic-wrong"))
@@ -336,10 +340,13 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_cold_restore_does_not_replace_valid_cached_chain(self):
         """test_failed_cold_restore keeps a successfully decrypted active entry intact."""
         self.restore(PASSWORD_B, "beta")
-        before = self.env["user_embeddings_chain"][UID]
+        before = self.env["user_embeddings_chain"][self.env["private_chain_key"](UID)]
         with self.assertRaises(ValueError):
             self.restore("synthetic-wrong", "alpha")
-        self.assertIs(self.env["user_embeddings_chain"][UID], before)
+        self.assertIs(
+            self.env["user_embeddings_chain"][self.env["private_chain_key"](UID)],
+            before,
+        )
         self.assert_content(self.search, PASSWORD_B, "beta private content")
 
     async def test_newly_built_chain_also_has_password_proof(self):
@@ -366,15 +373,20 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
     async def test_cache_proof_never_enters_serialized_index(self):
         """test_cache_proof confirms existing persisted payload and namespace format stay unchanged."""
         self.restore()
-        payload = self.env["user_embeddings_chain"][UID].user_index.serialize()
+        payload = self.env["user_embeddings_chain"][
+            self.env["private_chain_key"](UID)
+        ].user_index.serialize()
         self.assertEqual(json.loads(payload), {"text": "alpha private content"})
         self.assertNotIn(PASSWORD_A.encode(), payload)
 
     async def test_replaced_chain_cannot_reuse_a_sibling_password_proof(self):
         """test_replaced_chain checks that proof for alpha never authorizes substituted plaintext."""
         self.restore()
-        self.env["user_embeddings_chain"][UID] = self.env["build_user_chain"](
-            SyntheticIndex({"text": "substituted sibling content"}), ["sibling dataset"]
+        self.env["user_embeddings_chain"][
+            self.env["private_chain_key"](UID)
+        ] = self.env["build_user_chain"](
+            SyntheticIndex({"text": "substituted sibling content"}),
+            ["sibling dataset"],
         )
         downloads = len(self.storage.downloads)
         self.assert_content(self.search, PASSWORD_A, "alpha private content")
@@ -404,7 +416,10 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
         ):
             self.assert_content(self.search, PASSWORD_A, "alpha private content")
         self.assertEqual(
-            self.env["user_embeddings_chain"][UID].datasets, ["beta dataset"]
+            self.env["user_embeddings_chain"][
+                self.env["private_chain_key"](UID)
+            ].datasets,
+            ["beta dataset"],
         )
         with self.assertRaises(ValueError):
             self.search(self.view(PASSWORD_A))

@@ -150,13 +150,13 @@ class NamespaceScopeCharacterization(unittest.TestCase):
             self.acquire(same)
         with self.assertRaises(SyntheticHTTPError):
             self.acquire(other)
-        self.assertEqual(set(self.buckets), {"public"})
+        self.assertEqual(set(self.buckets), {("private-admission-v2", "public")})
         bucket.release()
 
     def test_existing_public_bucket_free_users_share_it(self):
         """test_existing_public_bucket proves the preseeded branch separately."""
         public = threading.Semaphore(1)
-        self.buckets["public"] = public
+        self.buckets[("private-admission-v2", "public")] = public
         first = NS(uid="synthetic-A", is_paid=False, n_concurrent=1)
         other = NS(uid="synthetic-B", is_paid=False, n_concurrent=1)
         bucket = self.acquire(first)
@@ -166,12 +166,12 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         bucket.release()
         self.assertIs(self.acquire(other), public)
         public.release()
-        self.assertEqual(set(self.buckets), {"public"})
+        self.assertEqual(set(self.buckets), {("private-admission-v2", "public")})
 
     def test_paid_users_ignore_preseeded_public_bucket(self):
         """test_paid_users excludes overclaiming public-bucket scope behavior."""
         public = threading.Semaphore(1)
-        self.buckets["public"] = public
+        self.buckets[("private-admission-v2", "public")] = public
         private = self.acquire(NS(uid="synthetic-A", is_paid=True, n_concurrent=1))
         self.assertIsNot(private, public)
         self.assertTrue(public.acquire(blocking=False))

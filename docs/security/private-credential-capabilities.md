@@ -18,7 +18,7 @@ A valid upload may initialize only an empty namespace, after request validation 
 
 The marker authenticates new namespace initialization. It does not authenticate individual historical records or repair unauthorized old writers. Empty-prefix inspection and marker creation are not atomic against a legacy unrestricted writer.
 
-**Any separately authorized rollout must stop all unrestricted legacy writers before initializing new namespaces.** Mixed old/new private writers are unsupported. No production rollout, inventory, migration, account action or configuration change is performed by this source work.
+**Any separately authorized rollout must stop all unrestricted legacy writers and drain their background jobs before initializing new namespaces.** Mixed old/new private writers are unsupported. No production rollout, inventory, migration, account action or configuration change is performed by this source work.
 
 Historical records stay in place. SHA1, truncated-key and arbitrary-UID names are never aliased automatically. Even a historical ckv2-looking namespace fails closed without valid initialization proof. Migration needs an independently verified binding of principal/complete credential to each exact record and permitted operations, plus conflict handling for collisions. Namespace resemblance, a provider-shaped key, or a password for one encrypted record cannot establish ownership of an entire legacy namespace.
 
@@ -26,7 +26,7 @@ Historical records stay in place. SHA1, truncated-key and arbitrary-UID names ar
 
 Dataset list/upload/delete, chatbot names/build/activation/publication, private query and password-bound caches use only the server-derived private scope. Object names use full-component validation; traversal, separators, trailing newlines and malformed current-pointer names are rejected before object access or scheduling.
 
-Merged PR288's AES password proof remains required on private warm and cold cache reads. Password knowledge alone cannot select another key's cache. The marker remains necessary before reading a warm cache.
+Merged PR288's AES password proof remains required on private warm and cold cache reads. Password knowledge alone cannot select another key's cache. The marker remains necessary before reading a warm cache. Current private cache, processing-file and admission state use versioned tuple keys, so retained legacy HTTP UID strings cannot supply old grants, filenames or semaphore capacity.
 
 Published links keep query uid and chatbot_name. A legacy UID header can select an owner only on the explicit public-share read route; query uid takes precedence. The reader retrieves named chatbot-share-v2 plaintext archives, never a private current pointer or encrypted private store. Public cache keys are owner/name tuples. Reader credentials, provider and admission remain bound to the reader, rather than the public owner.
 

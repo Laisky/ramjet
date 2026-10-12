@@ -162,6 +162,9 @@ class OwnershipFixture(unittest.IsolatedAsyncioTestCase):
             definition(
                 "ramjet/tasks/gptchat/router.py", "require_private_namespace", self.env
             )
+        self.env["private_chain_key"] = definition(
+            "ramjet/tasks/gptchat/llm/private_cache.py", "private_chain_key", self.env
+        )
         for name in (
             "get_user_by_appkey",
             "authenticate_by_appkey",

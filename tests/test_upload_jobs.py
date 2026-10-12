@@ -218,7 +218,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
                 job.set_exception(RuntimeError("local worker failure"))
             else:
                 job.cancel()
-            sema = self.env["user_prcess_file_sema"][self.user.uid]
+            sema = self.env["user_prcess_file_sema"][
+                ("private-admission-v2", self.user.uid)
+            ]
             self.assertTrue(sema.acquire(blocking=False))
             sema.release()
             self.assert_process_capacity_available()
@@ -253,7 +255,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         self.view.request.post = too_large
         with self.assertRaises(web.HTTPRequestEntityTooLarge):
             await self.post()
-        sema = self.env["user_prcess_file_sema"][self.user.uid]
+        sema = self.env["user_prcess_file_sema"][
+            ("private-admission-v2", self.user.uid)
+        ]
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assertEqual(self.scheduler.jobs, [])
@@ -302,7 +306,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         response = await self.post()
         self.assertEqual(response.status, 400)
         self.assertEqual(self.scheduler.jobs, [])
-        sema = self.env["user_prcess_file_sema"][self.user.uid]
+        sema = self.env["user_prcess_file_sema"][
+            ("private-admission-v2", self.user.uid)
+        ]
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assert_process_capacity_available()
@@ -344,7 +350,9 @@ class UploadJobTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
-        sema = self.env["user_prcess_file_sema"][self.user.uid]
+        sema = self.env["user_prcess_file_sema"][
+            ("private-admission-v2", self.user.uid)
+        ]
         self.assertTrue(sema.acquire(blocking=False))
         sema.release()
         self.assertEqual(self.scheduler.jobs, [])

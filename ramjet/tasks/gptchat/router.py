@@ -37,6 +37,7 @@ from .llm.embeddings import (
     derive_key,
     get_private_user_chain,
     private_user_chain_cache,
+    private_chain_key,
     download_chatbot_index,
     embedding_file,
     load_encrypt_store,
@@ -68,9 +69,9 @@ from .utils import authenticate_by_appkey as authenticate
 from .utils import authenticate_by_appkey_sync as authenticate_sync
 from .utils import recover
 
-# limit concurrent process files by uid
+# Versioned keys prevent adopting legacy arbitrary-UID semaphore grants.
 user_prcess_file_sema_lock = threading.RLock()
-user_prcess_file_sema: Dict[str, threading.Semaphore] = {}
+user_prcess_file_sema: Dict[Tuple[str, str], threading.Semaphore] = {}
 
 # Retain workers until completion independently of the HTTP request lifetime.
 uploaded_jobs_lock = threading.RLock()
@@ -78,10 +79,9 @@ uploaded_jobs = set()
 # Bound all queued/running uploads before multipart parsing, regardless of UID.
 uploaded_job_slots = threading.BoundedSemaphore(8)
 
-# track processing files by uid
-# {uid: [filekeys]}
+# Track current processing files separately from legacy arbitrary-UID strings.
 user_processing_files_lock = threading.RLock()
-user_processing_files: Dict[str, Set[str]] = {}
+user_processing_files: Dict[Tuple[str, str], Set[str]] = {}
 
 # valid dataset name
 dataset_name_regex = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -124,7 +124,7 @@ def uid_ratelimiter(user: settings.UserPermission, concurrent=3) -> threading.Se
     """uid_ratelimiter shares conservative admission and returns one acquired permit."""
     uid = user.uid
     limit = user.n_concurrent or concurrent
-    bucket = uid if user.is_paid else "public"
+    bucket = ("private-admission-v2", uid if user.is_paid else "public")
     with user_prcess_file_sema_lock:
         sema = user_prcess_file_sema.get(bucket)
         if sema is None:
@@ -821,7 +821,9 @@ class UploadedFiles(aiohttp.web.View):
             files.extend(
                 [
                     {"name": f, "status": "processing", "progress": 75}
-                    for f in user_processing_files.get(uid, [])
+                    for f in user_processing_files.get(
+                        ("private-processing-v2", uid), []
+                    )
                 ]
             )
 
@@ -967,15 +969,17 @@ class UploadedFiles(aiohttp.web.View):
         logger.debug(f"process file {dataset_name=} for user {uid=}")
         try:
             with user_processing_files_lock:
-                fset = user_processing_files.get(uid, set())
+                fset = user_processing_files.get(("private-processing-v2", uid), set())
                 fset.add(dataset_name)
-                user_processing_files[uid] = fset
+                user_processing_files[("private-processing-v2", uid)] = fset
 
             logger.info(f"process file {dataset_name=} for user {uid=}")
             return self._process_file(user, data)
         finally:
             with user_processing_files_lock:
-                user_processing_files[uid].remove(dataset_name)
+                user_processing_files[("private-processing-v2", uid)].remove(
+                    dataset_name
+                )
 
     def _process_file(self, user: settings.UserPermission, data: Dict) -> List[str]:
         """process user uploaded file by openai embeddings,
@@ -1396,7 +1400,7 @@ class EmbeddingContext(aiohttp.web.View):
             index=index,
             datasets=datasets,
         )
-        private_user_chain_cache.save(uid, chain, password)
+        private_user_chain_cache.save(private_chain_key(uid), chain, password)
 
         save_encrypt_store(
             s3cli=s3cli,

@@ -1,9 +1,14 @@
 """Password proof for an already decrypted private chatbot cache entry."""
 
 from dataclasses import dataclass
-from typing import Any, Callable, ContextManager, MutableMapping
+from typing import Any, Callable, ContextManager, MutableMapping, Hashable
 
 from Crypto.Cipher import AES
+
+
+def private_chain_key(uid: str) -> tuple[str, str]:
+    """private_chain_key isolates current grants from all legacy HTTP UID strings."""
+    return ("private-credential-v2", uid)
 
 
 @dataclass(frozen=True, repr=False)
@@ -26,7 +31,7 @@ class PasswordProtectedCache:
 
     def __init__(
         self,
-        chains: MutableMapping[str, Any],
+        chains: MutableMapping[Hashable, Any],
         lock: ContextManager,
         derive_key: Callable[[str], bytes],
     ):
@@ -34,9 +39,9 @@ class PasswordProtectedCache:
         self._chains = chains
         self._lock = lock
         self._derive_key = derive_key
-        self._proofs: dict[str, _PasswordProof] = {}
+        self._proofs: dict[Hashable, _PasswordProof] = {}
 
-    def save(self, uid: str, chain: Any, password: str) -> None:
+    def save(self, uid: Hashable, chain: Any, password: str) -> None:
         """save binds the checked password to a chain and installs both atomically."""
         if not password:
             raise ValueError("X-PDFCHAT-PASSWORD is required")
@@ -47,7 +52,7 @@ class PasswordProtectedCache:
             self._chains[uid] = chain
             self._proofs[uid] = proof
 
-    def get(self, uid: str, password: str) -> Any | None:
+    def get(self, uid: Hashable, password: str) -> Any | None:
         """get authenticates the exact cached chain or requests a checked cold restore.
 
         Wrong passwords raise the same AES authentication error as cold decrypt.
