@@ -108,7 +108,7 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         return self.select(NS(headers=headers, query={}))
 
     def test_free_header_cannot_grant_paid_capacity(self):
-        """test_free_header records argument selection, not constructor authority."""
+        """test_free_header checks conservative constructor arguments, not account authority."""
         for value, paid in [
             (None, False),
             ("false", False),
@@ -124,7 +124,7 @@ class NamespaceScopeCharacterization(unittest.TestCase):
                 self.assertEqual(self.permission.call_args.kwargs["is_paid"], paid)
 
     def test_supplied_uid_cannot_override_complete_key(self):
-        """test_supplied_uid distinguishes scope selection from key validation."""
+        """test_supplied_uid checks complete-key scope independently of wire UIDs."""
         first = self.user("synthetic-scope-A", key="sk-synthetic-owner-A")
         second = self.user("synthetic-scope-A", key="sk-synthetic-owner-B")
         other = self.user("synthetic-scope-B", key="sk-synthetic-owner-B")
@@ -141,7 +141,7 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         self.permission.assert_not_called()
 
     def test_absent_public_bucket_free_users_share_admission(self):
-        """test_absent_public_bucket disproves blanket shared-free-bucket claims."""
+        """test_absent_public_bucket checks the repaired shared admission initialization."""
         first = NS(uid="synthetic-A", is_paid=False, n_concurrent=1)
         same = NS(uid="synthetic-A", is_paid=False, n_concurrent=1)
         other = NS(uid="synthetic-B", is_paid=False, n_concurrent=1)

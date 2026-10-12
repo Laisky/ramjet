@@ -1,3 +1,5 @@
+Historical selector observations are superseded by [the private capability repair](private-credential-capabilities.md). Current opt-in controls assert complete-key selection and conservative admission; original receipts retain their source revisions.
+
 # Namespace scope characterization (task20261008-26)
 
 This opt-in evidence records selectors and false-positive controls, not a repair,
