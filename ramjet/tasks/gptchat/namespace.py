@@ -1,24 +1,9 @@
-"""Credential capabilities for new private data; no historical ownership aliases."""
+"""Validate storage components; only the trusted registry grants private ownership."""
 
-import hashlib
 import re
 
-from ramjet.credentials import require_api_key
-
-_SCOPE_DOMAIN = b"ramjet-private-key-capability-v2\x00"
 _OBJECT_NAME = re.compile(r"[a-zA-Z0-9_-]+")
 _PUBLIC_OWNER = re.compile(r"[a-zA-Z0-9_-]{1,128}")
-
-
-def credential_scope(api_key: str) -> str:
-    """credential_scope authorizes only the new namespace for the complete bearer key.
-
-    This is a possession capability, not provider validation or account identity.
-    Provider routing cannot grant another scope. Rotation has no automatic alias.
-    No legacy object is attributed to a key by this derivation.
-    """
-    key = require_api_key(api_key)
-    return "ckv2-" + hashlib.sha256(_SCOPE_DOMAIN + key.encode("utf-8")).hexdigest()
 
 
 def require_object_name(name: str) -> str:

@@ -68,12 +68,10 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         )
         namespace = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(namespace)
-        self.scope = namespace.credential_scope
         self.permission = Mock(side_effect=lambda **fields: NS(**fields))
         self.buckets = {}
         environment = {
             "hashlib": hashlib,
-            "credential_scope": self.scope,
             "resolve_request_credentials": credentials.resolve_request_credentials,
             "prd": NS(UserPermission=self.permission),
             "aiohttp": NS(
@@ -118,21 +116,22 @@ class NamespaceScopeCharacterization(unittest.TestCase):
         ]:
             with self.subTest(value=value):
                 user = self.user("synthetic-requested-scope", value)
-                self.assertEqual(user.uid, self.scope(user.apikey))
+                self.assertEqual(user.uid, "public")
                 self.assertEqual(user.is_paid, paid)
                 self.assertEqual(user.n_concurrent, 3)
                 self.assertEqual(self.permission.call_args.kwargs["is_paid"], paid)
 
-    def test_supplied_uid_cannot_override_complete_key(self):
-        """test_supplied_uid checks complete-key scope independently of wire UIDs."""
+    def test_supplied_uid_and_model_key_cannot_grant_private_identity(self):
+        """test_supplied_uid keeps provider-only callers anonymous regardless of wire identity assertions."""
         first = self.user("synthetic-scope-A", key="sk-synthetic-owner-A")
         second = self.user("synthetic-scope-A", key="sk-synthetic-owner-B")
         other = self.user("synthetic-scope-B", key="sk-synthetic-owner-B")
         self.assertNotEqual(first.apikey, second.apikey)
-        self.assertNotEqual(first.uid, second.uid)
+        self.assertEqual(first.uid, "public")
+        self.assertEqual(second.uid, "public")
         self.assertEqual(second.uid, other.uid)
         fallback = self.user(None)
-        self.assertEqual(fallback.uid, self.scope(first.apikey))
+        self.assertEqual(fallback.uid, "public")
 
     def test_empty_key_rejects_before_permission_construction(self):
         """test_empty_key excludes an indiscriminate accepting fixture."""

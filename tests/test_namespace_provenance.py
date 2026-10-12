@@ -1,145 +1,187 @@
-"""Offline synthetic regressions for credential-scoped private and public data."""
+"""Historical objects and caller-controlled markers never establish SSO ownership."""
 
 import hashlib
-import importlib.util
+import hmac
 import json
-from pathlib import Path
-import threading
+import sqlite3
 from types import SimpleNamespace as NS
 import unittest
+from unittest.mock import patch
+from uuid import UUID
 
 from aiohttp import web
 
-from tests.namespace_test_support import (
-    OwnershipFixture,
-    ROOT,
-    KEY_A,
-    KEY_B,
-    PREFIX,
-    public_module,
-    definition,
-)
+from ramjet.sso import VerifiedPrincipal
+from ramjet.tasks.gptchat import private_auth, private_registry
+from tests.test_sso_identity import SUBJECT, OTHER
+from tests.namespace_test_support import OwnershipFixture, KEY_A, PREFIX
 
 
 class NamespaceProvenanceTests(OwnershipFixture):
-    """NamespaceProvenanceTests exercises actual source with inert storage and model dependencies."""
+    """NamespaceProvenanceTests retain the exact fail-closed historical compatibility boundary."""
 
-    def test_occupied_unmarked_new_looking_scope_is_never_adopted(self):
-        """test_occupied_unmarked proves a ckv2 name alone attributes no historical records."""
-        user = self.user()
-        legacy = f"{PREFIX}/{user.uid}/legacy.store"
-        self.storage.objects.add(legacy)
-        for create in (False, True):
-            with self.subTest(create=create):
-                with self.assertRaises(ValueError):
-                    self.env["require_private_namespace"](
-                        self.storage, user, create=create
-                    )
-                self.assertEqual(self.storage.objects, {legacy})
-                self.assertEqual(self.storage.markers, {})
-
-    def test_new_marker_authenticates_exact_complete_key_and_persists_no_secret(self):
-        """test_new_marker admits only new creation and rejects copied/invalid owner claims."""
-        first = self.user(KEY_A)
-        second = self.user(KEY_B)
-        self.assertFalse(self.env["require_private_namespace"](self.storage, first))
-        self.assertTrue(
-            self.env["require_private_namespace"](self.storage, first, create=True)
+    async def test_forged_markers_and_legacy_names_never_grant_list_or_delete(self):
+        """test_forged_markers excludes valid-looking old proofs without consulting their contents."""
+        scope = (
+            "ckv2-"
+            + hashlib.sha256(
+                b"ramjet-private-key-capability-v2\0" + KEY_A.encode()
+            ).hexdigest()
         )
-        self.assertTrue(self.env["require_private_namespace"](self.storage, first))
-        marker_a = f"{PREFIX}/{first.uid}/__ownership_v2/marker.json"
-        marker_b = f"{PREFIX}/{second.uid}/__ownership_v2/marker.json"
-        payload = self.storage.markers[marker_a]
-        self.assertNotIn(KEY_A.encode(), payload)
-        self.storage.markers[marker_b] = payload
-        with self.assertRaises(ValueError):
-            self.env["require_private_namespace"](self.storage, second, create=True)
-        for malformed in (b"{}", b"not-json", b"x" * 1025):
-            self.storage.markers[marker_a] = malformed
-            with self.assertRaises(ValueError):
-                self.env["require_private_namespace"](self.storage, first)
-        self.storage.markers[marker_a] = payload
-        with self.assertRaises(ValueError):
+        proof = hmac.new(
+            KEY_A.encode(),
+            b"ramjet-private-namespace-provenance-v2\0" + scope.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        payload = json.dumps({"version": 2, "scope": scope, "proof": proof}).encode()
+        owners = (
+            scope,
+            hashlib.sha1(KEY_A.encode()).hexdigest(),
+            KEY_A[:15],
+            "forged-victim",
+            "pns3-" + "a" * 32,
+        )
+        records = {f"{PREFIX}/{owner}/legacy.store" for owner in owners}
+        self.storage.objects = records.copy()
+        self.storage.markers[f"{PREFIX}/{scope}/__ownership_v2/marker.json"] = payload
+        self.clear_effects()
+        for owner in owners:
+            for method in (self.get, self.delete):
+                with self.subTest(owner=owner), self.assertRaises(web.HTTPForbidden):
+                    await method(self.view(uid=owner))
+                self.assertEqual(self.storage.operations, [])
+                self.assertEqual(self.scheduled, [])
+                self.assertEqual(self.events, [])
+                self.assertEqual(self.storage.objects, records)
+        self.assertIsNone(self.registry.lookup(SUBJECT, "upload"))
+
+    async def test_model_constructor_or_data_password_is_not_a_private_principal(self):
+        """test_model_constructor denies model-only objects despite forged UID and known data password."""
+        model = self.model_user(uid="pns3-" + "a" * 32)
+        for create in (False, True):
+            with self.assertRaises(web.HTTPUnauthorized):
+                self.env["require_private_namespace"](
+                    self.storage, model, create=create, operation="upload"
+                )
+        self.assertEqual(self.storage.operations, [])
+        self.assertIsNone(self.registry.lookup(SUBJECT, "upload"))
+
+    async def test_fresh_initialization_is_registry_authority_without_marker_writes(
+        self,
+    ):
+        """test_fresh_initialization allocates an independent empty scope and never serializes credentials."""
+        self.storage.markers[f"{PREFIX}/forged-victim/__ownership_v2/marker.json"] = (
+            b"untrusted-old-marker"
+        )
+        owner = await self.user(initialize=False)
+        self.assertEqual(owner.uid, "")
+        self.clear_effects()
+        self.storage.put_object = lambda **kw: self.fail(
+            "ownership must never write an S3 marker"
+        )
+        self.assertTrue(
             self.env["require_private_namespace"](
-                self.storage, NS(uid=second.uid, apikey=KEY_A)
+                self.storage, owner, create=True, operation="upload"
             )
-        self.assertEqual(self.storage.objects, set())
+        )
+        self.assertTrue(owner.uid.startswith("pns3-"))
+        self.assertEqual(self.registry.lookup(SUBJECT, "upload").namespace, owner.uid)
+        self.assertEqual(self.storage.operations, [("list", f"{PREFIX}/{owner.uid}/")])
+        self.assertEqual(len(self.storage.markers), 1)
+        with sqlite3.connect(self.registry.path) as connection:
+            names = connection.execute(
+                "SELECT principal_id, namespace FROM namespace_owners"
+            ).fetchall()
+        self.assertEqual(names, [(SUBJECT, owner.uid)])
+        self.assertNotIn(KEY_A, str(names))
 
-    async def test_unmarked_namespace_rejects_list_delete_before_mutation(self):
-        """test_unmarked_namespace protects historical objects through actual decorated routes."""
-        user = self.user()
-        record = f"{PREFIX}/{user.uid}/private.store"
-        self.storage.objects.add(record)
-        for method in (self.get, self.delete):
-            response = await method(self.view(KEY_A))
-            self.assertEqual(response.status, 400)
-        self.assertEqual(self.storage.objects, {record})
-        self.assertEqual(self.storage.markers, {})
-        self.assertEqual(self.scheduled, [])
+    async def test_occupied_random_candidate_never_adopts_or_overwrites_records(self):
+        """test_occupied_random_candidate proves prefix resemblance does not establish historical ownership."""
+        candidate = UUID("123e4567-e89b-42d3-a456-426614174000")
+        namespace = "pns3-" + candidate.hex
+        legacy = f"{PREFIX}/{namespace}/legacy.store"
+        self.storage.objects.add(legacy)
+        owner = await self.user(initialize=False)
+        with patch.object(private_registry, "uuid4", return_value=candidate):
+            with self.assertRaises(web.HTTPConflict):
+                self.env["require_private_namespace"](
+                    self.storage, owner, create=True, operation="upload"
+                )
+        self.assertEqual(self.storage.objects, {legacy})
+        self.assertEqual(owner.uid, "")
+        self.assertIsNone(self.registry.lookup(SUBJECT, "upload"))
 
-    def test_unknown_marker_storage_failure_never_grants_access_or_creates_proof(self):
-        """test_unknown_marker_storage_failure distinguishes missing data from outage/denial."""
+    async def test_storage_failure_cannot_commit_fresh_grants_or_fabricate_absence(
+        self,
+    ):
+        """test_storage_failure preserves missing authority when the actual empty check fails."""
+        owner = await self.user(initialize=False)
 
         def denied(**kwargs):
-            """denied simulates a storage authorization error without network work."""
-            error = PermissionError("synthetic denial")
-            error.code = "AccessDenied"
-            raise error
+            """denied simulates an outage without touching external storage."""
+            raise PermissionError("synthetic storage denied")
 
-        self.storage.get_object = denied
-        with self.assertRaises(PermissionError):
+        self.storage.list_objects = denied
+        with self.assertRaises(web.HTTPServiceUnavailable):
             self.env["require_private_namespace"](
-                self.storage, self.user(), create=True
+                self.storage, owner, create=True, operation="upload"
             )
+        self.assertIsNone(self.registry.lookup(SUBJECT, "upload"))
+        self.assertEqual(owner.uid, "")
         self.assertEqual(self.storage.markers, {})
+
+    async def test_expired_request_context_and_wrong_operation_cannot_reuse_grants(
+        self,
+    ):
+        """test_expired_request_context rechecks expiry and exact operation before worker effects."""
+        owner = await self.user()
+        self.clear_effects()
+        with self.assertRaises(web.HTTPUnauthorized):
+            self.env["require_private_namespace"](
+                self.storage, owner, operation="delete-files"
+            )
+        owner.principal = VerifiedPrincipal(owner.principal.subject, 0)
+        with self.assertRaises(web.HTTPUnauthorized):
+            self.env["require_private_namespace"](
+                self.storage, owner, operation="upload"
+            )
         self.assertEqual(self.storage.operations, [])
 
-    def test_marker_write_or_readback_failure_never_initializes_access(self):
-        """test_marker_write_or_readback_failure denies proof-less state after any write failure."""
-        original_put = self.storage.put_object
+    async def test_registry_revocation_after_entry_stops_delete_worker(self):
+        """test_registry_revocation rechecks an exact grant immediately before synthetic mutation."""
+        owner = await self.user(operation="delete-files")
+        record = f"{PREFIX}/{owner.uid}/private.store"
+        self.storage.objects.add(record)
+        with sqlite3.connect(self.registry.path) as connection:
+            connection.execute(
+                "DELETE FROM operation_grants WHERE principal_id = ? AND operation = ?",
+                (SUBJECT, "delete-files"),
+            )
+        self.clear_effects()
+        with self.assertRaises(web.HTTPForbidden):
+            self.delete_files(NS(), owner, ["private"])
+        self.assertEqual(self.storage.objects, {record})
+        self.assertEqual(self.storage.operations, [])
 
-        def failed_put(**kwargs):
-            """failed_put simulates a bounded synthetic storage write failure."""
-            raise OSError("synthetic write failure")
+    async def test_uid_mutation_cannot_rebind_an_existing_verified_grant(self):
+        """test_uid_mutation refuses a modified request context rather than trusting its namespace field."""
+        owner = await self.user()
+        other = await self.user(subject=OTHER)
+        owner.uid = other.uid
+        self.clear_effects()
+        with self.assertRaises(web.HTTPForbidden):
+            self.env["require_private_namespace"](
+                self.storage, owner, operation="upload"
+            )
+        self.assertEqual(self.storage.operations, [])
 
-        for put in (
-            failed_put,
-            lambda **kwargs: None,
-            lambda **kwargs: self.storage.markers.update(
-                {kwargs["object_name"]: b"invalid"}
-            ),
-        ):
-            self.storage.markers.clear()
-            self.storage.put_object = put
-            with self.assertRaises((OSError, ValueError)):
-                self.env["require_private_namespace"](
-                    self.storage, self.user(), create=True
-                )
-        self.storage.put_object = original_put
-        self.storage.markers.clear()
-        self.assertFalse(
-            self.env["require_private_namespace"](self.storage, self.user())
-        )
-
-    def test_same_key_initializer_race_requires_valid_persisted_marker(self):
-        """test_same_key_initializer_race accepts only the same authenticated namespace proof."""
-        user = self.user()
-        self.env["require_private_namespace"](self.storage, user, create=True)
-        name, payload = next(iter(self.storage.markers.items()))
-        self.storage.markers.clear()
-
-        def concurrent_list(**kwargs):
-            """concurrent_list models a completed same-key initializer during the empty check."""
-            self.storage.markers[name] = payload
-            return [NS(object_name=name)]
-
-        self.storage.list_objects = concurrent_list
-        self.storage.put_object = lambda **kwargs: self.fail(
-            "race must reread valid existing proof"
-        )
-        self.assertTrue(
-            self.env["require_private_namespace"](self.storage, user, create=True)
-        )
+    async def test_sync_private_context_cannot_change_authorized_operation(self):
+        """test_sync_private_context allows only the asynchronous entry's exact operation."""
+        reader = self.view()
+        await self.authorize(reader, "upload")
+        with self.assertRaises(web.HTTPUnauthorized):
+            private_auth.verified_private_user(reader.request, "delete-files")
+        self.assertEqual(self.storage.operations, [])
 
 
 if __name__ == "__main__":

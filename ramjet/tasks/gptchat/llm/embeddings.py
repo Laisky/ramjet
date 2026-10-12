@@ -935,11 +935,11 @@ def download_chatbot_index(
     # fix bug for https://github.com/minio/minio-py/pull/1309
     tmp_file = os.path.join(dirpath, "tmp.part.minio")
 
-    for objkey in objkeys:
+    for objkey, extension in zip(objkeys, ("store", "pkl")):
         s3cli.fget_object(
             bucket_name=prd.OPENAI_S3_CHUNK_CACHE_BUCKET,
             object_name=objkey,
-            file_path=os.path.join(dirpath, os.path.basename(objkey)),
+            file_path=os.path.join(dirpath, "chatbot." + extension),
             tmp_file_path=tmp_file,
         )
 
@@ -947,7 +947,7 @@ def download_chatbot_index(
     if password:
         index = load_encrypt_store(
             dirpath=dirpath,
-            name=chatbot_name,
+            name="chatbot",
             password=password,
             api_key=user.apikey,
             api_base=user.api_base,
@@ -956,16 +956,14 @@ def download_chatbot_index(
     else:
         index = load_plaintext_store(
             dirpath=dirpath,
-            name=chatbot_name,
+            name="chatbot",
             api_key=user.apikey,
             api_base=user.api_base,
             embedding_model="text-embedding-3-small",
         )
 
     # read datasets file
-    with open(
-        os.path.join(dirpath, f"{os.path.basename(chatbot_name)}.pkl"), "rb"
-    ) as fp:
+    with open(os.path.join(dirpath, "chatbot.pkl"), "rb") as fp:
         datasets = pickle.load(fp)
 
     return chatbot_name, index, datasets

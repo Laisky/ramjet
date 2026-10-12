@@ -8,7 +8,7 @@ from Crypto.Cipher import AES
 
 def private_chain_key(uid: str) -> tuple[str, str]:
     """private_chain_key isolates current grants from all legacy HTTP UID strings."""
-    return ("private-credential-v2", uid)
+    return ("sso-private-v3", uid)
 
 
 @dataclass(frozen=True, repr=False)

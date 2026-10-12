@@ -15,6 +15,21 @@ def require_api_key(api_key: str | None) -> str:
         or any(ord(char) < 33 or ord(char) > 126 for char in api_key)
     ):
         raise ValueError("A valid client API key is required")
+    # Reject identifiable session tokens without importing settings, tasks or SDKs.
+    if api_key.count(".") == 2:
+        import base64
+        import json
+
+        payload = api_key.split(".")[1]
+        if len(payload) <= 8192:
+            try:
+                claims = json.loads(
+                    base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+                )
+            except (ValueError, TypeError, UnicodeError, RecursionError):
+                claims = None
+            if isinstance(claims, dict) and claims.get("iss") == "laisky-sso":
+                raise ValueError("A separate client model API key is required")
     return api_key
 
 
@@ -26,6 +41,8 @@ def resolve_model_credentials(
     Keys remain transient request data. Provider syntax is checked without
     restricting internal addresses or introducing a destination allowlist.
     """
+    from urllib.parse import parse_qsl, unquote
+
     key = require_api_key(api_key)
     base = DEFAULT_API_BASE if api_base is None else api_base
     try:
@@ -37,6 +54,26 @@ def resolve_model_credentials(
         ):
             raise ValueError()
         parsed.port
+        # A session is never a provider URL option. Preserve all other URL syntax.
+        candidates = [
+            parsed.username or "",
+            parsed.password or "",
+            parsed.fragment,
+            *parsed.path.split("/"),
+            *(value for _, value in parse_qsl(parsed.query, keep_blank_values=True)),
+        ]
+        for candidate in candidates:
+            candidate = unquote(candidate)
+            parts = candidate.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                candidate = parts[1]
+            try:
+                require_api_key(candidate)
+            except ValueError as error:
+                if str(error) == "A separate client model API key is required":
+                    raise ValueError(
+                        "SSO sessions cannot be model provider options"
+                    ) from None
     except (TypeError, ValueError):
         raise ValueError("A valid model provider URL is required") from None
     return {"api_key": key, "base_url": base.rstrip("/")}

@@ -1,4 +1,4 @@
-"""Offline synthetic regressions for credential-scoped private and public data."""
+"""Published public links retain model-only reader credentials without private SSO grants."""
 
 import hashlib
 import importlib.util
@@ -9,6 +9,8 @@ from types import SimpleNamespace as NS
 import unittest
 
 from aiohttp import web
+
+from tests.test_sso_identity import SUBJECT
 
 from tests.namespace_test_support import (
     OwnershipFixture,
@@ -70,7 +72,7 @@ class NamespacePublicTests(OwnershipFixture):
             self.env,
             "EmbeddingContext",
         )
-        first = self.view(KEY_B, uid="forged-private-victim")
+        first = self.view(KEY_B, session=False, uid="forged-private-victim")
         first.request.query = {
             "uid": "legacy-published-owner",
             "chatbot_name": "public_bot",
@@ -79,9 +81,11 @@ class NamespacePublicTests(OwnershipFixture):
         self.assertEqual(json.loads(share(first).text)["text"], "published-answer")
         self.assertEqual(json.loads(share(first).text)["text"], "published-answer")
         self.assertEqual(restores, [("legacy-published-owner", "public_bot", KEY_B)])
-        reader = self.user(KEY_B).uid
+        reader = self.model_user(KEY_B).uid
         self.assertEqual(bindings, [(reader, KEY_B), (reader, KEY_B)])
         self.assertEqual(readers, [reader, reader])
+        self.assertEqual(self.transport_calls, [])
+        self.assertIsNone(self.registry.lookup(SUBJECT, "upload"))
         for owner, bot in (("ab", "c"), ("a", "bc")):
             first.request.query = {"uid": owner, "chatbot_name": bot, "q": "synthetic"}
             share(first)
@@ -120,7 +124,7 @@ class NamespacePublicTests(OwnershipFixture):
             require_object_name=namespace.require_object_name,
             quote=__import__("urllib.parse", fromlist=["quote"]).quote,
         )
-        actual_user = self.user()
+        actual_user = self.model_user()
         self.env["prd"] = self.env["settings"]
         download = definition(
             "ramjet/tasks/gptchat/llm/embeddings.py", "download_chatbot_index", self.env
@@ -190,7 +194,7 @@ class NamespacePublicTests(OwnershipFixture):
             "ramjet/tasks/gptchat/llm/embeddings.py", "download_chatbot_index", self.env
         )
         storage = NS(fget_object=fetch, get_object=forbidden)
-        for owner in ("legacy-published-owner", "ckv2-" + "a" * 64):
+        for owner in ("legacy-published-owner", "ckv2-" + "a" * 64, "pns3-" + "b" * 32):
             reader = NS(
                 uid=owner, apikey=KEY_B, api_base="http://reader-provider.fixture/v1"
             )
@@ -207,10 +211,12 @@ class NamespacePublicTests(OwnershipFixture):
                 f"{PREFIX}/legacy-published-owner/chatbot-share-v2/public_bot.pkl",
                 f"{PREFIX}/ckv2-" + "a" * 64 + "/chatbot-share-v2/public_bot.store",
                 f"{PREFIX}/ckv2-" + "a" * 64 + "/chatbot-share-v2/public_bot.pkl",
+                f"{PREFIX}/pns3-" + "b" * 32 + "/chatbot-share-v2/public_bot.store",
+                f"{PREFIX}/pns3-" + "b" * 32 + "/chatbot-share-v2/public_bot.pkl",
             ],
         )
         self.assertEqual(
-            client_bindings, [(KEY_B, "http://reader-provider.fixture/v1")] * 2
+            client_bindings, [(KEY_B, "http://reader-provider.fixture/v1")] * 3
         )
 
 

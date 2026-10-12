@@ -135,7 +135,6 @@ class ByokRoutingTests(unittest.TestCase):
         namespace = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(namespace)
         self.env.update(
-            credential_scope=namespace.credential_scope,
             require_object_name=namespace.require_object_name,
         )
         # The SDK-binding unit fixture bypasses namespace/storage auth deliberately;
@@ -294,9 +293,7 @@ class ByokRoutingTests(unittest.TestCase):
             aiohttp=NS(web=web),
             user_embeddings_chain_mu=threading.Lock(),
             user_embeddings_chain={
-                ("private-credential-v2", "synthetic-user"): chain_for_index(
-                    cached_index, []
-                )
+                ("sso-private-v3", "synthetic-user"): chain_for_index(cached_index, [])
             },
             uid_ratelimiter=lambda **kw: NS(release=lambda: None),
         )

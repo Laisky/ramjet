@@ -226,7 +226,9 @@ class PrivateCachePasswordTests(unittest.IsolatedAsyncioTestCase):
             return wrapper
 
         self.env["authenticate_sync"] = authenticate
+        self.env["authenticate_private_sync"] = lambda operation: authenticate
         self.env["authenticate"] = lambda func: func
+        self.env["authenticate_private"] = lambda operation: (lambda func: func)
         self.env["recover"] = lambda func: func
         self.search = execute_method(
             gpt / "router.py", "EmbeddingContext", "chatbot_search", self.env

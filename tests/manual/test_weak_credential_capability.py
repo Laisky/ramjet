@@ -11,6 +11,9 @@ import unittest
 from tests.namespace_test_support import OwnershipFixture, PREFIX, public_module
 
 
+@unittest.skip(
+    "Historical 1bbcc7f reproduction; current private routes require SSO registry grants"
+)
 @unittest.skipUnless(
     os.environ.get("RAMJET_WEAK_CAPABILITY_CHARACTERIZATION") == "1",
     "known weak-capability characterization is opt-in",
