@@ -23,7 +23,7 @@ botocore==1.41.2
 cachetools==6.2.2
 cafeteria==0.22.3
 cafeteria-asyncio==0.3.0
-certifi==2025.11.12
+certifi==2026.10.18
 cffi==2.0.0
 charset-normalizer==3.4.4
 click==8.3.1
